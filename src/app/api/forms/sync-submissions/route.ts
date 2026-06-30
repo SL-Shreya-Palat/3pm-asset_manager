@@ -16,62 +16,14 @@ import { getAuthenticatedUser } from '@/lib/auth-helper';
 import {
   getFormsCollection,
   getInspectionSubmissionsCollection,
-  getDefectsCollection,
   getFormBuilderOrgMappingsCollection,
 } from '@/lib/mongodb';
-import { evaluateSubmission } from '@/controller/defect-settings/evaluator';
-import { generateDefectNumber } from '@/controller/defects/utils';
+import { processInspectionSubmission } from '@/controller/inspection-submissions';
 
 const FORM_BUILDER_MONGODB_URI =
   process.env.FORM_BUILDER_MONGODB_URI || 'mongodb://localhost:27017';
 const FORM_BUILDER_DB_NAME =
   process.env.FORM_BUILDER_DB_NAME || 'formbuilder-portal';
-
-/**
- * Resolve field.id–keyed response → fieldKey–keyed response
- * using the locally stored form schema.
- */
-function resolveResponseKeys(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  schema: { pages?: any[] } | undefined,
-  rawResponse: Record<string, unknown>,
-): Record<string, unknown> {
-  if (!schema?.pages) return rawResponse;
-
-  // Build id→fieldKey map by walking schema pages
-  const idToFieldKey = new Map<string, string>();
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function walkItems(items: any[]) {
-    for (const item of items) {
-      if (item.type === 'fieldgroup' && Array.isArray(item.items)) {
-        walkItems(item.items);
-        continue;
-      }
-      if (item.id && item.fieldKey) {
-        idToFieldKey.set(item.id, item.fieldKey);
-      }
-    }
-  }
-
-  for (const page of schema.pages) {
-    if (Array.isArray(page.items)) walkItems(page.items);
-  }
-
-  // Remap keys
-  const resolved: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(rawResponse)) {
-    const fieldKey = idToFieldKey.get(key);
-    if (fieldKey) {
-      resolved[fieldKey] = value;
-    } else {
-      // Keep unknown keys as-is (might already be fieldKey-based)
-      resolved[key] = value;
-    }
-  }
-
-  return resolved;
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -168,7 +120,6 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const defectsCol = await getDefectsCollection();
       let syncedCount = 0;
       let defectsCreatedCount = 0;
       const errors: string[] = [];
@@ -206,85 +157,29 @@ export async function POST(req: NextRequest) {
 
         const localFormId = (localForm.formId as ObjectId).toString();
 
-        // Resolve field.id → fieldKey
-        const rawResponse = (fbSub.response || {}) as Record<string, unknown>;
-        const schema = localForm.schema as { pages?: unknown[] } | undefined;
-        const resolvedResponse = resolveResponseKeys(schema, rawResponse);
-
-        // Run defect evaluator
-        const evaluation = await evaluateSubmission(
-          tenantId,
-          localFormId,
-          resolvedResponse,
-        );
-
-        // Save submission
-        const now = new Date();
-        const submissionDoc = {
-          tenantId: tenantOid,
-          formId: new ObjectId(localFormId),
-          formTitle: (localForm.formTitle as string) || '',
-          formVersion: (fbSub.formVersion as number) || 1,
-          assetId: null,
-          response: resolvedResponse,
-          result: evaluation.result,
-          defects: evaluation.defects,
-          faultsComments: (resolvedResponse.faults_comments as string) || null,
-          photos: resolvedResponse.photos || null,
-          safeToOperate: resolvedResponse.safe_to_operate ?? null,
-          submittedBy: fbSub.submittedBy?.toString() || null,
-          submitterInfo: fbSub.submitterInfo || null,
-          externalSubmissionId: externalId,
-          submittedAt: fbSub.submittedAt || now,
-          createdAt: now,
-          updatedAt: now,
-          source: 'sync',
-        };
-
-        const insertResult = await submissionsCol.insertOne(submissionDoc);
-        syncedCount++;
-
-        // Create defect rows
-        if (evaluation.defects.length > 0) {
-          for (const defect of evaluation.defects) {
-            try {
-              const defectNumber = await generateDefectNumber(tenantId);
-              const answerStr = Array.isArray(defect.answer)
-                ? defect.answer.join(', ')
-                : defect.answer;
-
-              const defectDoc = {
-                tenantId: tenantOid,
-                defectNumber,
-                name: `${defect.label} — ${answerStr}`,
-                date: now,
-                comment: `Auto-generated from pre-start inspection "${localForm.formTitle}". Field "${defect.label}" answered "${answerStr}".`,
-                assetId: null,
-                assetName: '',
-                driverId: null,
-                driverName: null,
-                priority: defect.severity === 'critical' ? 'high' : 'medium',
-                severity: defect.severity,
-                status: 'new',
-                attachments: [],
-                source: 'prestart_inspection',
-                inspectionSubmissionId: insertResult.insertedId,
-                sourceFieldKey: defect.fieldKey,
-                createdBy: null,
-                updatedBy: null,
-                createdAt: now,
-                updatedAt: now,
-                isArchived: false,
-                archivedAt: null,
-                archivedBy: null,
-              };
-
-              await defectsCol.insertOne(defectDoc);
-              defectsCreatedCount++;
-            } catch (err) {
-              errors.push(`Defect creation failed for field ${defect.fieldKey}: ${err}`);
-            }
+        // Process via the shared pipeline (normalize keys → evaluate → link
+        // asset → create defects) — identical behaviour to the webhook path.
+        try {
+          const result = await processInspectionSubmission({
+            tenantId,
+            formId: localFormId,
+            rawResponse: (fbSub.response || {}) as Record<string, unknown>,
+            source: 'sync',
+            form: localForm,
+            formVersion: fbSub.formVersion as number | undefined,
+            submittedBy: fbSub.submittedBy?.toString() || null,
+            submitterInfo: (fbSub.submitterInfo as Record<string, unknown>) || null,
+            externalSubmissionId: externalId,
+            submittedAt: fbSub.submittedAt
+              ? new Date(fbSub.submittedAt as string | Date)
+              : undefined,
+          });
+          if (result.status === 'processed') {
+            syncedCount++;
+            defectsCreatedCount += result.defectsCreated;
           }
+        } catch (err) {
+          errors.push(`Submission ${externalId} failed: ${err}`);
         }
       }
 

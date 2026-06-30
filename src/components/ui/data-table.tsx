@@ -97,7 +97,7 @@ export function DataTable<T>({
                 <th
                   key={col.key}
                   className={cn(
-                    'font-medium text-muted-foreground whitespace-nowrap',
+                    'text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap',
                     padding,
                     col.align === 'right'
                       ? 'text-right'

@@ -14,6 +14,8 @@ import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/ui/search-input';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
+import { PageHeader } from '@/components/ui/page-header';
+import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import {
   Dialog,
   DialogContent,
@@ -190,17 +192,11 @@ export function DriversPage() {
       header: 'Actions',
       align: 'right',
       render: (driver) => (
-        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenView(driver)}>
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => router.push(`/people/drivers/${driver.id}/edit`)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive" onClick={() => handleOpenDelete(driver)}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        <RowActions>
+          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(driver)} />
+          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => router.push(`/people/drivers/${driver.id}/edit`)} />
+          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(driver)} />
+        </RowActions>
       ),
     },
   ];
@@ -208,16 +204,12 @@ export function DriversPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 pt-6 pb-4">
-        <h1 className="text-2xl font-semibold text-foreground">
-          Drivers
-          <span className="text-muted-foreground font-normal ml-2">({pagination.total})</span>
-        </h1>
+      <PageHeader title="Drivers" count={pagination.total}>
         <Button onClick={() => router.push('/people/drivers/new')}>
           <Plus className="h-4 w-4" />
           Add Driver
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Search */}
       <div className="px-6 pb-4">

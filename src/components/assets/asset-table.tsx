@@ -8,12 +8,15 @@ import {
   MoreHorizontal,
   Users,
   ClipboardList,
+  ClipboardCheck,
   KeyRound,
   Power,
   Trash2,
 } from 'lucide-react';
+import { InspectFormPickerDialog } from '@/components/inspections/inspect-button';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { PageHeader } from '@/components/ui/page-header';
 import {
   Dialog,
   DialogContent,
@@ -63,6 +66,7 @@ export function AssetTable() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch, debouncedSearch] = useDebouncedSearch(300);
   const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [inspectAssetId, setInspectAssetId] = useState<string | null>(null);
 
   // Table features: filters, column visibility, density
   const {
@@ -423,6 +427,15 @@ export function AssetTable() {
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation();
+                setInspectAssetId(asset.id);
+              }}
+            >
+              <ClipboardCheck className="h-4 w-4" />
+              Inspect
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
                 handleOpenChangeTeam(asset);
               }}
             >
@@ -474,19 +487,22 @@ export function AssetTable() {
 
   return (
     <div className="p-6">
+      <InspectFormPickerDialog
+        open={!!inspectAssetId}
+        assetId={inspectAssetId ?? ''}
+        onOpenChange={(o) => { if (!o) setInspectAssetId(null); }}
+      />
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Assets</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage your fleet vehicles and equipment
-          </p>
-        </div>
+      <PageHeader
+        title="Assets"
+        description="Manage your fleet vehicles and equipment"
+        className="px-0 pt-0 pb-4"
+      >
         <Button onClick={() => router.push('/assets/new')}>
           <Plus className="h-4 w-4" />
           Add Asset
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">

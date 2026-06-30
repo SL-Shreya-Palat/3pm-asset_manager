@@ -9,12 +9,16 @@ import {
   Eye,
   AlertTriangle,
   X,
+  Wrench,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/ui/search-input';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
+import { PageHeader } from '@/components/ui/page-header';
+import { RowActions, RowActionButton } from '@/components/ui/row-actions';
+import { FilterTabs } from '@/components/ui/filter-tabs';
 import {
   Select,
   SelectContent,
@@ -35,6 +39,7 @@ import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
 import { DefectForm } from './defect-form';
+import { WorkOrderForm } from '@/components/work-orders/work-order-form';
 import type { DefectRow, Pagination } from './types';
 import {
   DEFECT_STATUS_TABS,
@@ -85,6 +90,10 @@ export function DefectsPage() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelMode, setPanelMode] = useState<'create' | 'edit'>('create');
   const [editingDefect, setEditingDefect] = useState<DefectRow | null>(null);
+
+  // Work-order panel state (raise a correction WO from a defect)
+  const [woPanelOpen, setWoPanelOpen] = useState(false);
+  const [woDefect, setWoDefect] = useState<DefectRow | null>(null);
 
   // View dialog
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
@@ -155,6 +164,18 @@ export function DefectsPage() {
 
   // View dialog
   const handleOpenView = (defect: DefectRow) => { setViewDefect(defect); setViewDialogOpen(true); };
+
+  // Work order panel — raise a correction WO for a defect
+  const handleOpenCreateWO = (defect: DefectRow) => {
+    setViewDialogOpen(false);
+    setWoDefect(defect);
+    setWoPanelOpen(true);
+  };
+  const handleCloseWOPanel = () => { setWoPanelOpen(false); setWoDefect(null); };
+  const handleWOSaved = () => {
+    handleCloseWOPanel();
+    fetchDefects(pagination.page); // defect moves to In Progress + gets WO #
+  };
 
   // Delete
   const handleOpenDelete = (defect: DefectRow) => { setDeletingDefect(defect); setDeleteDialogOpen(true); };
@@ -254,17 +275,22 @@ export function DefectsPage() {
       header: 'Actions',
       align: 'right',
       render: (defect) => (
-        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenView(defect)}>
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenEdit(defect)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive" onClick={() => handleOpenDelete(defect)}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        <RowActions>
+          {defect.workOrderNumber ? (
+            <Badge variant="outline" className="font-mono text-xs gap-1">
+              <Wrench className="h-3 w-3" />{defect.workOrderNumber}
+            </Badge>
+          ) : (
+            <RowActionButton
+              label="Create work order"
+              icon={<Wrench />}
+              onClick={() => handleOpenCreateWO(defect)}
+            />
+          )}
+          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(defect)} />
+          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(defect)} />
+          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(defect)} />
+        </RowActions>
       ),
     },
   ];
@@ -273,35 +299,20 @@ export function DefectsPage() {
     <div className="relative flex h-full">
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0">
-        <div className="flex items-center justify-between px-6 pt-6 pb-4">
-          <h1 className="text-2xl font-semibold text-foreground">
-            Defects
-            <span className="text-muted-foreground font-normal ml-2">({pagination.total})</span>
-          </h1>
+        <PageHeader title="Defects" count={pagination.total}>
           <Button onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             Report Defect
           </Button>
-        </div>
+        </PageHeader>
 
         {/* Status Tabs */}
         <div className="px-6 pb-4">
-          <div className="flex gap-1 flex-wrap">
-            {DEFECT_STATUS_TABS.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={cn(
-                  'px-3 py-1.5 text-sm rounded-md transition-colors',
-                  activeTab === tab.key
-                    ? 'bg-primary text-primary-foreground font-medium'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <FilterTabs
+            value={activeTab}
+            onChange={setActiveTab}
+            tabs={DEFECT_STATUS_TABS.map((tab) => ({ value: tab.key, label: tab.label }))}
+          />
         </div>
 
         {/* Filters row */}
@@ -474,6 +485,32 @@ export function DefectsPage() {
         )}
       </div>
 
+      {/* Work Order panel backdrop */}
+      {woPanelOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 transition-opacity"
+          onClick={handleCloseWOPanel}
+        />
+      )}
+
+      {/* Right Panel — Work Order Form (raise correction WO from a defect) */}
+      <div className={cn(
+        'fixed top-0 right-0 z-50 h-full w-[560px] border-l border-border bg-background transition-transform duration-300',
+        woPanelOpen ? 'translate-x-0' : 'translate-x-full',
+      )}>
+        {woPanelOpen && woDefect && (
+          <WorkOrderForm
+            mode="create"
+            source="defect"
+            initialAssetId={woDefect.assetId}
+            initialDefectIds={[woDefect.id]}
+            lockAsset
+            onClose={handleCloseWOPanel}
+            onSaved={handleWOSaved}
+          />
+        )}
+      </div>
+
       {/* View Defect Dialog */}
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
@@ -485,6 +522,11 @@ export function DefectsPage() {
             {viewDefect && <ViewDefectContent defect={viewDefect} />}
           </div>
           <DialogFooter>
+            {viewDefect && !viewDefect.workOrderNumber && (
+              <Button onClick={() => handleOpenCreateWO(viewDefect)}>
+                <Wrench className="h-4 w-4 mr-1" /> Create Work Order
+              </Button>
+            )}
             <Button variant="outline" onClick={() => { setViewDialogOpen(false); if (viewDefect) handleOpenEdit(viewDefect); }}>
               <Pencil className="h-4 w-4 mr-1" /> Edit
             </Button>
@@ -535,6 +577,9 @@ function ViewDefectContent({ defect }: { defect: DefectRow }) {
           <ViewField label="Name" value={defect.name} />
           <ViewField label="Date" value={defect.date ? new Date(defect.date).toLocaleDateString() : undefined} />
           <ViewField label="Comment" value={defect.comment} />
+          {defect.workOrderNumber && (
+            <ViewField label="Work Order" value={defect.workOrderNumber} />
+          )}
         </div>
       </div>
 

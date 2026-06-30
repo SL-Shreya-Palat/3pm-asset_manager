@@ -9,6 +9,7 @@
  *
  * Field types used: text, number, datetime, radio, textarea, image, toggle, signature
  */
+import type { SeverityValue } from '@/controller/defect-settings/types';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -464,12 +465,91 @@ export interface PrestartFormTemplate {
   pages: any[];
 }
 
+/** Force every field optional — operators can submit a partial inspection. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function makeAllOptional(pages: any[]): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const walk = (items: any[]) => {
+    for (const f of items || []) {
+      if (!f) continue;
+      f.required = false;
+      if (Array.isArray(f.items)) walk(f.items);
+    }
+  };
+  for (const page of pages) if (Array.isArray(page.items)) walk(page.items);
+}
+
 export function getPrestartFormTemplates(): PrestartFormTemplate[] {
   // Reset counter each time so IDs are deterministic within a single call
   counter = 0;
-  return [
+  const templates = [
     buildLightVehicleForm(),
     buildHeavyVehicleForm(),
     buildPlantExcavatorForm(),
   ];
+  for (const t of templates) makeAllOptional(t.pages);
+  return templates;
+}
+
+// ── default defect settings derivation ─────────────────────────────────────────
+
+/**
+ * Option values that mean "this item failed" — used to pre-tick defect answers
+ * when seeding, so auto-defect creation works out of the box. Admins can still
+ * adjust ticks afterwards in the Defect Settings screen.
+ */
+const BAD_OPTION_VALUES = new Set([
+  'fail', 'failed', 'no', 'not_working', 'notworking', 'damaged', 'defective',
+  'unsafe', 'faulty', 'poor', 'bad', 'leaking', 'broken', 'low',
+]);
+
+/** Items whose failure is safety-critical → seeded with `critical` severity. */
+const CRITICAL_LABEL_RE =
+  /\b(brake|steering|tyre|tire|seat\s?belt|coupling|tow|wheel|suspension|emergency|fire|hydraulic|rops|fops|horn)\b/i;
+
+const DEFECT_ELIGIBLE_CHOICE = new Set(['dropdown', 'radio', 'multiselect']);
+
+export interface DerivedDefectSettings {
+  defectAnswers: Record<string, string[]>;
+  severityByField: Record<string, SeverityValue>;
+}
+
+/**
+ * Derive default defect settings from a template: for every choice item that
+ * has a "bad" option (e.g. Fail), mark that value as a defect, with critical
+ * severity for safety-critical items.
+ */
+export function deriveDefectSettingsFromTemplate(
+  template: PrestartFormTemplate,
+): DerivedDefectSettings {
+  const defectAnswers: Record<string, string[]> = {};
+  const severityByField: Record<string, SeverityValue> = {};
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const walk = (items: any[]) => {
+    for (const field of items) {
+      if (field.type === 'fieldgroup' && Array.isArray(field.items)) {
+        walk(field.items);
+        continue;
+      }
+      if (!DEFECT_ELIGIBLE_CHOICE.has(field.type) || !Array.isArray(field.options) || !field.fieldKey) {
+        continue;
+      }
+      const bad = (field.options as { value: string }[])
+        .map((o) => String(o.value))
+        .filter((v) => BAD_OPTION_VALUES.has(v.toLowerCase()));
+      if (bad.length === 0) continue;
+
+      defectAnswers[field.fieldKey] = bad;
+      severityByField[field.fieldKey] = CRITICAL_LABEL_RE.test(field.label || '')
+        ? 'critical'
+        : 'non_critical';
+    }
+  };
+
+  for (const page of template.pages) {
+    if (Array.isArray(page.items)) walk(page.items);
+  }
+
+  return { defectAnswers, severityByField };
 }

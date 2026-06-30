@@ -14,6 +14,8 @@ import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/ui/search-input';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
+import { PageHeader } from '@/components/ui/page-header';
+import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import type { DataTableFilterDef } from '@/components/ui/data-table.types';
 import {
   Dialog,
@@ -253,17 +255,11 @@ export function VendorsPage() {
       header: 'Actions',
       align: 'right',
       render: (vendor) => (
-        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenView(vendor)}>
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenEdit(vendor)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenDelete(vendor)} className="text-destructive hover:text-destructive">
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        <RowActions>
+          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(vendor)} />
+          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(vendor)} />
+          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(vendor)} />
+        </RowActions>
       ),
     },
   ];
@@ -273,16 +269,12 @@ export function VendorsPage() {
       {/* Left — Main content */}
       <div className="flex flex-col flex-1 min-w-0">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-4">
-          <h1 className="text-2xl font-semibold text-foreground">
-            Vendors
-            <span className="text-muted-foreground font-normal ml-2">({pagination.total})</span>
-          </h1>
+        <PageHeader title="Vendors" count={pagination.total}>
           <Button onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             Add Vendor
           </Button>
-        </div>
+        </PageHeader>
 
         {/* Search */}
         <div className="px-6 pb-4">

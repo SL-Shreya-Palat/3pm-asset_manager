@@ -5,6 +5,7 @@ import axios from 'axios';
 import { Plus, Pencil, Trash2, ArrowRight } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -207,19 +208,15 @@ export function WorkOrderStatusesList() {
                   <td className="px-4 py-2.5 text-center text-muted-foreground">{item.sequence}</td>
                   <td className="px-4 py-2.5 text-center text-muted-foreground">{item.workOrderCount}</td>
                   <td className="px-4 py-2.5 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon-sm" onClick={() => openEditDialog(item)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
+                    <RowActions>
+                      <RowActionButton label="Edit" icon={<Pencil />} onClick={() => openEditDialog(item)} />
+                      <RowActionButton
+                        label="Delete"
+                        tone="destructive"
+                        icon={<Trash2 />}
                         onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                      />
+                    </RowActions>
                   </td>
                 </tr>
               ))

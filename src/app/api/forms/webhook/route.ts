@@ -1,14 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { storeForm, deleteFormByFormId } from '@/controller/forms';
-import { evaluateSubmission } from '@/controller/defect-settings/evaluator';
-import { generateDefectNumber } from '@/controller/defects/utils';
-import {
-  getInspectionSubmissionsCollection,
-  getDefectsCollection,
-  getFormsCollection,
-  getFormBuilderOrgMappingsCollection,
-} from '@/lib/mongodb';
+import { processInspectionSubmission } from '@/controller/inspection-submissions';
+import { getFormBuilderOrgMappingsCollection } from '@/lib/mongodb';
 
 /**
  * Resolve tenantId from an organizationId string via the org→tenant mapping collection.
@@ -27,8 +21,9 @@ async function resolveTenantId(organizationId: string): Promise<string | null> {
 }
 
 /**
- * Handle form.submission.created — runs the defect evaluator and creates
- * defect rows when answers match ticked defect triggers.
+ * Handle form.submission.created — delegates to the shared submission processor,
+ * which normalizes the response keys, evaluates defect settings, links the asset,
+ * and creates defect rows. (One code path shared with sync + in-app submit.)
  */
 async function handleSubmissionCreated(data: Record<string, unknown>) {
   const organizationId = data.organizationId as string;
@@ -37,7 +32,7 @@ async function handleSubmissionCreated(data: Record<string, unknown>) {
   const submissionId = data.submissionId as string | undefined;
   const submittedBy = data.submittedBy as string | undefined;
   const submitterInfo = data.submitterInfo as Record<string, unknown> | undefined;
-  const formVersion = (data.formVersion as number) || 1;
+  const formVersion = (data.formVersion as number) || undefined;
 
   if (!organizationId || !formId) {
     throw new Error('Missing organizationId or formId in submission payload');
@@ -52,103 +47,35 @@ async function handleSubmissionCreated(data: Record<string, unknown>) {
     throw new Error(`Could not resolve tenantId for organizationId: ${organizationId}`);
   }
 
-  const tenantOid = ObjectId.createFromHexString(tenantId);
-  const formOid = ObjectId.createFromHexString(formId);
-  const now = new Date();
-
-  // Load the form to get title, etc.
-  const formsCol = await getFormsCollection();
-  const form = await formsCol.findOne({ formId: formOid, tenantId: tenantOid });
-  if (!form) {
-    console.warn(`[WEBHOOK] Form ${formId} not found in asset-manager for tenant ${tenantId}. Skipping submission evaluation.`);
-    return { result: 'skipped', reason: 'form_not_found', defectsCreated: 0 };
-  }
-
-  // Run the defect evaluator
-  const evaluation = await evaluateSubmission(tenantId, formId, response);
-
-  // Save the submission record
-  const submissionsCol = await getInspectionSubmissionsCollection();
-  const submissionDoc = {
-    tenantId: tenantOid,
-    formId: formOid,
-    formTitle: form.formTitle as string,
+  const result = await processInspectionSubmission({
+    tenantId,
+    formId,
+    rawResponse: response,
+    source: 'webhook',
     formVersion,
-    assetId: null, // Not available from webhook — can be enriched later
-    response,
-    result: evaluation.result,
-    defects: evaluation.defects,
-    faultsComments: (response.faults_comments as string) || null,
-    photos: response.photos || null,
-    safeToOperate: response.safe_to_operate ?? null,
     submittedBy: submittedBy || null,
     submitterInfo: submitterInfo || null,
     externalSubmissionId: submissionId || null,
-    submittedAt: data.submittedAt ? new Date(data.submittedAt as string) : now,
-    createdAt: now,
-    updatedAt: now,
-    source: 'webhook',
-  };
+    submittedAt: data.submittedAt ? new Date(data.submittedAt as string) : undefined,
+  });
 
-  const insertResult = await submissionsCol.insertOne(submissionDoc);
-  const localSubmissionId = insertResult.insertedId;
-
-  // Create defect rows in the existing defects collection
-  const createdDefectIds: string[] = [];
-
-  if (evaluation.defects.length > 0) {
-    const defectsCol = await getDefectsCollection();
-
-    for (const defect of evaluation.defects) {
-      const defectNumber = await generateDefectNumber(tenantId);
-      const answerStr = Array.isArray(defect.answer)
-        ? defect.answer.join(', ')
-        : defect.answer;
-
-      const defectDoc = {
-        tenantId: tenantOid,
-        defectNumber,
-        name: `${defect.label} — ${answerStr}`,
-        date: now,
-        comment: `Auto-generated from pre-start inspection "${form.formTitle}". Field "${defect.label}" answered "${answerStr}".${
-          response.faults_comments
-            ? `\n\nOperator notes: ${response.faults_comments}`
-            : ''
-        }`,
-        assetId: null,
-        assetName: '',
-        driverId: null,
-        driverName: null,
-        priority: defect.severity === 'critical' ? 'high' : 'medium',
-        severity: defect.severity,
-        status: 'new',
-        attachments: [],
-        source: 'prestart_inspection',
-        inspectionSubmissionId: localSubmissionId,
-        sourceFieldKey: defect.fieldKey,
-        createdBy: null,
-        updatedBy: null,
-        createdAt: now,
-        updatedAt: now,
-        isArchived: false,
-        archivedAt: null,
-        archivedBy: null,
-      };
-
-      const res = await defectsCol.insertOne(defectDoc);
-      createdDefectIds.push(res.insertedId.toString());
-    }
+  if (result.status === 'form_not_found') {
+    console.warn(
+      `[WEBHOOK] Form ${formId} not found in asset-manager for tenant ${tenantId}. Skipping submission evaluation.`,
+    );
+    return { result: 'skipped', reason: 'form_not_found', defectsCreated: 0 };
   }
 
   console.log(
-    `[WEBHOOK] Submission processed for form ${formId}: result=${evaluation.result}, defectsCreated=${createdDefectIds.length}`,
+    `[WEBHOOK] Submission processed for form ${formId}: result=${result.result}, defectsCreated=${result.defectsCreated}, assetLinked=${result.assetLinked}`,
   );
 
   return {
-    submissionId: localSubmissionId.toString(),
-    result: evaluation.result,
-    defectsCreated: createdDefectIds.length,
-    defectIds: createdDefectIds,
+    submissionId: result.submissionId,
+    result: result.result,
+    defectsCreated: result.defectsCreated,
+    defectIds: result.defectIds,
+    assetLinked: result.assetLinked,
   };
 }
 

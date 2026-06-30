@@ -150,12 +150,13 @@ export function computeScheduleItem(
       | { enabled: boolean; every: number; unit: string }
       | undefined;
     if (calendar?.enabled && calendar.every > 0) {
-      const lastDate = asset.lastServiceDate
-        ? new Date(asset.lastServiceDate as string | Date)
-        : null;
-      if (lastDate && !isNaN(lastDate.getTime())) {
+      // Baseline: last service date → else the program's start (createdAt) → else now,
+      // so a never-serviced asset still shows an upcoming calendar due date.
+      const rawBase = asset.lastServiceDate ?? program.createdAt ?? new Date();
+      const baseDate = new Date(rawBase as string | Date);
+      if (!isNaN(baseDate.getTime())) {
         const nextDueDate = addCalendarInterval(
-          lastDate,
+          baseDate,
           calendar.every,
           calendar.unit as 'day' | 'week' | 'month' | 'year',
         );

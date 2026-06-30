@@ -15,9 +15,12 @@ import {
   Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 
 import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/ui/search-input';
+import { PageHeader } from '@/components/ui/page-header';
+import { StatCard } from '@/components/ui/stat-card';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import type { DataTableFilterDef } from '@/components/ui/data-table.types';
@@ -360,17 +363,11 @@ export function FuelPage() {
       header: 'Actions',
       align: 'right',
       render: (txn) => (
-        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenView(txn)}>
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenEdit(txn)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive" onClick={() => handleOpenDelete(txn)}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        <RowActions>
+          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(txn)} />
+          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(txn)} />
+          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(txn)} />
+        </RowActions>
       ),
     },
   ];
@@ -380,49 +377,43 @@ export function FuelPage() {
       {/* Left — Main content */}
       <div className="flex flex-col flex-1 min-w-0">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-4">
-          <h1 className="text-2xl font-semibold text-foreground">
-            Fuel
-            <span className="text-muted-foreground font-normal ml-2">({pagination.total})</span>
-          </h1>
-          <div className="flex items-center gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              className="hidden"
-              onChange={handleFileSelected}
-            />
-            <Button variant="outline" onClick={handleImportClick} disabled={importing}>
-              <Upload className="h-4 w-4" />
-              {importing ? 'Importing...' : 'Import'}
-            </Button>
-            <Button onClick={handleOpenCreate}>
-              <Plus className="h-4 w-4" />
-              Add Transaction
-            </Button>
-          </div>
-        </div>
+        <PageHeader title="Fuel" count={pagination.total}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={handleFileSelected}
+          />
+          <Button variant="outline" onClick={handleImportClick} disabled={importing}>
+            <Upload className="h-4 w-4" />
+            {importing ? 'Importing...' : 'Import'}
+          </Button>
+          <Button onClick={handleOpenCreate}>
+            <Plus className="h-4 w-4" />
+            Add Transaction
+          </Button>
+        </PageHeader>
 
         {/* Analytics summary cards */}
         {analytics && analytics.totalTransactions > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-6 pb-4">
-            <SummaryCard
+            <StatCard
               icon={<DollarSign className="h-4 w-4" />}
               label="Total Fuel Cost"
               value={formatCurrency(analytics.totalCost)}
             />
-            <SummaryCard
+            <StatCard
               icon={<Droplets className="h-4 w-4" />}
               label="Total Volume"
               value={`${formatNumber(analytics.totalVolume)} gal`}
             />
-            <SummaryCard
+            <StatCard
               icon={<Gauge className="h-4 w-4" />}
               label="Avg Economy"
               value={analytics.avgEconomy ? `${formatNumber(analytics.avgEconomy)} MPG` : '—'}
             />
-            <SummaryCard
+            <StatCard
               icon={<TrendingUp className="h-4 w-4" />}
               label="Avg Cost/Mile"
               value={analytics.avgCostPerMile ? formatCurrency(analytics.avgCostPerMile) : '—'}
@@ -613,19 +604,6 @@ export function FuelPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-/** Summary card for analytics. */
-function SummaryCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <div className="flex items-center gap-2 text-muted-foreground mb-1">
-        {icon}
-        <span className="text-xs font-medium">{label}</span>
-      </div>
-      <p className="text-lg font-semibold text-foreground">{value}</p>
     </div>
   );
 }

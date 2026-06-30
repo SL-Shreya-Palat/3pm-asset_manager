@@ -122,7 +122,7 @@ export interface ServiceProgram {
   // Interval
   interval: ServiceInterval;
 
-  // Assets
+  // Assets this program applies to (drives per-asset due status)
   assetIds: ObjectId[];
 
   // Reminders

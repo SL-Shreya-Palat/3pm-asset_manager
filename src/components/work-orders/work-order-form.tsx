@@ -3,12 +3,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-import { X, Trash2, Upload, FileText } from 'lucide-react';
+import {
+  X, Trash2, Upload, FileText, Plus, Package,
+  Truck, Wrench, Users, Calendar, Flag, AlignLeft, Paperclip,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Separator } from '@/components/ui/separator';
+import { FormSection } from '@/components/ui/form-section';
 import {
   Select,
   SelectContent,
@@ -23,13 +26,30 @@ import type {
   VendorLookup,
   UserLookup,
   WOStatusOption,
+  PartLookup,
 } from './types';
+
+interface PartLine {
+  partId: string;
+  partName: string;
+  partNumber: string;
+  quantity: number;
+  unitCost: number;
+}
 
 interface WorkOrderFormProps {
   mode: 'create' | 'edit';
   workOrder?: WorkOrderRow | null;
   onClose: () => void;
   onSaved: () => void;
+  /** 'defect' when raised to correct defects — prefills + locks asset, defaults to mechanic, makes items optional. */
+  source?: 'manual' | 'defect';
+  /** Pre-selected asset (create mode). */
+  initialAssetId?: string;
+  /** Defects this WO will correct (create mode, source='defect'). */
+  initialDefectIds?: string[];
+  /** Lock the asset selector (used when raised from a specific defect). */
+  lockAsset?: boolean;
 }
 
 interface AttachmentState {
@@ -42,17 +62,29 @@ interface AttachmentState {
 
 type AssigneeTab = 'vendor' | 'mechanic' | 'third_party';
 
-export function WorkOrderForm({ mode, workOrder, onClose, onSaved }: WorkOrderFormProps) {
+export function WorkOrderForm({
+  mode,
+  workOrder,
+  onClose,
+  onSaved,
+  source = 'manual',
+  initialAssetId,
+  initialDefectIds,
+  lockAsset = false,
+}: WorkOrderFormProps) {
   const router = useRouter();
+  const isDefectSourced = source === 'defect';
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Form fields
-  const [assetId, setAssetId] = useState('');
+  // Form fields — prefill asset + default to mechanic when raised from a defect.
+  const [assetId, setAssetId] = useState(mode === 'create' && isDefectSourced ? (initialAssetId || '') : '');
   const [serviceTaskIds, setServiceTaskIds] = useState<string[]>([]);
-  const [assigneeTab, setAssigneeTab] = useState<AssigneeTab>('vendor');
+  const [assigneeTab, setAssigneeTab] = useState<AssigneeTab>(
+    mode === 'create' && isDefectSourced ? 'mechanic' : 'vendor',
+  );
   const [assigneeId, setAssigneeId] = useState('');
   const [thirdPartyName, setThirdPartyName] = useState('');
   const [thirdPartyEmail, setThirdPartyEmail] = useState('');
@@ -62,6 +94,11 @@ export function WorkOrderForm({ mode, workOrder, onClose, onSaved }: WorkOrderFo
   const [description, setDescription] = useState('');
   const [attachments, setAttachments] = useState<AttachmentState[]>([]);
   const [uploading, setUploading] = useState(false);
+
+  // Parts used on this WO (deducted from inventory on save).
+  const [parts, setParts] = useState<PartLine[]>([]);
+  const [partToAdd, setPartToAdd] = useState('');
+  const [qtyToAdd, setQtyToAdd] = useState('1');
 
   // Prepopulated assignee fields (read-only)
   const [assigneeContact, setAssigneeContact] = useState('');
@@ -74,16 +111,18 @@ export function WorkOrderForm({ mode, workOrder, onClose, onSaved }: WorkOrderFo
   const [vendors, setVendors] = useState<VendorLookup[]>([]);
   const [mechanics, setMechanics] = useState<UserLookup[]>([]);
   const [statuses, setStatuses] = useState<WOStatusOption[]>([]);
+  const [availableParts, setAvailableParts] = useState<PartLookup[]>([]);
 
   // Fetch lookup data
   const fetchLookups = useCallback(async () => {
     try {
-      const [assetsRes, tasksRes, vendorsRes, usersRes, statusesRes] = await Promise.all([
+      const [assetsRes, tasksRes, vendorsRes, usersRes, statusesRes, partsRes] = await Promise.all([
         axios.get('/api/assets?limit=100', { withCredentials: true }),
         axios.get('/api/service-tasks?limit=100', { withCredentials: true }),
         axios.get('/api/vendors?limit=100', { withCredentials: true }),
         axios.get('/api/users?limit=100', { withCredentials: true }),
         axios.get('/api/work-order-statuses', { withCredentials: true }),
+        axios.get('/api/parts?limit=100', { withCredentials: true }),
       ]);
 
       const assetItems = assetsRes.data.data?.items || assetsRes.data.data || [];
@@ -123,6 +162,19 @@ export function WorkOrderForm({ mode, workOrder, onClose, onSaved }: WorkOrderFo
         approvalRequired: i.approvalRequired as boolean,
         sequence: i.sequence as number,
       })));
+
+      const partItems = partsRes.data.data?.items || partsRes.data.data || [];
+      setAvailableParts(partItems.map((i: Record<string, unknown>) => {
+        const vendors = (i.vendors as Array<{ unitCost: number }>) || [];
+        const stockLocations = (i.stockLocations as Array<{ quantity: number }>) || [];
+        return {
+          id: i.id as string,
+          name: i.name as string,
+          partNumber: (i.partNumber as string) || '',
+          unitCost: vendors[0]?.unitCost ?? 0,
+          stock: stockLocations.reduce((sum, s) => sum + (s.quantity || 0), 0),
+        };
+      }));
     } catch {
       // Silent
     }
@@ -155,6 +207,15 @@ export function WorkOrderForm({ mode, workOrder, onClose, onSaved }: WorkOrderFo
       setAssigneeContact(workOrder.assigneeContact || '');
       setAssigneeEmail(workOrder.assigneeEmail || '');
       setAssigneePhone(workOrder.assigneePhone || '');
+      setParts(
+        (workOrder.parts || []).map((p) => ({
+          partId: p.partId,
+          partName: p.partName,
+          partNumber: p.partNumber,
+          quantity: p.quantity,
+          unitCost: p.unitCost,
+        })),
+      );
     }
   }, [workOrder, mode]);
 
@@ -264,13 +325,43 @@ export function WorkOrderForm({ mode, workOrder, onClose, onSaved }: WorkOrderFo
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  // ── Parts ──
+  const handleAddPart = () => {
+    const part = availableParts.find((p) => p.id === partToAdd);
+    if (!part) return;
+    const qty = Math.max(1, parseInt(qtyToAdd, 10) || 1);
+    setParts((prev) => {
+      const existing = prev.find((p) => p.partId === part.id);
+      if (existing) {
+        return prev.map((p) => (p.partId === part.id ? { ...p, quantity: p.quantity + qty } : p));
+      }
+      return [...prev, {
+        partId: part.id,
+        partName: part.name,
+        partNumber: part.partNumber,
+        quantity: qty,
+        unitCost: part.unitCost,
+      }];
+    });
+    setPartToAdd('');
+    setQtyToAdd('1');
+  };
+
+  const updatePartQty = (partId: string, qty: number) =>
+    setParts((prev) => prev.map((p) => (p.partId === partId ? { ...p, quantity: Math.max(1, qty || 1) } : p)));
+
+  const removePart = (partId: string) =>
+    setParts((prev) => prev.filter((p) => p.partId !== partId));
+
+  const partsCost = parts.reduce((sum, p) => sum + p.unitCost * p.quantity, 0);
+
   const handleSubmit = async () => {
     setError('');
     setFieldErrors({});
 
     const errors: Record<string, string> = {};
     if (!assetId) errors.assetId = 'Asset is required';
-    if (serviceTaskIds.length === 0) errors.serviceTaskIds = 'At least one service task is required';
+    if (!isDefectSourced && serviceTaskIds.length === 0) errors.serviceTaskIds = 'At least one service task is required';
     if (assigneeTab === 'vendor' && !assigneeId) errors.assigneeId = 'Vendor is required';
     if (assigneeTab === 'mechanic' && !assigneeId) errors.assigneeId = 'Mechanic is required';
     if (assigneeTab === 'third_party' && showThirdPartyFields) {
@@ -287,6 +378,9 @@ export function WorkOrderForm({ mode, workOrder, onClose, onSaved }: WorkOrderFo
     const payload: Record<string, unknown> = {
       assetId,
       serviceTaskIds,
+      source,
+      ...(isDefectSourced ? { defectIds: initialDefectIds || [] } : {}),
+      parts: parts.map((p) => ({ partId: p.partId, quantity: p.quantity, unitCost: p.unitCost })),
       assigneeType: assigneeTab,
       statusId,
       dueDate: dueDate || undefined,
@@ -345,12 +439,10 @@ export function WorkOrderForm({ mode, workOrder, onClose, onSaved }: WorkOrderFo
         <div className="p-6 space-y-6">
 
           {/* ── Details / Asset ── */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Details</h3>
-            <Separator className="mb-4" />
+          <FormSection icon={Truck} title="Details">
             <div>
               <Label>Asset <span className="text-destructive">*</span></Label>
-              <Select value={assetId} onValueChange={(val) => { setAssetId(val); clearFieldError('assetId'); }}>
+              <Select value={assetId} onValueChange={(val) => { setAssetId(val); clearFieldError('assetId'); }} disabled={lockAsset}>
                 <SelectTrigger className={`mt-1.5 ${fieldErrors.assetId ? 'border-destructive' : ''}`}>
                   <SelectValue placeholder="Select asset" />
                 </SelectTrigger>
@@ -366,14 +458,12 @@ export function WorkOrderForm({ mode, workOrder, onClose, onSaved }: WorkOrderFo
               </Select>
               {fieldErrors.assetId && <p className="text-sm text-destructive mt-1">{fieldErrors.assetId}</p>}
             </div>
-          </div>
+          </FormSection>
 
           {/* ── Items / Service Tasks ── */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Items</h3>
-            <Separator className="mb-4" />
+          <FormSection icon={Wrench} title="Items">
             <div>
-              <Label>Items <span className="text-destructive">*</span></Label>
+              <Label>Items {!isDefectSourced && <span className="text-destructive">*</span>}</Label>
               <div className="mt-1.5 space-y-2">
                 {serviceTasks.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No service tasks available.</p>
@@ -410,13 +500,10 @@ export function WorkOrderForm({ mode, workOrder, onClose, onSaved }: WorkOrderFo
                 </button>
               </p>
             </div>
-          </div>
+          </FormSection>
 
           {/* ── Assignee ── */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Assignee</h3>
-            <Separator className="mb-4" />
-
+          <FormSection icon={Users} title="Assignee">
             {/* Tab buttons */}
             <div className="flex gap-1 mb-4">
               {(['vendor', 'mechanic', 'third_party'] as const).map((tab) => (
@@ -597,12 +684,10 @@ export function WorkOrderForm({ mode, workOrder, onClose, onSaved }: WorkOrderFo
                 )}
               </div>
             )}
-          </div>
+          </FormSection>
 
           {/* ── Due Date ── */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Due Date</h3>
-            <Separator className="mb-4" />
+          <FormSection icon={Calendar} title="Due Date">
             <div>
               <Label>Due Date</Label>
               <Input
@@ -612,12 +697,10 @@ export function WorkOrderForm({ mode, workOrder, onClose, onSaved }: WorkOrderFo
                 className="mt-1.5"
               />
             </div>
-          </div>
+          </FormSection>
 
           {/* ── Status ── */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Status</h3>
-            <Separator className="mb-4" />
+          <FormSection icon={Flag} title="Status">
             <div>
               <Label>Choose Status <span className="text-destructive">*</span></Label>
               <Select value={statusId} onValueChange={(val) => { setStatusId(val); clearFieldError('statusId'); }}>
@@ -657,12 +740,10 @@ export function WorkOrderForm({ mode, workOrder, onClose, onSaved }: WorkOrderFo
                 </button>
               </p>
             </div>
-          </div>
+          </FormSection>
 
           {/* ── Description ── */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Description</h3>
-            <Separator className="mb-4" />
+          <FormSection icon={AlignLeft} title="Description">
             <div>
               <Label htmlFor="woDescription">Description</Label>
               <Textarea
@@ -675,12 +756,100 @@ export function WorkOrderForm({ mode, workOrder, onClose, onSaved }: WorkOrderFo
                 className="mt-1.5"
               />
             </div>
-          </div>
+          </FormSection>
+
+          {/* ── Parts ── */}
+          <FormSection icon={Package} title="Parts">
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Label>Part</Label>
+                <Select value={partToAdd} onValueChange={setPartToAdd}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue placeholder="Select part" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableParts.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">No parts in inventory</div>
+                    ) : (
+                      availableParts.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name} ({p.stock} in stock)
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-20">
+                <Label>Qty</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={qtyToAdd}
+                  onChange={(e) => setQtyToAdd(e.target.value)}
+                  className="mt-1.5"
+                />
+              </div>
+              <Button type="button" variant="outline" onClick={handleAddPart} disabled={!partToAdd}>
+                <Plus className="h-4 w-4" /> Add
+              </Button>
+            </div>
+
+            {parts.length > 0 && (
+              <div className="mt-4 rounded-md border border-border divide-y divide-border">
+                {parts.map((p) => {
+                  const stock = availableParts.find((a) => a.id === p.partId)?.stock ?? null;
+                  const low = stock != null && p.quantity > stock;
+                  return (
+                    <div key={p.partId} className="flex items-center gap-3 px-3 py-2">
+                      <Package className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-foreground truncate">{p.partName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {p.partNumber ? `${p.partNumber} · ` : ''}{p.unitCost.toFixed(2)} ea
+                          {stock != null && (
+                            <span className={low ? 'text-destructive' : ''}> · {stock} in stock</span>
+                          )}
+                        </p>
+                      </div>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={p.quantity}
+                        onChange={(e) => updatePartQty(p.partId, parseInt(e.target.value, 10))}
+                        className="w-16 h-8"
+                      />
+                      <span className="text-sm text-foreground w-20 text-right">
+                        {(p.unitCost * p.quantity).toFixed(2)}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => removePart(p.partId)}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  );
+                })}
+                <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
+                  <span className="text-sm font-medium">Parts total</span>
+                  <span className="text-sm font-semibold">{partsCost.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground mt-2">
+              Added parts are deducted from inventory stock when you save.
+            </p>
+          </FormSection>
 
           {/* ── Attachments ── */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-foreground">Attachments</h3>
+          <FormSection
+            icon={Paperclip}
+            title="Attachments"
+            action={
               <Button
                 type="button"
                 variant="outline"
@@ -691,8 +860,8 @@ export function WorkOrderForm({ mode, workOrder, onClose, onSaved }: WorkOrderFo
                 <Upload className="h-3.5 w-3.5 mr-1" />
                 {uploading ? 'Uploading...' : 'Upload'}
               </Button>
-            </div>
-            <Separator className="mb-4" />
+            }
+          >
             <input
               ref={fileInputRef}
               type="file"
@@ -723,7 +892,7 @@ export function WorkOrderForm({ mode, workOrder, onClose, onSaved }: WorkOrderFo
                 </div>
               ))}
             </div>
-          </div>
+          </FormSection>
 
           {/* Error banner */}
           {error && (

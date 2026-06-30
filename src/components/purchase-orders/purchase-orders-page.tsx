@@ -10,9 +10,12 @@ import {
   ShoppingCart,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 
 import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/ui/search-input';
+import { PageHeader } from '@/components/ui/page-header';
+import { FilterTabs } from '@/components/ui/filter-tabs';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import {
@@ -236,21 +239,15 @@ export function PurchaseOrdersPage() {
       header: 'Actions',
       align: 'right',
       render: (order) => (
-        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenView(order)}>
-            <Eye className="h-4 w-4" />
-          </Button>
+        <RowActions>
+          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(order)} />
           {['draft', 'rejected'].includes(order.status) && (
-            <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenEdit(order)}>
-              <Pencil className="h-4 w-4" />
-            </Button>
+            <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(order)} />
           )}
           {order.status === 'draft' && (
-            <Button variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive" onClick={() => handleOpenDelete(order)}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(order)} />
           )}
-        </div>
+        </RowActions>
       ),
     },
   ];
@@ -259,35 +256,20 @@ export function PurchaseOrdersPage() {
     <div className="relative flex h-full">
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0">
-        <div className="flex items-center justify-between px-6 pt-6 pb-4">
-          <h1 className="text-2xl font-semibold text-foreground">
-            Purchase Orders
-            <span className="text-muted-foreground font-normal ml-2">({pagination.total})</span>
-          </h1>
+        <PageHeader title="Purchase Orders" count={pagination.total}>
           <Button onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             Create PO
           </Button>
-        </div>
+        </PageHeader>
 
         {/* Status Tabs */}
         <div className="px-6 pb-4">
-          <div className="flex gap-1 flex-wrap">
-            {PO_STATUS_TABS.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={cn(
-                  'px-3 py-1.5 text-sm rounded-md transition-colors',
-                  activeTab === tab.key
-                    ? 'bg-primary text-primary-foreground font-medium'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <FilterTabs
+            value={activeTab}
+            onChange={setActiveTab}
+            tabs={PO_STATUS_TABS.map((t) => ({ value: t.key, label: t.label }))}
+          />
         </div>
 
         <div className="px-6 pb-4">

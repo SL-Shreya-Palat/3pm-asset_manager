@@ -13,7 +13,9 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { Badge } from '@/components/ui/badge';
+import { StatCard } from '@/components/ui/stat-card';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -201,17 +203,11 @@ export function AssetFuelTab({ assetId }: AssetFuelTabProps) {
       header: 'Actions',
       align: 'right',
       render: (txn) => (
-        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenView(txn)}>
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenEdit(txn)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenDelete(txn)} className="text-destructive hover:text-destructive">
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        <RowActions>
+          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(txn)} />
+          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(txn)} />
+          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(txn)} />
+        </RowActions>
       ),
     },
   ];
@@ -221,10 +217,10 @@ export function AssetFuelTab({ assetId }: AssetFuelTabProps) {
       {/* Summary cards */}
       {analytics && analytics.totalTransactions > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <SummaryCard icon={<DollarSign className="h-4 w-4" />} label="Total Cost" value={formatCurrency(analytics.totalCost)} />
-          <SummaryCard icon={<Droplets className="h-4 w-4" />} label="Total Volume" value={`${formatNumber(analytics.totalVolume)} gal`} />
-          <SummaryCard icon={<Gauge className="h-4 w-4" />} label="Avg Economy" value={analytics.avgEconomy ? `${formatNumber(analytics.avgEconomy)} MPG` : '—'} />
-          <SummaryCard icon={<TrendingUp className="h-4 w-4" />} label="Avg Cost/Mile" value={analytics.avgCostPerMile ? formatCurrency(analytics.avgCostPerMile) : '—'} />
+          <StatCard icon={<DollarSign className="h-4 w-4" />} label="Total Cost" value={formatCurrency(analytics.totalCost)} />
+          <StatCard icon={<Droplets className="h-4 w-4" />} label="Total Volume" value={`${formatNumber(analytics.totalVolume)} gal`} />
+          <StatCard icon={<Gauge className="h-4 w-4" />} label="Avg Economy" value={analytics.avgEconomy ? `${formatNumber(analytics.avgEconomy)} MPG` : '—'} />
+          <StatCard icon={<TrendingUp className="h-4 w-4" />} label="Avg Cost/Mile" value={analytics.avgCostPerMile ? formatCurrency(analytics.avgCostPerMile) : '—'} />
         </div>
       )}
 
@@ -326,18 +322,6 @@ export function AssetFuelTab({ assetId }: AssetFuelTabProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function SummaryCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <div className="flex items-center gap-2 text-muted-foreground mb-1">
-        {icon}
-        <span className="text-xs font-medium">{label}</span>
-      </div>
-      <p className="text-lg font-semibold text-foreground">{value}</p>
     </div>
   );
 }
