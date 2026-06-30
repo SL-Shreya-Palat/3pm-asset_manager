@@ -83,6 +83,8 @@ export function serializeDefect(
     priority: doc.priority,
     severity: doc.severity,
     status: doc.status,
+    workOrderId: doc.workOrderId ? (doc.workOrderId as ObjectId).toString() : null,
+    workOrderNumber: doc.workOrderNumber || null,
     teamIds,
     teamNames: extra?.teamNames ?? [],
     attachments: Array.isArray(doc.attachments)

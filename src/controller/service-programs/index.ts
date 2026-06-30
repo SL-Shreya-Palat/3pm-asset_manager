@@ -80,6 +80,7 @@ export async function createServiceProgram(
     description: input.description?.trim() || undefined,
     category: input.category || 'scheduled_maintenance',
     serviceTaskIds: (input.serviceTaskIds || []).map((id) => ObjectId.createFromHexString(id)),
+    assetIds: (input.assetIds || []).map((id) => ObjectId.createFromHexString(id)),
     triggers: (input.triggers || []).map((t) => ({
       triggerType: t.triggerType,
       intervalType: t.intervalType,
@@ -139,6 +140,9 @@ export async function updateServiceProgram(
   if (input.category !== undefined) $set.category = input.category;
   if (input.serviceTaskIds !== undefined) {
     $set.serviceTaskIds = (input.serviceTaskIds || []).map((id) => ObjectId.createFromHexString(id));
+  }
+  if (input.assetIds !== undefined) {
+    $set.assetIds = (input.assetIds || []).map((id) => ObjectId.createFromHexString(id));
   }
   if (input.triggers !== undefined) {
     $set.triggers = (input.triggers || []).map((t) => ({
@@ -203,6 +207,7 @@ export async function duplicateServiceProgram(tenantId: string, userId: string, 
     description: original.description || undefined,
     category: original.category,
     serviceTaskIds: original.serviceTaskIds || [],
+    assetIds: original.assetIds || [],
     triggers: original.triggers || [],
 
     createdBy: userOid,

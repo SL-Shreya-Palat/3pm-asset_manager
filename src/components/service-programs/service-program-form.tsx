@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -81,17 +80,30 @@ export function ServiceProgramForm({ mode, program, onClose, onSaved }: ServiceP
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [taskSearch, setTaskSearch] = useState('');
 
+  // Assets this program applies to
+  const [availableAssets, setAvailableAssets] = useState<{ id: string; name: string }[]>([]);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
+  const [assetSearch, setAssetSearch] = useState('');
+
   // Triggers / Intervals
   const [triggers, setTriggers] = useState<TriggerFormState[]>([{ ...EMPTY_TRIGGER }]);
 
-  // Fetch available service tasks
+  // Fetch service tasks + assets (lookup data)
   const fetchAvailableTasks = useCallback(async () => {
     try {
-      const res = await axios.get('/api/service-tasks?limit=100', { withCredentials: true });
-      const items = res.data.data?.items || [];
+      const [tasksRes, assetsRes] = await Promise.all([
+        axios.get('/api/service-tasks?limit=100', { withCredentials: true }),
+        axios.get('/api/assets?limit=100', { withCredentials: true }),
+      ]);
+      const items = tasksRes.data.data?.items || [];
       setAvailableTasks(items.map((t: Record<string, unknown>) => ({
         id: t.id as string,
         title: t.title as string,
+      })));
+      const assetItems = assetsRes.data.data?.items || assetsRes.data.data || [];
+      setAvailableAssets(assetItems.map((a: Record<string, unknown>) => ({
+        id: a.id as string,
+        name: (a.name as string) || (a.assetNumber as string) || '',
       })));
     } catch {
       // Silently fail — user can still create the program
@@ -109,6 +121,7 @@ export function ServiceProgramForm({ mode, program, onClose, onSaved }: ServiceP
       setDescription(program.description || '');
       setCategory(program.category || 'scheduled_maintenance');
       setSelectedTaskIds(program.serviceTaskIds || []);
+      setSelectedAssetIds(program.assetIds || []);
       if (program.triggers && program.triggers.length > 0) {
         setTriggers(program.triggers.map((t: ServiceTriggerRow) => ({
           triggerType: t.triggerType || 'time',
@@ -154,6 +167,21 @@ export function ServiceProgramForm({ mode, program, onClose, onSaved }: ServiceP
       (taskSearch ? t.title.toLowerCase().includes(taskSearch.toLowerCase()) : true),
   );
 
+  // Asset selection helpers
+  const handleAddAsset = (assetId: string) => {
+    if (!selectedAssetIds.includes(assetId)) setSelectedAssetIds((prev) => [...prev, assetId]);
+    setAssetSearch('');
+  };
+  const handleRemoveAsset = (assetId: string) =>
+    setSelectedAssetIds((prev) => prev.filter((id) => id !== assetId));
+  const getAssetName = (assetId: string): string =>
+    availableAssets.find((a) => a.id === assetId)?.name || 'Unknown Asset';
+  const filteredAssets = availableAssets.filter(
+    (a) =>
+      !selectedAssetIds.includes(a.id) &&
+      (assetSearch ? a.name.toLowerCase().includes(assetSearch.toLowerCase()) : true),
+  );
+
   // Trigger helpers
   const handleTriggerChange = (index: number, field: keyof TriggerFormState, value: string) => {
     setTriggers((prev) => {
@@ -190,6 +218,7 @@ export function ServiceProgramForm({ mode, program, onClose, onSaved }: ServiceP
       description: description.trim() || undefined,
       category,
       serviceTaskIds: selectedTaskIds,
+      assetIds: selectedAssetIds,
       triggers: triggers
         .filter((t) => t.interval)
         .map((t) => ({
@@ -347,6 +376,65 @@ export function ServiceProgramForm({ mode, program, onClose, onSaved }: ServiceP
             </div>
             <p className="text-xs text-muted-foreground mt-2">
               Select one or more service tasks from the library to include in this program.
+            </p>
+          </div>
+
+          {/* Assets Section */}
+          <div>
+            <h3 className="text-sm font-semibold text-foreground mb-3">Assets</h3>
+            <Separator className="mb-4" />
+
+            {selectedAssetIds.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {selectedAssetIds.map((assetId) => (
+                  <div
+                    key={assetId}
+                    className="flex items-center justify-between rounded-md border border-border px-3 py-2"
+                  >
+                    <span className="text-sm text-foreground">{getAssetName(assetId)}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => handleRemoveAsset(assetId)}
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="relative">
+              <Input
+                value={assetSearch}
+                onChange={(e) => setAssetSearch(e.target.value)}
+                placeholder="Search and add assets..."
+                className="pr-8"
+              />
+              {assetSearch && filteredAssets.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full rounded-md border border-border bg-background shadow-md max-h-[200px] overflow-y-auto">
+                  {filteredAssets.map((asset) => (
+                    <button
+                      key={asset.id}
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
+                      onClick={() => handleAddAsset(asset.id)}
+                    >
+                      {asset.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {assetSearch && filteredAssets.length === 0 && (
+                <div className="absolute z-10 mt-1 w-full rounded-md border border-border bg-background shadow-md p-3">
+                  <p className="text-sm text-muted-foreground">No matching assets found.</p>
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              The assets this program applies to. Each asset&apos;s service due-status is tracked against this schedule.
             </p>
           </div>
 

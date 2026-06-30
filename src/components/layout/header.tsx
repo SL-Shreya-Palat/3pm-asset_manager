@@ -7,6 +7,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NotificationBell } from '@/components/layout/notification-bell';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -149,8 +150,9 @@ export function Header() {
         </div>
       </div>
 
-      {/* Profile button */}
-      <div className="flex items-center flex-1 justify-end min-w-0">
+      {/* Notifications + Profile */}
+      <div className="flex items-center gap-1 flex-1 justify-end min-w-0">
+        <NotificationBell />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 px-2">

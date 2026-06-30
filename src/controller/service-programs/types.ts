@@ -46,6 +46,9 @@ export interface ServiceProgram {
   // Service tasks
   serviceTaskIds: ObjectId[];
 
+  // Assets this program applies to (drives per-asset due status)
+  assetIds: ObjectId[];
+
   // Triggers / intervals
   triggers: ServiceTrigger[];
 
@@ -66,6 +69,7 @@ export interface CreateServiceProgramInput {
   description?: string;
   category?: string;
   serviceTaskIds?: string[];
+  assetIds?: string[];
   triggers?: Array<{
     triggerType: string;
     intervalType: string;
@@ -85,6 +89,7 @@ export interface ServiceProgramResponse {
   description?: string;
   category: string;
   serviceTaskIds: string[];
+  assetIds: string[];
   triggers: Array<{
     triggerType: string;
     intervalType: string;

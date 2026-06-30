@@ -3,6 +3,10 @@ import { ObjectId } from 'mongodb';
 export const ASSIGNEE_TYPES = ['vendor', 'mechanic', 'third_party'] as const;
 export type AssigneeType = (typeof ASSIGNEE_TYPES)[number];
 
+/** How a work order originated. `defect` = raised to correct one or more defects. */
+export const WO_SOURCES = ['manual', 'defect'] as const;
+export type WOSource = (typeof WO_SOURCES)[number];
+
 /** Embedded attachment on a work order. */
 export interface WOAttachment {
   url: string;
@@ -11,6 +15,16 @@ export interface WOAttachment {
   contentType: string;
   size: number;
   uploadedAt: Date;
+}
+
+/** A part consumed on a work order (denormalized line). */
+export interface WOPart {
+  partId: ObjectId;
+  partName: string;
+  partNumber: string;
+  quantity: number;
+  unitCost: number;
+  lineTotal: number;
 }
 
 /** Status history entry. */
@@ -31,6 +45,10 @@ export interface WorkOrder {
   assetId: ObjectId;
   assetName: string;
   serviceTaskIds: ObjectId[];
+  /** Source of the work order — 'manual' (default) or 'defect' when raised to correct defects. */
+  source?: WOSource;
+  /** Defects this work order is correcting (set when source === 'defect'). */
+  defectIds?: ObjectId[];
   assigneeType: AssigneeType;
   assigneeId?: ObjectId | null;
   assigneeName: string;
@@ -43,6 +61,13 @@ export interface WorkOrder {
   statusLabel: string;
   dueDate?: Date | null;
   description?: string;
+  /** Parts consumed on this WO (deducted from inventory). */
+  parts?: WOPart[];
+  partsCost?: number;
+  /** Completion / sign-off (deterministic, independent of the free-form status). */
+  isCompleted?: boolean;
+  completedAt?: Date | null;
+  completedBy?: ObjectId | null;
   attachments: WOAttachment[];
   statusHistory: WOStatusEntry[];
   createdBy: ObjectId;
@@ -59,6 +84,10 @@ export interface WorkOrder {
 export interface CreateWorkOrderInput {
   assetId: string;
   serviceTaskIds: string[];
+  /** 'manual' (default) or 'defect'. When 'defect', serviceTaskIds may be empty. */
+  source?: string;
+  /** Defects to correct — links them to this WO and moves them to in_progress. */
+  defectIds?: string[];
   assigneeType: string;
   assigneeId?: string;
   thirdPartyName?: string;
@@ -66,6 +95,8 @@ export interface CreateWorkOrderInput {
   statusId: string;
   dueDate?: string;
   description?: string;
+  /** Parts to record on the WO — quantities are deducted from inventory. */
+  parts?: Array<{ partId: string; quantity: number; unitCost?: number }>;
   attachments?: Array<{
     url: string;
     filename: string;

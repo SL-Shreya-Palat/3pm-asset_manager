@@ -20,6 +20,8 @@ export interface DefectRow {
   priority: string;
   severity: string;
   status: string;
+  workOrderId: string | null;
+  workOrderNumber: string | null;
   attachments: DefectAttachmentRow[];
   createdAt: string;
   updatedAt: string;

@@ -16,12 +16,27 @@ export interface WOStatusHistoryRow {
   changedAt: string;
 }
 
+export interface WOPartRow {
+  partId: string;
+  partName: string;
+  partNumber: string;
+  quantity: number;
+  unitCost: number;
+  lineTotal: number;
+}
+
 export interface WorkOrderRow {
   id: string;
   workOrderNumber: string;
   assetId: string;
   assetName: string;
   serviceTaskIds: string[];
+  source?: string;
+  defectIds?: string[];
+  parts?: WOPartRow[];
+  partsCost?: number;
+  isCompleted?: boolean;
+  completedAt?: string | null;
   assigneeType: string;
   assigneeId: string | null;
   assigneeName: string;
@@ -67,6 +82,14 @@ export interface UserLookup {
   name: string;
   email?: string;
   phoneNumber?: string;
+}
+
+export interface PartLookup {
+  id: string;
+  name: string;
+  partNumber: string;
+  unitCost: number;
+  stock: number;
 }
 
 export interface Pagination {

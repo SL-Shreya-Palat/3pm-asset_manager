@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import axios from 'axios';
-import { ArrowLeft, Pencil, Power, Fuel, Info } from 'lucide-react';
+import { ArrowLeft, Pencil, Power, Fuel, Info, Wrench } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -12,9 +12,11 @@ import { cn } from '@/lib/utils';
 import { ASSET_STATUS_CONFIG, type AssetStatus } from '@/constants/assets';
 import { InspectButton } from '@/components/inspections/inspect-button';
 import { AssetFuelTab } from '@/components/fuel/asset-fuel-tab';
+import { AssetServiceTab } from '@/components/assets/asset-service-tab';
 
 const ASSET_TABS = [
   { id: 'details', label: 'Details', icon: Info },
+  { id: 'service', label: 'Service', icon: Wrench },
   { id: 'fuel', label: 'Fuel', icon: Fuel },
 ] as const;
 
@@ -228,6 +230,10 @@ export default function AssetDetailPage() {
             </div>
           </div>
         </>
+      )}
+
+      {activeTab === 'service' && (
+        <AssetServiceTab assetId={String(params.id)} />
       )}
 
       {activeTab === 'fuel' && (

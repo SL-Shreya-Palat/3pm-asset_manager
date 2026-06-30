@@ -9,6 +9,7 @@ import {
   Eye,
   AlertTriangle,
   X,
+  Wrench,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +36,7 @@ import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
 import { DefectForm } from './defect-form';
+import { WorkOrderForm } from '@/components/work-orders/work-order-form';
 import type { DefectRow, Pagination } from './types';
 import {
   DEFECT_STATUS_TABS,
@@ -85,6 +87,10 @@ export function DefectsPage() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelMode, setPanelMode] = useState<'create' | 'edit'>('create');
   const [editingDefect, setEditingDefect] = useState<DefectRow | null>(null);
+
+  // Work-order panel state (raise a correction WO from a defect)
+  const [woPanelOpen, setWoPanelOpen] = useState(false);
+  const [woDefect, setWoDefect] = useState<DefectRow | null>(null);
 
   // View dialog
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
@@ -155,6 +161,18 @@ export function DefectsPage() {
 
   // View dialog
   const handleOpenView = (defect: DefectRow) => { setViewDefect(defect); setViewDialogOpen(true); };
+
+  // Work order panel — raise a correction WO for a defect
+  const handleOpenCreateWO = (defect: DefectRow) => {
+    setViewDialogOpen(false);
+    setWoDefect(defect);
+    setWoPanelOpen(true);
+  };
+  const handleCloseWOPanel = () => { setWoPanelOpen(false); setWoDefect(null); };
+  const handleWOSaved = () => {
+    handleCloseWOPanel();
+    fetchDefects(pagination.page); // defect moves to In Progress + gets WO #
+  };
 
   // Delete
   const handleOpenDelete = (defect: DefectRow) => { setDeletingDefect(defect); setDeleteDialogOpen(true); };
@@ -255,6 +273,21 @@ export function DefectsPage() {
       align: 'right',
       render: (defect) => (
         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+          {defect.workOrderNumber ? (
+            <Badge variant="outline" className="font-mono text-xs gap-1">
+              <Wrench className="h-3 w-3" />{defect.workOrderNumber}
+            </Badge>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="cursor-pointer"
+              title="Create work order"
+              onClick={() => handleOpenCreateWO(defect)}
+            >
+              <Wrench className="h-4 w-4" />
+            </Button>
+          )}
           <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenView(defect)}>
             <Eye className="h-4 w-4" />
           </Button>
@@ -474,6 +507,32 @@ export function DefectsPage() {
         )}
       </div>
 
+      {/* Work Order panel backdrop */}
+      {woPanelOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 transition-opacity"
+          onClick={handleCloseWOPanel}
+        />
+      )}
+
+      {/* Right Panel — Work Order Form (raise correction WO from a defect) */}
+      <div className={cn(
+        'fixed top-0 right-0 z-50 h-full w-[560px] border-l border-border bg-background transition-transform duration-300',
+        woPanelOpen ? 'translate-x-0' : 'translate-x-full',
+      )}>
+        {woPanelOpen && woDefect && (
+          <WorkOrderForm
+            mode="create"
+            source="defect"
+            initialAssetId={woDefect.assetId}
+            initialDefectIds={[woDefect.id]}
+            lockAsset
+            onClose={handleCloseWOPanel}
+            onSaved={handleWOSaved}
+          />
+        )}
+      </div>
+
       {/* View Defect Dialog */}
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
@@ -485,6 +544,11 @@ export function DefectsPage() {
             {viewDefect && <ViewDefectContent defect={viewDefect} />}
           </div>
           <DialogFooter>
+            {viewDefect && !viewDefect.workOrderNumber && (
+              <Button onClick={() => handleOpenCreateWO(viewDefect)}>
+                <Wrench className="h-4 w-4 mr-1" /> Create Work Order
+              </Button>
+            )}
             <Button variant="outline" onClick={() => { setViewDialogOpen(false); if (viewDefect) handleOpenEdit(viewDefect); }}>
               <Pencil className="h-4 w-4 mr-1" /> Edit
             </Button>
@@ -535,6 +599,9 @@ function ViewDefectContent({ defect }: { defect: DefectRow }) {
           <ViewField label="Name" value={defect.name} />
           <ViewField label="Date" value={defect.date ? new Date(defect.date).toLocaleDateString() : undefined} />
           <ViewField label="Comment" value={defect.comment} />
+          {defect.workOrderNumber && (
+            <ViewField label="Work Order" value={defect.workOrderNumber} />
+          )}
         </div>
       </div>
 

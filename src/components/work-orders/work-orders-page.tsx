@@ -8,10 +8,14 @@ import {
   Trash2,
   Eye,
   Wrench,
+  CheckCircle2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { SearchInput } from '@/components/ui/search-input';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
@@ -24,6 +28,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
+import { MeterTypeSelect, ProgramChecklist } from '@/components/maintenance/service-fields';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
@@ -72,6 +77,9 @@ export function WorkOrdersPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState<WorkOrderRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Complete dialog
+  const [completeOrder, setCompleteOrder] = useState<WorkOrderRow | null>(null);
 
   // Fetch lookup data + status tabs
   const fetchLookups = useCallback(async () => {
@@ -149,6 +157,10 @@ export function WorkOrdersPage() {
   // View dialog
   const handleOpenView = (order: WorkOrderRow) => { setViewOrder(order); setViewDialogOpen(true); };
 
+  // Complete & sign off
+  const handleOpenComplete = (order: WorkOrderRow) => { setViewDialogOpen(false); setCompleteOrder(order); };
+  const handleCompleted = () => { setCompleteOrder(null); fetchOrders(pagination.page); };
+
   // Delete
   const handleOpenDelete = (order: WorkOrderRow) => { setDeletingOrder(order); setDeleteDialogOpen(true); };
   const handleDelete = async () => {
@@ -190,19 +202,24 @@ export function WorkOrdersPage() {
       header: 'Status',
       label: 'Status',
       pinned: true,
-      render: (order) => (
-        <Badge
-          variant="outline"
-          className="border"
-          style={{
-            backgroundColor: `${statusColorMap[order.statusId] || '#6B7280'}20`,
-            borderColor: statusColorMap[order.statusId] || '#6B7280',
-            color: statusColorMap[order.statusId] || '#6B7280',
-          }}
-        >
-          {order.statusLabel || statusLabelMap[order.statusId] || '—'}
-        </Badge>
-      ),
+      render: (order) =>
+        order.isCompleted ? (
+          <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+            <CheckCircle2 className="h-3 w-3" /> Completed
+          </Badge>
+        ) : (
+          <Badge
+            variant="outline"
+            className="border"
+            style={{
+              backgroundColor: `${statusColorMap[order.statusId] || '#6B7280'}20`,
+              borderColor: statusColorMap[order.statusId] || '#6B7280',
+              color: statusColorMap[order.statusId] || '#6B7280',
+            }}
+          >
+            {order.statusLabel || statusLabelMap[order.statusId] || '—'}
+          </Badge>
+        ),
     },
     {
       key: 'assetName',
@@ -396,6 +413,11 @@ export function WorkOrdersPage() {
             )}
           </div>
           <DialogFooter>
+            {viewOrder && !viewOrder.isCompleted && (
+              <Button onClick={() => handleOpenComplete(viewOrder)}>
+                <CheckCircle2 className="h-4 w-4 mr-1" /> Complete &amp; Sign Off
+              </Button>
+            )}
             <Button variant="outline" onClick={() => { setViewDialogOpen(false); if (viewOrder) handleOpenEdit(viewOrder); }}>
               <Pencil className="h-4 w-4 mr-1" /> Edit
             </Button>
@@ -421,7 +443,132 @@ export function WorkOrdersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Complete & Sign Off Dialog (remounts per order so the form is always fresh) */}
+      {completeOrder && (
+        <CompleteWorkOrderDialog
+          key={completeOrder.id}
+          order={completeOrder}
+          onClose={() => setCompleteOrder(null)}
+          onCompleted={handleCompleted}
+        />
+      )}
     </div>
+  );
+}
+
+/** Complete & sign-off dialog — captures meter reading, notes, and which of the
+ *  asset's scheduled service programs this WO fulfilled. */
+function CompleteWorkOrderDialog({
+  order,
+  onClose,
+  onCompleted,
+}: {
+  order: WorkOrderRow;
+  onClose: () => void;
+  onCompleted: () => void;
+}) {
+  const [programs, setPrograms] = useState<{ programId: string; title: string }[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [meter, setMeter] = useState('');
+  const [meterType, setMeterType] = useState('odometer');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // Load the asset's service programs so the user can mark which were fulfilled.
+  // No state reset needed — the dialog is remounted per WO via a `key`.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const res = await axios.get(`/api/assets/${order.assetId}/service-status`, { withCredentials: true });
+        if (active) {
+          setPrograms((res.data.data?.programs ?? []).map((p: { programId: string; title: string }) => ({ programId: p.programId, title: p.title })));
+        }
+      } catch {
+        if (active) setPrograms([]);
+      }
+    })();
+    return () => { active = false; };
+  }, [order.assetId]);
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  const handleComplete = async () => {
+    if (!order) return;
+    setError('');
+    try {
+      setSaving(true);
+      await axios.put(`/api/work-orders/${order.id}/complete`, {
+        servicePrograms: [...selected],
+        meterType,
+        meterAtService: meter ? parseFloat(meter) : undefined,
+        notes: notes.trim() || undefined,
+      }, { withCredentials: true });
+      onCompleted();
+    } catch {
+      setError('Failed to complete work order');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Complete {order.workOrderNumber}</DialogTitle>
+          <DialogDescription>
+            Closes the work order, corrects its linked defects, and returns the asset to service.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto space-y-4 py-2">
+          <div>
+            <ProgramChecklist
+              programs={programs}
+              selected={selected}
+              onToggle={toggle}
+              label="Scheduled services fulfilled"
+            />
+            {programs.length > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">Selected programs&apos; schedules reset from this service.</p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label htmlFor="cmpMeter">Meter reading</Label>
+              <Input id="cmpMeter" type="number" min="0" value={meter} onChange={(e) => setMeter(e.target.value)} placeholder="e.g. 50000" className="mt-1.5" />
+            </div>
+            <div>
+              <Label>Meter type</Label>
+              <MeterTypeSelect value={meterType} onChange={setMeterType} />
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="cmpNotes">Notes</Label>
+            <Textarea id="cmpNotes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className="mt-1.5" placeholder="Sign-off notes..." />
+          </div>
+
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={handleComplete} disabled={saving}>
+            {saving ? 'Completing...' : 'Complete & Sign Off'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -474,6 +621,9 @@ function ViewWOContent({
           <ViewField label="Asset" value={order.assetName || assetMap[order.assetId]} />
           <ViewField label="Due Date" value={order.dueDate ? new Date(order.dueDate).toLocaleDateString() : undefined} />
           <ViewField label="Created" value={new Date(order.createdAt).toLocaleString()} />
+          {order.isCompleted && (
+            <ViewField label="Completed" value={order.completedAt ? new Date(order.completedAt).toLocaleString() : 'Yes'} />
+          )}
           {order.description && <ViewField label="Description" value={order.description} />}
         </div>
       </div>
@@ -489,6 +639,29 @@ function ViewWOContent({
                 <span className="text-sm text-foreground">{serviceTaskMap[taskId] || taskId}</span>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Parts */}
+      {order.parts && order.parts.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-foreground mb-3">Parts</h3>
+          <Separator className="mb-4" />
+          <div className="rounded-md border border-border divide-y divide-border">
+            {order.parts.map((p, i) => (
+              <div key={i} className="flex items-center justify-between px-3 py-2">
+                <div className="min-w-0">
+                  <span className="text-sm text-foreground">{p.partName}</span>
+                  <span className="text-xs text-muted-foreground ml-2">×{p.quantity}</span>
+                </div>
+                <span className="text-sm text-foreground">{p.lineTotal.toFixed(2)}</span>
+              </div>
+            ))}
+            <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
+              <span className="text-sm font-medium">Parts total</span>
+              <span className="text-sm font-semibold">{(order.partsCost ?? 0).toFixed(2)}</span>
+            </div>
           </div>
         </div>
       )}

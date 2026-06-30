@@ -14,6 +14,7 @@ export interface ServiceProgramRow {
   description?: string;
   category: string;
   serviceTaskIds: string[];
+  assetIds: string[];
   triggers: ServiceTriggerRow[];
   createdAt: string;
 }

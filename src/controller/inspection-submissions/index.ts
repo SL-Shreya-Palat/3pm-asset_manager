@@ -33,6 +33,7 @@ import {
 } from '@/controller/forms/schema-utils';
 import { evaluateDefects, type EvaluationResult } from '@/controller/defect-settings/evaluator';
 import { reserveDefectNumbers } from '@/controller/defects/utils';
+import { notifyTenantManagers } from '@/controller/notifications';
 import type { SeverityValue } from '@/controller/defect-settings/types';
 
 export interface ProcessSubmissionParams {
@@ -264,6 +265,17 @@ export async function processInspectionSubmission(
 
     const res = await (await getDefectsCollection()).insertMany(defectDocs);
     for (const id of Object.values(res.insertedIds)) defectIds.push(id.toString());
+
+    // Notify the tenant's managers that new defects need review (best-effort).
+    const assetLabel = asset.name || asset.unitNumber || 'An asset';
+    await notifyTenantManagers(tenantId, {
+      type: 'defect_created',
+      title: `${defectIds.length} new defect${defectIds.length > 1 ? 's' : ''} reported`,
+      body: `${assetLabel} failed inspection "${formTitle}" — ${defectIds.length} defect${defectIds.length > 1 ? 's' : ''} need review.`,
+      link: '/maintenance/defects',
+      entityType: 'inspectionSubmission',
+      entityId: submissionId.toString(),
+    });
   }
 
   return {

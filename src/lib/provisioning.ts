@@ -12,6 +12,7 @@ import {
   getTenantMembersCollection,
   getRolesCollection,
 } from '@/lib/mongodb';
+import { seedSystemRoles } from '@/lib/system-roles';
 
 interface ProvisioningInput {
   user: {
@@ -43,7 +44,7 @@ function mapAuthRole(authRole: string): { name: string; isSystem: boolean; descr
     case 'owner':
       return { name: 'Owner', isSystem: true, description: 'Tenant owner — full access' };
     case 'admin':
-      return { name: 'Admin', isSystem: false, description: 'Administrator' };
+      return { name: 'Admin', isSystem: true, description: 'Administrator — full access' };
     default:
       return { name: 'Member', isSystem: false, description: 'Standard member' };
   }
@@ -181,6 +182,12 @@ export async function ensureLocalRecords(
         localTenantId = tenantResult._id as ObjectId;
       }
 
+      // ── Seed canonical system roles (Admin / Manager / Driver) ───
+      // Always available once the org exists. Idempotent.
+      if (localTenantId) {
+        await seedSystemRoles(localTenantId, localUserId);
+      }
+
       // ── 3. Upsert role ──────────────────────────────────────────
       let roleId: ObjectId | null = null;
 
@@ -234,7 +241,6 @@ export async function ensureLocalRecords(
               userId: localUserId,
               tenantId: localTenantId,
               ...(roleId ? { roleId } : {}),
-              status: 'active',
               createdAt: now,
             },
           },

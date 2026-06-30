@@ -320,6 +320,46 @@ export async function getUserTenant(userId: string) {
   }
 }
 
+/**
+ * Resolve the current user's role flags for a tenant — used for visibility
+ * scoping (e.g. full-access roles see all work orders; others see only theirs).
+ * Returns null when no active role can be resolved.
+ */
+export async function getUserRoleForTenant(
+  userId: string,
+  tenantId: string,
+): Promise<{ nameLower: string; isAdmin: boolean; isManager: boolean; isMechanic: boolean; fullAccess: boolean } | null> {
+  try {
+    if (!ObjectId.isValid(userId) || !ObjectId.isValid(tenantId)) return null;
+    const tenantMembersCollection = await getTenantMembersCollection();
+    const rolesCollection = await getRolesCollection();
+
+    const member = await tenantMembersCollection.findOne({
+      userId: ObjectId.createFromHexString(userId),
+      tenantId: ObjectId.createFromHexString(tenantId),
+      isActive: true,
+    });
+    if (!member?.roleId) return null;
+
+    const role = await rolesCollection.findOne({ _id: member.roleId as ObjectId });
+    if (!role) return null;
+
+    const nameLower = (role.nameLower as string) || '';
+    const isAdmin = role.isAdmin === true || nameLower === 'admin' || nameLower === 'owner';
+    const isManager = role.isManager === true || nameLower === 'manager';
+    const isMechanic = role.isMechanic === true || nameLower === 'mechanic';
+    const scopeAll =
+      typeof role.permissions === 'object' &&
+      role.permissions !== null &&
+      (role.permissions as { scope?: string }).scope === 'all';
+
+    return { nameLower, isAdmin, isManager, isMechanic, fullAccess: isAdmin || isManager || scopeAll };
+  } catch (error) {
+    console.error('Error resolving user role for tenant:', error);
+    return null;
+  }
+}
+
 /** Get complete user profile with workspaces and tenant information. */
 export async function getUserProfile(userId: string) {
   try {

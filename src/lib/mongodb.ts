@@ -291,3 +291,21 @@ export async function getInspectionLaunchesCollection(): Promise<Collection> {
   const db = await getDb();
   return db.collection('inspectionLaunches');
 }
+
+// ---------------------------------------------------------------------------
+// In-app notifications
+// ---------------------------------------------------------------------------
+
+export async function getNotificationsCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('notifications');
+}
+
+// ---------------------------------------------------------------------------
+// Service history (completed preventative-maintenance services)
+// ---------------------------------------------------------------------------
+
+export async function getServiceHistoryCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('serviceHistory');
+}

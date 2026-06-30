@@ -45,6 +45,10 @@ export interface Defect {
   severity: DefectSeverity;
   status: DefectStatus;
 
+  /** Linked correction work order, set when a WO is raised for this defect. */
+  workOrderId?: ObjectId | null;
+  workOrderNumber?: string | null; // denormalized
+
   attachments: DefectAttachment[];
 
   createdBy: ObjectId;

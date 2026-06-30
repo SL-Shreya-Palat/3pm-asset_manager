@@ -3,7 +3,7 @@
  * POST /api/work-orders -- Create a new work order
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { getAuthenticatedUser, getUserRoleForTenant } from '@/lib/auth-helper';
 import { getAllWorkOrders, createWorkOrder } from '@/controller/work-orders';
 
 export async function GET(request: NextRequest) {
@@ -18,7 +18,12 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get('search') || undefined;
   const statusId = searchParams.get('statusId') || undefined;
 
-  const result = await getAllWorkOrders(user.currentTenantId, { page, limit, search, statusId });
+  // Role-based scoping: full-access roles (owner/admin/manager) see every work
+  // order; everyone else (e.g. mechanics) sees only the ones assigned to them.
+  const role = await getUserRoleForTenant(user.id, user.currentTenantId);
+  const assigneeId = role && !role.fullAccess ? user.id : undefined;
+
+  const result = await getAllWorkOrders(user.currentTenantId, { page, limit, search, statusId, assigneeId });
   return NextResponse.json({ data: result, error: null });
 }
 

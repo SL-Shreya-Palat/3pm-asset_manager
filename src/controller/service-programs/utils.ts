@@ -42,6 +42,13 @@ export function validateCreateServiceProgramInput(input: CreateServiceProgramInp
     }
   }
 
+  if (input.assetIds && Array.isArray(input.assetIds)) {
+    const invalid = input.assetIds.filter((id) => !isValidObjectId(id));
+    if (invalid.length > 0) {
+      errors.assetIds = 'One or more asset IDs are invalid';
+    }
+  }
+
   if (input.triggers && Array.isArray(input.triggers)) {
     for (let i = 0; i < input.triggers.length; i++) {
       const t = input.triggers[i];
@@ -73,6 +80,7 @@ export function validateCreateServiceProgramInput(input: CreateServiceProgramInp
 /** Serialize a service program document for API response. */
 export function serializeServiceProgram(doc: Record<string, unknown>): Record<string, unknown> {
   const taskIds = doc.serviceTaskIds as Array<{ toString(): string }> | undefined;
+  const assetIds = doc.assetIds as Array<{ toString(): string }> | undefined;
   const triggers = doc.triggers as Array<Record<string, unknown>> | undefined;
 
   return {
@@ -81,6 +89,7 @@ export function serializeServiceProgram(doc: Record<string, unknown>): Record<st
     description: doc.description || undefined,
     category: doc.category || 'scheduled_maintenance',
     serviceTaskIds: taskIds ? taskIds.map((id) => id.toString()) : [],
+    assetIds: assetIds ? assetIds.map((id) => id.toString()) : [],
     triggers: triggers
       ? triggers.map((t) => ({
           triggerType: t.triggerType,
