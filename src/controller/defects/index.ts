@@ -6,6 +6,7 @@ import {
   getDefectsCollection,
   getAssetsCollection,
   getDriversCollection,
+  getTeamsCollection,
 } from '@/lib/mongodb';
 import type { CreateDefectInput, UpdateDefectInput } from './types';
 import {
@@ -44,15 +45,9 @@ export async function getAllDefects(
     filter.severity = options.severity;
   }
 
-  // Filter by team: find assets belonging to the team, then filter defects by those asset IDs
+  // Filter by team: use direct teamIds array on defect documents
   if (options.teamId) {
-    const teamOid = ObjectId.createFromHexString(options.teamId);
-    const assetsCol = await getAssetsCollection();
-    const teamAssets = await assetsCol
-      .find({ tenantId: tenantOid, teamIds: teamOid, isArchived: { $ne: true } }, { projection: { _id: 1 } })
-      .toArray();
-    const assetIds = teamAssets.map((a) => a._id);
-    filter.assetId = { $in: assetIds };
+    filter.teamIds = ObjectId.createFromHexString(options.teamId);
   }
 
   if (options.search) {
@@ -70,8 +65,27 @@ export async function getAllDefects(
     collection.countDocuments(filter),
   ]);
 
+  // Populate team names
+  const allTeamIds = items
+    .flatMap((item) => (Array.isArray(item.teamIds) ? item.teamIds : []))
+    .filter((id) => id) as ObjectId[];
+  const uniqueTeamIds = [...new Map(allTeamIds.map((id) => [id.toString(), id])).values()];
+
+  let teamNameMap = new Map<string, string>();
+  if (uniqueTeamIds.length > 0) {
+    const teamsCollection = await getTeamsCollection();
+    const teamDocs = await teamsCollection.find({ _id: { $in: uniqueTeamIds } }).toArray();
+    teamNameMap = new Map(teamDocs.map((t) => [t._id.toString(), t.name as string]));
+  }
+
   return {
-    items: items.map((item) => serializeDefect(item as unknown as Record<string, unknown>)),
+    items: items.map((item) => {
+      const itemTeamIds = Array.isArray(item.teamIds)
+        ? (item.teamIds as ObjectId[]).map((id) => id.toString())
+        : [];
+      const teamNames = itemTeamIds.map((id) => teamNameMap.get(id)).filter(Boolean) as string[];
+      return serializeDefect(item as unknown as Record<string, unknown>, { teamNames });
+    }),
     pagination: { page, limit, total, hasMore: skip + limit < total },
   };
 }
@@ -285,6 +299,65 @@ export async function deleteDefect(tenantId: string, userId: string, id: string)
         updatedAt: new Date(),
       },
     },
+  );
+
+  return result.modifiedCount > 0;
+}
+
+// ─── Team assignment ─────────────────────────────────────────────────────────
+
+/** Bulk-add a team to multiple defects. */
+export async function addTeamToDefects(
+  tenantId: string,
+  userId: string,
+  teamId: string,
+  defectIds: string[],
+) {
+  const collection = await getDefectsCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const teamOid = ObjectId.createFromHexString(teamId);
+  const userOid = ObjectId.createFromHexString(userId);
+  const defectOids = defectIds.map((id) => ObjectId.createFromHexString(id));
+
+  const result = await collection.updateMany(
+    {
+      _id: { $in: defectOids },
+      tenantId: tenantOid,
+      isArchived: { $ne: true },
+    },
+    {
+      $addToSet: { teamIds: teamOid },
+      $set: { updatedBy: userOid, updatedAt: new Date() },
+    },
+  );
+
+  return result.modifiedCount;
+}
+
+/** Remove a team from a defect. */
+export async function removeTeamFromDefect(
+  tenantId: string,
+  userId: string,
+  teamId: string,
+  defectId: string,
+) {
+  const collection = await getDefectsCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const teamOid = ObjectId.createFromHexString(teamId);
+  const defectOid = ObjectId.createFromHexString(defectId);
+  const userOid = ObjectId.createFromHexString(userId);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = await collection.updateOne(
+    {
+      _id: defectOid,
+      tenantId: tenantOid,
+      isArchived: { $ne: true },
+    },
+    {
+      $pull: { teamIds: teamOid },
+      $set: { updatedBy: userOid, updatedAt: new Date() },
+    } as any,
   );
 
   return result.modifiedCount > 0;

@@ -44,6 +44,44 @@ export interface DriverRow {
   teamId?: string;
 }
 
+export interface UserRow {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  mobileNumber?: string;
+  roleId?: string;
+  roleName?: string;
+  status: 'pending' | 'active';
+  isActive: boolean;
+  portalUser: boolean;
+  teamIds: string[];
+  teamNames: string[];
+  teamRole?: 'managing' | 'following';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DefectRow {
+  id: string;
+  defectNumber: string;
+  name: string;
+  date: string;
+  comment: string;
+  assetId: string;
+  assetName: string;
+  driverId?: string | null;
+  driverName?: string | null;
+  priority: 'high' | 'medium' | 'low';
+  severity: 'critical' | 'non_critical';
+  status: 'new' | 'in_progress' | 'corrected' | 'no_correction_needed';
+  teamIds: string[];
+  teamNames: string[];
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Pagination {
   page: number;
   limit: number;

@@ -23,8 +23,10 @@ export interface RoleDocument {
   tenantId: ObjectId;
 
   name: string;
-  key: string;
+  nameLower: string;
   description?: string;
+  baseCostPerHour: number;
+  chargeOutRate: number;
   permissions: StoredPermissions;
   isSystem: boolean;
 
@@ -33,16 +35,25 @@ export interface RoleDocument {
   createdAt: Date;
   updatedAt: Date;
   isActive: boolean;
-  isArchived: boolean;
-  archivedAt?: Date | null;
-  archivedBy?: ObjectId | null;
+  isManager: boolean | null;
+  isTeamManager: boolean | null;
+  isMechanic: boolean | null;
+  isDriver: boolean | null;
+  isAdmin: boolean | null;
 }
 
 /** Input for creating a role. */
 export interface CreateRoleInput {
   name: string;
   description?: string;
+  baseCostPerHour?: number;
+  chargeOutRate?: number;
   permissions: StoredPermissions;
+  isManager?: boolean | null;
+  isTeamManager?: boolean | null;
+  isMechanic?: boolean | null;
+  isDriver?: boolean | null;
+  isAdmin?: boolean | null;
 }
 
 /** Input for updating a role. */
@@ -52,12 +63,18 @@ export type UpdateRoleInput = Partial<CreateRoleInput>;
 export interface RoleResponse {
   id: string;
   name: string;
-  key: string;
+  nameLower: string;
   description?: string;
+  baseCostPerHour: number;
+  chargeOutRate: number;
   permissions: StoredPermissions;
   isSystem: boolean;
   isActive: boolean;
-  isArchived: boolean;
+  isManager: boolean | null;
+  isTeamManager: boolean | null;
+  isMechanic: boolean | null;
+  isDriver: boolean | null;
+  isAdmin: boolean | null;
   createdAt: string;
   updatedAt: string;
 }

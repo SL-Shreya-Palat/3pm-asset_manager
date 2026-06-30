@@ -178,9 +178,10 @@ function ColumnsControl<T>({
   const listColumns = columns.filter((col) => col.key !== 'actions');
   const toggleableColumns = listColumns.filter((col) => !col.pinned);
   const filtered = search
-    ? listColumns.filter((col) =>
-        (col.label ?? col.header).toLowerCase().includes(search.toLowerCase()),
-      )
+    ? listColumns.filter((col) => {
+        const text = col.label ?? (typeof col.header === 'string' ? col.header : col.key);
+        return text.toLowerCase().includes(search.toLowerCase());
+      })
     : listColumns;
 
   const visibleCount = toggleableColumns.filter((col) => !hiddenColumnKeys.has(col.key)).length;

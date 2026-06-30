@@ -9,6 +9,7 @@ import {
   getUsersCollection,
   getRolesCollection,
   getTenantsCollection,
+  getTeamsCollection,
 } from '@/lib/mongodb';
 import { validateInviteUserInput, serializeTenantMember } from './utils';
 import { createInvitation } from '@/controller/invitations';
@@ -32,7 +33,7 @@ async function getRoleMap(tenantOid: ObjectId): Promise<Map<string, string>> {
 /** List tenant members with pagination and search. */
 export async function getAllTenantMembers(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string },
+  options: { page?: number; limit?: number; search?: string; teamId?: string },
 ) {
   const collection = await getTenantMembersCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
@@ -41,6 +42,10 @@ export async function getAllTenantMembers(
   const skip = (page - 1) * limit;
 
   const filter: Record<string, unknown> = { tenantId: tenantOid };
+
+  if (options.teamId) {
+    filter['teamMemberships.teamId'] = ObjectId.createFromHexString(options.teamId);
+  }
 
   if (options.search) {
     const regex = { $regex: options.search, $options: 'i' };
@@ -58,9 +63,42 @@ export async function getAllTenantMembers(
 
   // Resolve role names
   const roleMap = await getRoleMap(tenantOid);
+
+  // Populate team names
+  const allTeamIds = items
+    .flatMap((item) => {
+      const memberships = Array.isArray(item.teamMemberships) ? item.teamMemberships : [];
+      return memberships.map((m: Record<string, unknown>) => m.teamId as ObjectId).filter(Boolean);
+    });
+  const uniqueTeamIds = [...new Map(allTeamIds.map((id) => [id.toString(), id])).values()];
+
+  let teamNameMap = new Map<string, string>();
+  if (uniqueTeamIds.length > 0) {
+    const teamsCollection = await getTeamsCollection();
+    const teamDocs = await teamsCollection.find({ _id: { $in: uniqueTeamIds } }).toArray();
+    teamNameMap = new Map(teamDocs.map((t) => [t._id.toString(), t.name as string]));
+  }
+
   const serialized = items.map((item) => {
     const roleId = item.roleId ? item.roleId.toString() : undefined;
-    return serializeTenantMember(item, roleId ? roleMap.get(roleId) : undefined);
+    const memberships = Array.isArray(item.teamMemberships) ? item.teamMemberships : [];
+    const teamIds = memberships.map((m: Record<string, unknown>) => (m.teamId as ObjectId)?.toString()).filter(Boolean);
+    const teamNames = teamIds.map((id: string) => teamNameMap.get(id)).filter(Boolean) as string[];
+
+    // If filtering by a specific team, include the role for that team
+    let teamRole: string | undefined;
+    if (options.teamId) {
+      const membership = memberships.find(
+        (m: Record<string, unknown>) => (m.teamId as ObjectId)?.toString() === options.teamId,
+      );
+      teamRole = (membership?.role as string) || 'following';
+    }
+
+    return serializeTenantMember(item, roleId ? roleMap.get(roleId) : undefined, {
+      teamIds,
+      teamNames,
+      teamRole,
+    });
   });
 
   return {
@@ -243,5 +281,91 @@ export async function deactivateTenantMember(tenantId: string, memberId: string)
     },
     { $set: { isActive: false, updatedAt: new Date() } },
   );
+  return result.modifiedCount > 0;
+}
+
+/** Bulk-add users to a team with a given role. */
+export async function addUsersToTeam(
+  tenantId: string,
+  userId: string,
+  teamId: string,
+  memberIds: string[],
+  role: 'managing' | 'following' = 'following',
+) {
+  const collection = await getTenantMembersCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const teamOid = ObjectId.createFromHexString(teamId);
+  const userOid = ObjectId.createFromHexString(userId);
+  const memberOids = memberIds.map((id) => ObjectId.createFromHexString(id));
+
+  const result = await collection.updateMany(
+    {
+      _id: { $in: memberOids },
+      tenantId: tenantOid,
+      'teamMemberships.teamId': { $ne: teamOid },
+    },
+    {
+      $addToSet: { teamMemberships: { teamId: teamOid, role } },
+      $set: { updatedBy: userOid, updatedAt: new Date() },
+    },
+  );
+
+  return result.modifiedCount;
+}
+
+/** Remove a user from a team. */
+export async function removeUserFromTeam(
+  tenantId: string,
+  userId: string,
+  teamId: string,
+  memberId: string,
+) {
+  const collection = await getTenantMembersCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const teamOid = ObjectId.createFromHexString(teamId);
+  const memberOid = ObjectId.createFromHexString(memberId);
+  const userOid = ObjectId.createFromHexString(userId);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const result = await collection.updateOne(
+    { _id: memberOid, tenantId: tenantOid },
+    {
+      $pull: { teamMemberships: { teamId: teamOid } },
+      $set: { updatedBy: userOid, updatedAt: new Date() },
+    } as any,
+  );
+
+  return result.modifiedCount > 0;
+}
+
+/** Update a user's role within a team (managing / following). */
+export async function updateUserTeamRole(
+  tenantId: string,
+  userId: string,
+  teamId: string,
+  memberId: string,
+  role: 'managing' | 'following',
+) {
+  const collection = await getTenantMembersCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const teamOid = ObjectId.createFromHexString(teamId);
+  const memberOid = ObjectId.createFromHexString(memberId);
+  const userOid = ObjectId.createFromHexString(userId);
+
+  const result = await collection.updateOne(
+    {
+      _id: memberOid,
+      tenantId: tenantOid,
+      'teamMemberships.teamId': teamOid,
+    },
+    {
+      $set: {
+        'teamMemberships.$.role': role,
+        updatedBy: userOid,
+        updatedAt: new Date(),
+      },
+    },
+  );
+
   return result.modifiedCount > 0;
 }

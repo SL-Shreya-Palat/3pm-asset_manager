@@ -413,6 +413,7 @@ export function AssetTable() {
             <Button
               variant="ghost"
               size="icon-sm"
+              className="cursor-pointer"
               onClick={(e) => e.stopPropagation()}
             >
               <MoreHorizontal className="h-4 w-4" />
@@ -487,21 +488,34 @@ export function AssetTable() {
         </Button>
       </div>
 
-      {/* Summary Cards + Search */}
-      <div className="flex items-center gap-3 mb-4">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          {STAT_CARDS.map((card) => (
-            <div
-              key={card.key}
-              className="rounded-lg border bg-card px-3 py-2 shadow-sm"
-            >
-              <p className="text-xs text-muted-foreground">{card.label}</p>
-              <p className="text-lg font-semibold text-foreground">
-                {card.key === 'total' ? pagination.total : 0}
-              </p>
-            </div>
-          ))}
-        </div>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+        {STAT_CARDS.map((card) => (
+          <div
+            key={card.key}
+            className="rounded-lg border bg-card px-3 py-2 shadow-sm"
+          >
+            <p className="text-xs text-muted-foreground">{card.label}</p>
+            <p className="text-lg font-semibold text-foreground">
+              {card.key === 'total' ? pagination.total : 0}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* Toolbar + Search */}
+      <div className="flex items-center gap-2 mb-3">
+        <DataTableToolbar
+          columns={assetColumns}
+          hiddenColumnKeys={hiddenColumnKeys}
+          onHiddenColumnKeysChange={setHiddenColumnKeys}
+          density={density}
+          onDensityChange={setDensity}
+          filterDefs={assetFilterDefs}
+          filters={filters}
+          onFilterChange={setFilter}
+          onFiltersClear={clearFilters}
+        />
         <SearchInput
           value={search}
           onChange={setSearch}
@@ -509,19 +523,6 @@ export function AssetTable() {
           className="max-w-sm w-full ml-auto"
         />
       </div>
-
-      {/* Toolbar */}
-      <DataTableToolbar
-        columns={assetColumns}
-        hiddenColumnKeys={hiddenColumnKeys}
-        onHiddenColumnKeysChange={setHiddenColumnKeys}
-        density={density}
-        onDensityChange={setDensity}
-        filterDefs={assetFilterDefs}
-        filters={filters}
-        onFilterChange={setFilter}
-        onFiltersClear={clearFilters}
-      />
 
       {/* Table */}
       <DataTable<AssetRow>

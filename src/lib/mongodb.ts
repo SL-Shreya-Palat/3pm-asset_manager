@@ -229,6 +229,15 @@ export async function getDefectsCollection(): Promise<Collection> {
 }
 
 // ---------------------------------------------------------------------------
+// Fuel collection
+// ---------------------------------------------------------------------------
+
+export async function getFuelTransactionsCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('fuelTransactions');
+}
+
+// ---------------------------------------------------------------------------
 // Cross-cutting collections
 // ---------------------------------------------------------------------------
 

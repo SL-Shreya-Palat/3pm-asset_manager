@@ -185,6 +185,13 @@ export function RoleForm({ mode, initialData, roleId }: RoleFormProps) {
   // Form fields
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [baseCostPerHour, setBaseCostPerHour] = useState<number>(0);
+  const [chargeOutRate, setChargeOutRate] = useState<number>(0);
+  const [isManager, setIsManager] = useState(false);
+  const [isTeamManager, setIsTeamManager] = useState(false);
+  const [isMechanic, setIsMechanic] = useState(false);
+  const [isDriver, setIsDriver] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<RoleTemplateKey | null>(null);
 
   // Permission state
@@ -200,6 +207,25 @@ export function RoleForm({ mode, initialData, roleId }: RoleFormProps) {
     if (initialData) {
       setName((initialData.name as string) || '');
       setDescription((initialData.description as string) || '');
+      setBaseCostPerHour((initialData.baseCostPerHour as number) ?? 0);
+      setChargeOutRate((initialData.chargeOutRate as number) ?? 0);
+      const mgr = initialData.isManager === true;
+      const tmgr = initialData.isTeamManager === true;
+      const mech = initialData.isMechanic === true;
+      const drv = initialData.isDriver === true;
+      const adm = initialData.isAdmin === true;
+      setIsManager(mgr);
+      setIsTeamManager(tmgr);
+      setIsMechanic(mech);
+      setIsDriver(drv);
+      setIsAdmin(adm);
+
+      // Detect which template was originally selected
+      if (adm) setSelectedTemplate('admin');
+      else if (mgr) setSelectedTemplate('manager');
+      else if (tmgr) setSelectedTemplate('team_manager');
+      else if (mech) setSelectedTemplate('mechanic');
+      else if (drv) setSelectedTemplate('driver');
       const perms = initialData.permissions as RolePermissions | undefined;
       if (perms) {
         if (perms.scope === 'all') {
@@ -232,6 +258,13 @@ export function RoleForm({ mode, initialData, roleId }: RoleFormProps) {
       setMobileOnly(template.permissions.mobileOnly);
       setModulePermissions({ ...template.permissions.modules });
     }
+
+    // Set role type flags based on selected template
+    setIsAdmin(key === 'admin');
+    setIsManager(key === 'manager');
+    setIsTeamManager(key === 'team_manager');
+    setIsMechanic(key === 'mechanic');
+    setIsDriver(key === 'driver');
   };
 
   /** Build the permissions payload. */
@@ -264,7 +297,14 @@ export function RoleForm({ mode, initialData, roleId }: RoleFormProps) {
     const payload = {
       name: name.trim(),
       description: description.trim() || undefined,
+      baseCostPerHour,
+      chargeOutRate,
       permissions: buildPermissions(),
+      isManager,
+      isTeamManager,
+      isMechanic,
+      isDriver,
+      isAdmin,
     };
 
     try {
@@ -346,6 +386,36 @@ export function RoleForm({ mode, initialData, roleId }: RoleFormProps) {
               />
             </div>
           </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+            <div>
+              <Label htmlFor="baseCostPerHour">Base Cost Per Hour</Label>
+              <Input
+                id="baseCostPerHour"
+                type="number"
+                min={0}
+                step="0.01"
+                value={baseCostPerHour}
+                onChange={(e) => setBaseCostPerHour(parseFloat(e.target.value) || 0)}
+                placeholder="0"
+                className="mt-1.5"
+              />
+            </div>
+            <div>
+              <Label htmlFor="chargeOutRate">Charge Out Rate</Label>
+              <Input
+                id="chargeOutRate"
+                type="number"
+                min={0}
+                step="0.01"
+                value={chargeOutRate}
+                onChange={(e) => setChargeOutRate(parseFloat(e.target.value) || 0)}
+                placeholder="0"
+                className="mt-1.5"
+              />
+            </div>
+          </div>
+
         </div>
 
         {/* Role Template Selection */}

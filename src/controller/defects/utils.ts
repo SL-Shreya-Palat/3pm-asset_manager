@@ -62,7 +62,14 @@ export function validateCreateDefectInput(input: CreateDefectInput): ValidationR
 }
 
 /** Serialize a defect document for API response. */
-export function serializeDefect(doc: Record<string, unknown>): Record<string, unknown> {
+export function serializeDefect(
+  doc: Record<string, unknown>,
+  extra?: { teamNames?: string[] },
+): Record<string, unknown> {
+  const teamIds = Array.isArray(doc.teamIds)
+    ? (doc.teamIds as ObjectId[]).map((id) => id.toString())
+    : [];
+
   return {
     id: doc._id?.toString(),
     defectNumber: doc.defectNumber,
@@ -76,6 +83,8 @@ export function serializeDefect(doc: Record<string, unknown>): Record<string, un
     priority: doc.priority,
     severity: doc.severity,
     status: doc.status,
+    teamIds,
+    teamNames: extra?.teamNames ?? [],
     attachments: Array.isArray(doc.attachments)
       ? (doc.attachments as Array<Record<string, unknown>>).map((a) => ({
           url: a.url,
