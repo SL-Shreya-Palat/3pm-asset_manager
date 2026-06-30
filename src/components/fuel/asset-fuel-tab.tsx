@@ -13,6 +13,7 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { Badge } from '@/components/ui/badge';
 import { StatCard } from '@/components/ui/stat-card';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
@@ -202,17 +203,11 @@ export function AssetFuelTab({ assetId }: AssetFuelTabProps) {
       header: 'Actions',
       align: 'right',
       render: (txn) => (
-        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenView(txn)}>
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenEdit(txn)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenDelete(txn)} className="text-destructive hover:text-destructive">
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        <RowActions>
+          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(txn)} />
+          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(txn)} />
+          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(txn)} />
+        </RowActions>
       ),
     },
   ];

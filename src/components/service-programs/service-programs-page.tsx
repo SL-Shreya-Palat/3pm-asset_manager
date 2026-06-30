@@ -12,6 +12,7 @@ import {
   Copy,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/ui/page-header';
 import { SearchInput } from '@/components/ui/search-input';
@@ -225,20 +226,12 @@ export function ServiceProgramsPage() {
       header: 'Actions',
       align: 'right',
       render: (program) => (
-        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenView(program)}>
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => router.push(`/maintenance/service-programs/${program.id}/edit`)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleDuplicate(program)}>
-            <Copy className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive" onClick={() => handleOpenDelete(program)}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        <RowActions>
+          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(program)} />
+          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => router.push(`/maintenance/service-programs/${program.id}/edit`)} />
+          <RowActionButton label="Duplicate" icon={<Copy />} onClick={() => handleDuplicate(program)} />
+          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(program)} />
+        </RowActions>
       ),
     },
   ];

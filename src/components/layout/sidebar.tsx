@@ -52,6 +52,7 @@ const navItems: NavItem[] = [
     children: [
       { label: 'Service Tasks', href: '/maintenance/service-tasks' },
       { label: 'Service Programs', href: '/maintenance/service-programs' },
+      { label: 'Service Schedule', href: '/maintenance/service-schedule' },
       { label: 'Work Orders', href: '/maintenance/work-orders' },
       { label: 'Defects', href: '/maintenance/defects' },
       { label: 'Purchase Orders', href: '/maintenance/purchase-orders' },

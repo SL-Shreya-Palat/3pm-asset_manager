@@ -184,6 +184,59 @@ export function computeProgramStatus(
   return { status: results.length ? status : 'unknown', triggers: results };
 }
 
+type AssetDoc = Record<string, unknown>;
+type ProgramDoc = Record<string, unknown>;
+type HistoryDoc = Record<string, unknown>;
+
+/**
+ * Evaluate one (asset, program) pair → status + per-condition triggers +
+ * when it was last performed. Shared by the per-asset and fleet-wide views.
+ */
+function evaluateAssetProgram(
+  asset: AssetDoc,
+  program: ProgramDoc,
+  assetHistory: HistoryDoc[],
+  now: Date,
+): { status: ServiceStatus; triggers: TriggerStatus[]; lastPerformedAt: string | null } {
+  const current: Current = {
+    now,
+    odometer: typeof asset.currentOdometer === 'number' ? asset.currentOdometer : null,
+    engineHours: typeof asset.currentEngineHours === 'number' ? asset.currentEngineHours : null,
+  };
+
+  const programId = (program._id as ObjectId).toString();
+  const entry = assetHistory.find((h) =>
+    Array.isArray(h.servicePrograms) && (h.servicePrograms as ObjectId[]).some((id) => id.toString() === programId),
+  );
+
+  const baseline: Baseline = entry
+    ? {
+        lastDate: entry.performedAt as Date,
+        lastOdometer: entry.meterType === 'odometer' && typeof entry.meterAtService === 'number'
+          ? (entry.meterAtService as number)
+          : (asset.lastServiceMileage as number) ?? current.odometer,
+        lastEngineHours: entry.meterType === 'engine_hours' && typeof entry.meterAtService === 'number'
+          ? (entry.meterAtService as number)
+          : (asset.lastServiceEngineHours as number) ?? current.engineHours,
+        hasHistory: true,
+      }
+    : {
+        lastDate: (asset.lastServiceDate as Date) ?? now,
+        lastOdometer: (asset.lastServiceMileage as number) ?? current.odometer,
+        lastEngineHours: (asset.lastServiceEngineHours as number) ?? current.engineHours,
+        hasHistory: false,
+      };
+
+  const { status, triggers } = computeProgramStatus(
+    program.interval as ProgramInterval | undefined,
+    program.reminders as ProgramReminders | undefined,
+    baseline,
+    current,
+  );
+
+  return { status, triggers, lastPerformedAt: entry ? new Date(entry.performedAt as Date).toISOString() : null };
+}
+
 /** Compute service status for every program assigned to an asset. */
 export async function getAssetServiceStatus(tenantId: string, assetId: string) {
   if (!ObjectId.isValid(assetId)) return { items: [], summary: { overdue: 0, dueSoon: 0, ok: 0 } };
@@ -211,56 +264,21 @@ export async function getAssetServiceStatus(tenantId: string, assetId: string) {
     .toArray();
 
   const now = new Date();
-  const current: Current = {
-    now,
-    odometer: typeof asset.currentOdometer === 'number' ? asset.currentOdometer : null,
-    engineHours: typeof asset.currentEngineHours === 'number' ? asset.currentEngineHours : null,
-  };
-
   const summary = { overdue: 0, dueSoon: 0, ok: 0 };
 
   const items = programs.map((program) => {
-    const programId = program._id.toString();
-    const entry = history.find((h) =>
-      Array.isArray(h.servicePrograms) && (h.servicePrograms as ObjectId[]).some((id) => id.toString() === programId),
-    );
-
-    const baseline: Baseline = entry
-      ? {
-          lastDate: entry.performedAt as Date,
-          lastOdometer: entry.meterType === 'odometer' && typeof entry.meterAtService === 'number'
-            ? (entry.meterAtService as number)
-            : (asset.lastServiceMileage as number) ?? current.odometer,
-          lastEngineHours: entry.meterType === 'engine_hours' && typeof entry.meterAtService === 'number'
-            ? (entry.meterAtService as number)
-            : (asset.lastServiceEngineHours as number) ?? current.engineHours,
-          hasHistory: true,
-        }
-      : {
-          lastDate: (asset.lastServiceDate as Date) ?? now,
-          lastOdometer: (asset.lastServiceMileage as number) ?? current.odometer,
-          lastEngineHours: (asset.lastServiceEngineHours as number) ?? current.engineHours,
-          hasHistory: false,
-        };
-
-    const { status, triggers } = computeProgramStatus(
-      program.interval as ProgramInterval | undefined,
-      program.reminders as ProgramReminders | undefined,
-      baseline,
-      current,
-    );
-
+    const { status, triggers, lastPerformedAt } = evaluateAssetProgram(asset, program, history, now);
     if (status === 'overdue') summary.overdue++;
     else if (status === 'due_soon') summary.dueSoon++;
     else if (status === 'ok') summary.ok++;
 
     return {
-      programId,
+      programId: program._id.toString(),
       title: (program.title as string) || '',
       status,
       triggers,
       serviceTaskIds: ((program.serviceTaskIds as ObjectId[]) || []).map((id) => id.toString()),
-      lastPerformedAt: entry ? new Date(entry.performedAt as Date).toISOString() : null,
+      lastPerformedAt,
     };
   });
 

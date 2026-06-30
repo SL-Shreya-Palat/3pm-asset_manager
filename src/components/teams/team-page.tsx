@@ -11,6 +11,7 @@ import {
   Info,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -829,14 +830,10 @@ export function TeamPage() {
       header: 'Actions',
       align: 'right',
       render: (team) => (
-        <div className="flex items-center justify-end gap-1">
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenEdit(team)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenDelete(team)} className="text-destructive hover:text-destructive">
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        <RowActions>
+          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(team)} />
+          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(team)} />
+        </RowActions>
       ),
     },
   ];

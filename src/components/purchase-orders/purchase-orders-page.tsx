@@ -10,6 +10,7 @@ import {
   ShoppingCart,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 
 import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/ui/search-input';
@@ -238,21 +239,15 @@ export function PurchaseOrdersPage() {
       header: 'Actions',
       align: 'right',
       render: (order) => (
-        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenView(order)}>
-            <Eye className="h-4 w-4" />
-          </Button>
+        <RowActions>
+          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(order)} />
           {['draft', 'rejected'].includes(order.status) && (
-            <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenEdit(order)}>
-              <Pencil className="h-4 w-4" />
-            </Button>
+            <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(order)} />
           )}
           {order.status === 'draft' && (
-            <Button variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive" onClick={() => handleOpenDelete(order)}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(order)} />
           )}
-        </div>
+        </RowActions>
       ),
     },
   ];

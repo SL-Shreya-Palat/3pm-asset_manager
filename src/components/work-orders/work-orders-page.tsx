@@ -35,6 +35,7 @@ import {
 import { FormSection } from '@/components/ui/form-section';
 import { PageHeader } from '@/components/ui/page-header';
 import { FilterTabs } from '@/components/ui/filter-tabs';
+import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { MeterTypeSelect, ProgramChecklist } from '@/components/maintenance/service-fields';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
@@ -277,17 +278,11 @@ export function WorkOrdersPage() {
       header: 'Actions',
       align: 'right',
       render: (order) => (
-        <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenView(order)}>
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenEdit(order)}>
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive" onClick={() => handleOpenDelete(order)}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        <RowActions>
+          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(order)} />
+          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(order)} />
+          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(order)} />
+        </RowActions>
       ),
     },
   ];
