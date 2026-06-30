@@ -1,10 +1,10 @@
 /**
- * GET  /api/users -- List tenant members with pagination/search
- * POST /api/users -- Invite a user (create users + tenantMembers records)
+ * GET  /api/fuel -- List fuel transactions with pagination/search/filters
+ * POST /api/fuel -- Create a new fuel transaction
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helper';
-import { getAllTenantMembers, inviteUser } from '@/controller/users';
+import { getAllFuelTransactions, createFuelTransaction } from '@/controller/fuel';
 
 export async function GET(request: NextRequest) {
   const user = await getAuthenticatedUser(request);
@@ -16,9 +16,22 @@ export async function GET(request: NextRequest) {
   const page = parseInt(searchParams.get('page') || '1', 10);
   const limit = parseInt(searchParams.get('limit') || '25', 10);
   const search = searchParams.get('search') || undefined;
-  const teamId = searchParams.get('teamId') || undefined;
+  const assetId = searchParams.get('assetId') || undefined;
+  const driverId = searchParams.get('driverId') || undefined;
+  const fuelType = searchParams.get('fuelType') || undefined;
+  const startDate = searchParams.get('startDate') || undefined;
+  const endDate = searchParams.get('endDate') || undefined;
 
-  const result = await getAllTenantMembers(user.currentTenantId, { page, limit, search, teamId });
+  const result = await getAllFuelTransactions(user.currentTenantId, {
+    page,
+    limit,
+    search,
+    assetId,
+    driverId,
+    fuelType,
+    startDate,
+    endDate,
+  });
   return NextResponse.json({ data: result, error: null });
 }
 
@@ -30,7 +43,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const result = await inviteUser(user.currentTenantId, user.id, body);
+    const result = await createFuelTransaction(user.currentTenantId, user.id, body);
 
     if (result.error) {
       return NextResponse.json({ data: null, error: result.error }, { status: 400 });

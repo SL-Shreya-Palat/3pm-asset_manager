@@ -48,6 +48,7 @@ export function validateInviteUserInput(input: InviteUserInput): ValidationResul
 export function serializeTenantMember(
   doc: Record<string, unknown>,
   roleName?: string,
+  extra?: { teamIds?: string[]; teamNames?: string[]; teamRole?: string },
 ): Record<string, unknown> {
   return {
     id: doc._id?.toString(),
@@ -60,6 +61,9 @@ export function serializeTenantMember(
     isActive: doc.isActive ?? true,
     portalUser: doc.portalUser ?? true,
     status: doc.status || 'active',
+    teamIds: extra?.teamIds ?? [],
+    teamNames: extra?.teamNames ?? [],
+    teamRole: extra?.teamRole ?? undefined,
     createdAt: doc.createdAt ? (doc.createdAt as Date).toISOString() : null,
     updatedAt: doc.updatedAt ? (doc.updatedAt as Date).toISOString() : null,
   };

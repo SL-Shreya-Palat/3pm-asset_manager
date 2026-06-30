@@ -279,16 +279,16 @@ export function ServiceProgramsPage() {
       align: 'right',
       render: (program) => (
         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenView(program)}>
+          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenView(program)}>
             <Eye className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenEdit(program)}>
+          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenEdit(program)}>
             <Pencil className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleDuplicate(program)} title="Duplicate">
+          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleDuplicate(program)}>
             <Copy className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenDelete(program)} className="text-destructive hover:text-destructive">
+          <Button variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive" onClick={() => handleOpenDelete(program)}>
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>

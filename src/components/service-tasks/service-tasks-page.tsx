@@ -195,13 +195,13 @@ export function ServiceTasksPage() {
       align: 'right',
       render: (task) => (
         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenView(task)}>
+          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenView(task)}>
             <Eye className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenEdit(task)}>
+          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenEdit(task)}>
             <Pencil className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenDelete(task)} className="text-destructive hover:text-destructive">
+          <Button variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive" onClick={() => handleOpenDelete(task)}>
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>

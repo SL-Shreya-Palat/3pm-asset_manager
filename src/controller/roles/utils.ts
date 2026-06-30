@@ -25,16 +25,19 @@ export function validateCreateRoleInput(input: CreateRoleInput): ValidationResul
     errors.permissions = 'Invalid permission scope';
   }
 
-  return { valid: Object.keys(errors).length === 0, errors };
-}
+  if (input.baseCostPerHour !== undefined && input.baseCostPerHour !== null) {
+    if (typeof input.baseCostPerHour !== 'number' || input.baseCostPerHour < 0) {
+      errors.baseCostPerHour = 'Base cost per hour must be a non-negative number';
+    }
+  }
 
-/** Generate a URL-safe key from the role name. */
-export function generateRoleKey(name: string): string {
-  return name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_|_$/g, '');
+  if (input.chargeOutRate !== undefined && input.chargeOutRate !== null) {
+    if (typeof input.chargeOutRate !== 'number' || input.chargeOutRate < 0) {
+      errors.chargeOutRate = 'Charge out rate must be a non-negative number';
+    }
+  }
+
+  return { valid: Object.keys(errors).length === 0, errors };
 }
 
 /** Serialize a role document for API response. */
@@ -42,12 +45,18 @@ export function serializeRole(doc: Record<string, unknown>): Record<string, unkn
   return {
     id: doc._id?.toString(),
     name: doc.name,
-    key: doc.key,
+    nameLower: doc.nameLower,
     description: doc.description || undefined,
+    baseCostPerHour: doc.baseCostPerHour ?? 0,
+    chargeOutRate: doc.chargeOutRate ?? 0,
     permissions: doc.permissions,
     isSystem: doc.isSystem ?? false,
     isActive: doc.isActive ?? true,
-    isArchived: doc.isArchived ?? false,
+    isManager: doc.isManager ?? null,
+    isTeamManager: doc.isTeamManager ?? null,
+    isMechanic: doc.isMechanic ?? null,
+    isDriver: doc.isDriver ?? null,
+    isAdmin: doc.isAdmin ?? null,
     createdAt: doc.createdAt ? (doc.createdAt as Date).toISOString() : null,
     updatedAt: doc.updatedAt ? (doc.updatedAt as Date).toISOString() : null,
   };

@@ -242,14 +242,14 @@ export function InventorySettingsList({
                   </td>
                   <td className="px-4 py-2.5 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="icon-sm" onClick={() => openEditDialog(item)}>
+                      <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => openEditDialog(item)}>
                         <Pencil className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon-sm"
                         onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
-                        className="text-destructive hover:text-destructive"
+                        className="cursor-pointer text-destructive hover:text-destructive"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

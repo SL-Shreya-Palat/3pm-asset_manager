@@ -255,13 +255,13 @@ export function DefectsPage() {
       align: 'right',
       render: (defect) => (
         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenView(defect)}>
+          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenView(defect)}>
             <Eye className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenEdit(defect)}>
+          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenEdit(defect)}>
             <Pencil className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenDelete(defect)} className="text-destructive hover:text-destructive">
+          <Button variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive" onClick={() => handleOpenDelete(defect)}>
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>

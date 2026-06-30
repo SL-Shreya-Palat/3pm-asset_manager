@@ -172,15 +172,15 @@ export function RolesPage() {
       align: 'right',
       render: (role) => (
         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenView(role)}>
+          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenView(role)}>
             <Eye className="h-4 w-4" />
           </Button>
           {!role.isSystem && (
             <>
-              <Button variant="ghost" size="icon-sm" onClick={() => router.push(`/people/roles/${role.id}/edit`)}>
+              <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => router.push(`/people/roles/${role.id}/edit`)}>
                 <Pencil className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon-sm" onClick={() => handleOpenDelete(role)} className="text-destructive hover:text-destructive">
+              <Button variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive" onClick={() => handleOpenDelete(role)}>
                 <Trash2 className="h-4 w-4" />
               </Button>
             </>

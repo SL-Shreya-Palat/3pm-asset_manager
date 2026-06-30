@@ -16,11 +16,18 @@ export type RolePermissions =
 export interface RoleRow {
   id: string;
   name: string;
-  key: string;
+  nameLower: string;
   description?: string;
+  baseCostPerHour: number;
+  chargeOutRate: number;
   permissions: RolePermissions;
   isSystem: boolean;
   isActive: boolean;
+  isManager: boolean | null;
+  isTeamManager: boolean | null;
+  isMechanic: boolean | null;
+  isDriver: boolean | null;
+  isAdmin: boolean | null;
   createdAt: string;
 }
 

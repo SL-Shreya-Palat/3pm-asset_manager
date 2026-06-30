@@ -229,13 +229,13 @@ export function InventoryPage() {
       align: 'right',
       render: (part) => (
         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenView(part)}>
+          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenView(part)}>
             <Eye className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenEdit(part)}>
+          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenEdit(part)}>
             <Pencil className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon-sm" onClick={() => handleOpenDelete(part)} className="text-destructive hover:text-destructive">
+          <Button variant="ghost" size="icon-sm" className="cursor-pointer text-destructive hover:text-destructive" onClick={() => handleOpenDelete(part)}>
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>

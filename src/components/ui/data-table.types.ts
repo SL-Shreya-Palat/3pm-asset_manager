@@ -27,8 +27,8 @@ export interface DataTableFilterDef {
 export interface DataTableColumn<T> {
   /** Unique key. Also used as data accessor when `render` is omitted. */
   key: string;
-  /** Column header text. */
-  header: string;
+  /** Column header text or ReactNode. */
+  header: ReactNode;
   /** Display label for column toggle UI. Falls back to `header`. */
   label?: string;
   /** Custom cell renderer. Falls back to `row[key] ?? '—'`. */

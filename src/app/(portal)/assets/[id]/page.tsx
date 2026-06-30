@@ -3,13 +3,22 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import axios from 'axios';
-import { ArrowLeft, Pencil, Power } from 'lucide-react';
+import { ArrowLeft, Pencil, Power, Fuel, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 import { ASSET_STATUS_CONFIG, type AssetStatus } from '@/constants/assets';
 import { InspectButton } from '@/components/inspections/inspect-button';
+import { AssetFuelTab } from '@/components/fuel/asset-fuel-tab';
+
+const ASSET_TABS = [
+  { id: 'details', label: 'Details', icon: Info },
+  { id: 'fuel', label: 'Fuel', icon: Fuel },
+] as const;
+
+type AssetTabId = (typeof ASSET_TABS)[number]['id'];
 
 export default function AssetDetailPage() {
   const params = useParams();
@@ -17,6 +26,7 @@ export default function AssetDetailPage() {
   const [asset, setAsset] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
+  const [activeTab, setActiveTab] = useState<AssetTabId>('details');
 
   const fetchAsset = useCallback(async () => {
     try {
@@ -147,49 +157,82 @@ export default function AssetDetailPage() {
         </div>
       </div>
 
-      {/* Manufacturer Details */}
-      <div className="rounded-lg border bg-card p-5 shadow-sm mb-6">
-        <h2 className="text-base font-semibold mb-4">Manufacturer Details</h2>
-        <Separator className="mb-4" />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Detail label="VIN" value={String(asset.vin || '')} />
-          <Detail label="License" value={String(asset.licensePlate || '')} />
-          <Detail label="Make" value={String(asset.make || '')} />
-          <Detail label="Model" value={String(asset.model || '')} />
-          <Detail label="Year" value={asset.year ? String(asset.year) : ''} />
-          <Detail label="Color" value={String(asset.color || '')} />
-          <Detail label="Tire Size" value={String(asset.tireSize || '')} />
+      {/* Tabs */}
+      <div className="border-b border-border mb-6">
+        <div className="flex gap-0">
+          {ASSET_TABS.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  'flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px',
+                  activeTab === tab.id
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
-        {assetNotes && (
-          <div className="mt-4">
-            <Detail label="Notes" value={assetNotes} />
-          </div>
-        )}
       </div>
 
-      {/* Other Details */}
-      <div className="rounded-lg border bg-card p-5 shadow-sm">
-        <h2 className="text-base font-semibold mb-4">Other Details</h2>
-        <Separator className="mb-4" />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Detail label="Mileage" value={asset.currentOdometer != null ? Number(asset.currentOdometer).toLocaleString() : ''} />
-          <Detail
-            label="Estimated Cost"
-            value={
-              asset.estimatedCost != null
-                ? `${String(asset.currencyCode || 'USD')} ${Number(asset.estimatedCost).toLocaleString()}`
-                : ''
-            }
-          />
-          <Detail label="Engine Hours" value={asset.currentEngineHours != null ? String(asset.currentEngineHours) : ''} />
-          <Detail label="Asset Type" value={String(asset.assetTypeName || '')} />
-          <Detail label="Asset Subtype" value={String(asset.assetSubtype || '')} />
-          <Detail label="Subscription Type" value={String(asset.subscriptionType || '')} />
-          <Detail label="Last Service Date" value={asset.lastServiceDate ? new Date(String(asset.lastServiceDate)).toLocaleDateString() : ''} />
-          <Detail label="Last Service Mileage" value={asset.lastServiceMileage != null ? String(asset.lastServiceMileage) : ''} />
-          <Detail label="Last Service Engine Hours" value={asset.lastServiceEngineHours != null ? String(asset.lastServiceEngineHours) : ''} />
-        </div>
-      </div>
+      {/* Tab Content */}
+      {activeTab === 'details' && (
+        <>
+          {/* Manufacturer Details */}
+          <div className="rounded-lg border bg-card p-5 shadow-sm mb-6">
+            <h2 className="text-base font-semibold mb-4">Manufacturer Details</h2>
+            <Separator className="mb-4" />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Detail label="VIN" value={String(asset.vin || '')} />
+              <Detail label="License" value={String(asset.licensePlate || '')} />
+              <Detail label="Make" value={String(asset.make || '')} />
+              <Detail label="Model" value={String(asset.model || '')} />
+              <Detail label="Year" value={asset.year ? String(asset.year) : ''} />
+              <Detail label="Color" value={String(asset.color || '')} />
+              <Detail label="Tire Size" value={String(asset.tireSize || '')} />
+            </div>
+            {assetNotes && (
+              <div className="mt-4">
+                <Detail label="Notes" value={assetNotes} />
+              </div>
+            )}
+          </div>
+
+          {/* Other Details */}
+          <div className="rounded-lg border bg-card p-5 shadow-sm">
+            <h2 className="text-base font-semibold mb-4">Other Details</h2>
+            <Separator className="mb-4" />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Detail label="Mileage" value={asset.currentOdometer != null ? Number(asset.currentOdometer).toLocaleString() : ''} />
+              <Detail
+                label="Estimated Cost"
+                value={
+                  asset.estimatedCost != null
+                    ? `${String(asset.currencyCode || 'USD')} ${Number(asset.estimatedCost).toLocaleString()}`
+                    : ''
+                }
+              />
+              <Detail label="Engine Hours" value={asset.currentEngineHours != null ? String(asset.currentEngineHours) : ''} />
+              <Detail label="Asset Type" value={String(asset.assetTypeName || '')} />
+              <Detail label="Asset Subtype" value={String(asset.assetSubtype || '')} />
+              <Detail label="Subscription Type" value={String(asset.subscriptionType || '')} />
+              <Detail label="Last Service Date" value={asset.lastServiceDate ? new Date(String(asset.lastServiceDate)).toLocaleDateString() : ''} />
+              <Detail label="Last Service Mileage" value={asset.lastServiceMileage != null ? String(asset.lastServiceMileage) : ''} />
+              <Detail label="Last Service Engine Hours" value={asset.lastServiceEngineHours != null ? String(asset.lastServiceEngineHours) : ''} />
+            </div>
+          </div>
+        </>
+      )}
+
+      {activeTab === 'fuel' && (
+        <AssetFuelTab assetId={String(params.id)} />
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@
  */
 import { ObjectId } from 'mongodb';
 import { getRolesCollection } from '@/lib/mongodb';
-import { validateCreateRoleInput, generateRoleKey, serializeRole } from './utils';
+import { validateCreateRoleInput, serializeRole } from './utils';
 import type { CreateRoleInput, UpdateRoleInput } from './types';
 
 /** List roles with pagination and search. */
@@ -19,12 +19,12 @@ export async function getAllRoles(
 
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
-    isArchived: { $ne: true },
+    isActive: true,
   };
 
   if (options.search) {
     const regex = { $regex: options.search, $options: 'i' };
-    filter.$or = [{ name: regex }, { key: regex }, { description: regex }];
+    filter.$or = [{ name: regex }, { nameLower: regex }, { description: regex }];
   }
 
   const [items, total] = await Promise.all([
@@ -46,7 +46,7 @@ export async function getRoleById(tenantId: string, roleId: string) {
   const doc = await collection.findOne({
     _id: ObjectId.createFromHexString(roleId),
     tenantId: ObjectId.createFromHexString(tenantId),
-    isArchived: { $ne: true },
+    isActive: true,
   });
 
   if (!doc) return null;
@@ -66,8 +66,8 @@ export async function createRole(tenantId: string, userId: string, input: Create
   // Check for duplicate name
   const existing = await collection.findOne({
     tenantId: tenantOid,
-    name: { $regex: `^${input.name.trim()}$`, $options: 'i' },
-    isArchived: { $ne: true },
+    nameLower: input.name.trim().toLowerCase(),
+    isActive: true,
   });
   if (existing) {
     return { data: null, error: { name: 'A role with this name already exists' } };
@@ -79,8 +79,10 @@ export async function createRole(tenantId: string, userId: string, input: Create
   const doc: Record<string, unknown> = {
     tenantId: tenantOid,
     name: input.name.trim(),
-    key: generateRoleKey(input.name),
+    nameLower: input.name.trim().toLowerCase(),
     description: input.description?.trim() || undefined,
+    baseCostPerHour: input.baseCostPerHour ?? 0,
+    chargeOutRate: input.chargeOutRate ?? 0,
     permissions: input.permissions,
     isSystem: false,
 
@@ -89,9 +91,11 @@ export async function createRole(tenantId: string, userId: string, input: Create
     createdAt: now,
     updatedAt: now,
     isActive: true,
-    isArchived: false,
-    archivedAt: null,
-    archivedBy: null,
+    isManager: input.isManager ?? null,
+    isTeamManager: input.isTeamManager ?? null,
+    isMechanic: input.isMechanic ?? null,
+    isDriver: input.isDriver ?? null,
+    isAdmin: input.isAdmin ?? null,
   };
 
   const result = await collection.insertOne(doc);
@@ -115,7 +119,7 @@ export async function updateRole(
   const existing = await collection.findOne({
     _id: roleOid,
     tenantId: tenantOid,
-    isArchived: { $ne: true },
+    isActive: true,
   });
   if (!existing) return { data: null, error: 'Role not found' };
 
@@ -137,19 +141,26 @@ export async function updateRole(
     const duplicate = await collection.findOne({
       tenantId: tenantOid,
       _id: { $ne: roleOid },
-      name: { $regex: `^${trimmed}$`, $options: 'i' },
-      isArchived: { $ne: true },
+      nameLower: trimmed.toLowerCase(),
+      isActive: true,
     });
     if (duplicate) {
       return { data: null, error: { name: 'A role with this name already exists' } };
     }
 
     $set.name = trimmed;
-    $set.key = generateRoleKey(trimmed);
+    $set.nameLower = trimmed.toLowerCase();
   }
 
   if (input.description !== undefined) $set.description = input.description?.trim() || undefined;
   if (input.permissions !== undefined) $set.permissions = input.permissions;
+  if (input.baseCostPerHour !== undefined) $set.baseCostPerHour = input.baseCostPerHour ?? 0;
+  if (input.chargeOutRate !== undefined) $set.chargeOutRate = input.chargeOutRate ?? 0;
+  if (input.isManager !== undefined) $set.isManager = input.isManager ?? null;
+  if (input.isTeamManager !== undefined) $set.isTeamManager = input.isTeamManager ?? null;
+  if (input.isMechanic !== undefined) $set.isMechanic = input.isMechanic ?? null;
+  if (input.isDriver !== undefined) $set.isDriver = input.isDriver ?? null;
+  if (input.isAdmin !== undefined) $set.isAdmin = input.isAdmin ?? null;
 
   await collection.updateOne({ _id: roleOid, tenantId: tenantOid }, { $set });
   const updated = await collection.findOne({ _id: roleOid });
@@ -157,7 +168,7 @@ export async function updateRole(
   return { data: updated ? serializeRole(updated) : null, error: null };
 }
 
-/** Archive (soft-delete) a role. */
+/** Delete a role (set isActive to false). */
 export async function deleteRole(tenantId: string, userId: string, roleId: string) {
   const collection = await getRolesCollection();
 
@@ -165,7 +176,7 @@ export async function deleteRole(tenantId: string, userId: string, roleId: strin
   const existing = await collection.findOne({
     _id: ObjectId.createFromHexString(roleId),
     tenantId: ObjectId.createFromHexString(tenantId),
-    isArchived: { $ne: true },
+    isActive: true,
   });
   if (!existing) return false;
   if (existing.isSystem) return false;
@@ -174,13 +185,11 @@ export async function deleteRole(tenantId: string, userId: string, roleId: strin
     {
       _id: ObjectId.createFromHexString(roleId),
       tenantId: ObjectId.createFromHexString(tenantId),
-      isArchived: { $ne: true },
+      isActive: true,
     },
     {
       $set: {
-        isArchived: true,
-        archivedAt: new Date(),
-        archivedBy: ObjectId.createFromHexString(userId),
+        isActive: false,
         updatedBy: ObjectId.createFromHexString(userId),
         updatedAt: new Date(),
       },

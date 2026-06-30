@@ -8,6 +8,7 @@ import {
   Trash2,
   Users,
   List,
+  Info,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,7 +38,7 @@ import { TableSkeleton } from '@/components/ui/skeleton';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable, applyTableFilters } from '@/hooks/use-data-table';
 import { ASSET_STATUS_CONFIG, type AssetStatus } from '@/constants/assets';
-import type { TeamRow, AssetRow, DriverRow, Pagination } from './types';
+import type { TeamRow, AssetRow, DriverRow, UserRow, DefectRow, Pagination } from './types';
 
 const TEAM_TABS = ['Users', 'Drivers', 'Assets', 'Inspections', 'Defects', 'Documents'] as const;
 type TeamTab = (typeof TEAM_TABS)[number];
@@ -109,12 +110,56 @@ export function TeamPage() {
   const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
   const [addingAssets, setAddingAssets] = useState(false);
 
+  // Users tab state
+  const [teamUsers, setTeamUsers] = useState<UserRow[]>([]);
+  const [teamUsersPagination, setTeamUsersPagination] = useState<Pagination>({
+    page: 1, limit: 25, total: 0, hasMore: false,
+  });
+  const [teamUsersLoading, setTeamUsersLoading] = useState(false);
+  const [teamUsersRowsPerPage, setTeamUsersRowsPerPage] = useState(25);
+
+  // Add Users dialog
+  const [addUsersDialogOpen, setAddUsersDialogOpen] = useState(false);
+  const [allUsers, setAllUsers] = useState<UserRow[]>([]);
+  const [allUsersPagination, setAllUsersPagination] = useState<Pagination>({
+    page: 1, limit: 25, total: 0, hasMore: false,
+  });
+  const [allUsersLoading, setAllUsersLoading] = useState(false);
+  const [allUsersSearch, setAllUsersSearch, debouncedAllUsersSearch] = useDebouncedSearch(300);
+  const [allUsersRowsPerPage, setAllUsersRowsPerPage] = useState(25);
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [addingUsers, setAddingUsers] = useState(false);
+
+  // Defects tab state
+  const [teamDefects, setTeamDefects] = useState<DefectRow[]>([]);
+  const [teamDefectsPagination, setTeamDefectsPagination] = useState<Pagination>({
+    page: 1, limit: 25, total: 0, hasMore: false,
+  });
+  const [teamDefectsLoading, setTeamDefectsLoading] = useState(false);
+  const [teamDefectsRowsPerPage, setTeamDefectsRowsPerPage] = useState(25);
+
+  // Add Defects dialog
+  const [addDefectsDialogOpen, setAddDefectsDialogOpen] = useState(false);
+  const [allDefects, setAllDefects] = useState<DefectRow[]>([]);
+  const [allDefectsPagination, setAllDefectsPagination] = useState<Pagination>({
+    page: 1, limit: 25, total: 0, hasMore: false,
+  });
+  const [allDefectsLoading, setAllDefectsLoading] = useState(false);
+  const [allDefectsSearch, setAllDefectsSearch, debouncedAllDefectsSearch] = useDebouncedSearch(300);
+  const [allDefectsRowsPerPage, setAllDefectsRowsPerPage] = useState(25);
+  const [selectedDefectIds, setSelectedDefectIds] = useState<Set<string>>(new Set());
+  const [addingDefects, setAddingDefects] = useState(false);
+
   // Table features: teams table
   const teamsTable = useDataTable();
   // Table features: team assets table
   const teamAssetsTable = useDataTable();
   // Table features: team drivers table
   const teamDriversTable = useDataTable();
+  // Table features: team users table
+  const teamUsersTable = useDataTable();
+  // Table features: team defects table
+  const teamDefectsTable = useDataTable();
 
   const teamAssetFilterDefs: DataTableFilterDef[] = useMemo(() => [
     {
@@ -131,6 +176,44 @@ export function TeamPage() {
   const filteredTeamAssets = useMemo(
     () => applyTableFilters(teamAssets, teamAssetsTable.filters, teamAssetFilterDefs),
     [teamAssets, teamAssetsTable.filters, teamAssetFilterDefs],
+  );
+
+  const teamDefectFilterDefs: DataTableFilterDef[] = useMemo(() => [
+    {
+      columnKey: 'status',
+      label: 'Status',
+      type: 'select',
+      options: [
+        { label: 'New', value: 'new' },
+        { label: 'In Progress', value: 'in_progress' },
+        { label: 'Corrected', value: 'corrected' },
+        { label: 'No Correction Needed', value: 'no_correction_needed' },
+      ],
+    },
+    {
+      columnKey: 'priority',
+      label: 'Priority',
+      type: 'select',
+      options: [
+        { label: 'High', value: 'high' },
+        { label: 'Medium', value: 'medium' },
+        { label: 'Low', value: 'low' },
+      ],
+    },
+    {
+      columnKey: 'severity',
+      label: 'Severity',
+      type: 'select',
+      options: [
+        { label: 'Critical', value: 'critical' },
+        { label: 'Non-Critical', value: 'non_critical' },
+      ],
+    },
+  ], []);
+
+  const filteredTeamDefects = useMemo(
+    () => applyTableFilters(teamDefects, teamDefectsTable.filters, teamDefectFilterDefs),
+    [teamDefects, teamDefectsTable.filters, teamDefectFilterDefs],
   );
 
   // ── Fetch teams ──
@@ -216,6 +299,66 @@ export function TeamPage() {
     }
   }, [activeTab, selectedTeamId, fetchTeamDrivers]);
 
+  // ── Fetch team users ──
+  const fetchTeamUsers = useCallback(async (page: number) => {
+    if (!selectedTeamId) {
+      setTeamUsers([]);
+      return;
+    }
+    try {
+      setTeamUsersLoading(true);
+      const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('limit', String(teamUsersRowsPerPage));
+      params.set('teamId', selectedTeamId);
+      const res = await axios.get(`/api/users?${params.toString()}`, { withCredentials: true });
+      const data = res.data.data;
+      setTeamUsers(data.items || []);
+      setTeamUsersPagination(data.pagination || { page: 1, limit: teamUsersRowsPerPage, total: 0, hasMore: false });
+    } catch (err) {
+      console.error('Failed to fetch team users:', err);
+      setTeamUsers([]);
+    } finally {
+      setTeamUsersLoading(false);
+    }
+  }, [selectedTeamId, teamUsersRowsPerPage]);
+
+  useEffect(() => {
+    if (activeTab === 'Users' && selectedTeamId) {
+      fetchTeamUsers(1);
+    }
+  }, [activeTab, selectedTeamId, fetchTeamUsers]);
+
+  // ── Fetch team defects ──
+  const fetchTeamDefects = useCallback(async (page: number) => {
+    if (!selectedTeamId) {
+      setTeamDefects([]);
+      return;
+    }
+    try {
+      setTeamDefectsLoading(true);
+      const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('limit', String(teamDefectsRowsPerPage));
+      params.set('teamId', selectedTeamId);
+      const res = await axios.get(`/api/defects?${params.toString()}`, { withCredentials: true });
+      const data = res.data.data;
+      setTeamDefects(data.items || []);
+      setTeamDefectsPagination(data.pagination || { page: 1, limit: teamDefectsRowsPerPage, total: 0, hasMore: false });
+    } catch (err) {
+      console.error('Failed to fetch team defects:', err);
+      setTeamDefects([]);
+    } finally {
+      setTeamDefectsLoading(false);
+    }
+  }, [selectedTeamId, teamDefectsRowsPerPage]);
+
+  useEffect(() => {
+    if (activeTab === 'Defects' && selectedTeamId) {
+      fetchTeamDefects(1);
+    }
+  }, [activeTab, selectedTeamId, fetchTeamDefects]);
+
   // ── Fetch all drivers for add dialog ──
   const fetchAllDrivers = useCallback(async (page: number) => {
     try {
@@ -267,6 +410,58 @@ export function TeamPage() {
       fetchAllAssets(1);
     }
   }, [addAssetsDialogOpen, fetchAllAssets]);
+
+  // ── Fetch all users for add dialog ──
+  const fetchAllUsers = useCallback(async (page: number) => {
+    try {
+      setAllUsersLoading(true);
+      const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('limit', String(allUsersRowsPerPage));
+      if (debouncedAllUsersSearch) params.set('search', debouncedAllUsersSearch);
+      const res = await axios.get(`/api/users?${params.toString()}`, { withCredentials: true });
+      const data = res.data.data;
+      setAllUsers(data.items || []);
+      setAllUsersPagination(data.pagination || { page: 1, limit: allUsersRowsPerPage, total: 0, hasMore: false });
+    } catch (err) {
+      console.error('Failed to fetch users:', err);
+      setAllUsers([]);
+    } finally {
+      setAllUsersLoading(false);
+    }
+  }, [debouncedAllUsersSearch, allUsersRowsPerPage]);
+
+  useEffect(() => {
+    if (addUsersDialogOpen) {
+      fetchAllUsers(1);
+    }
+  }, [addUsersDialogOpen, fetchAllUsers]);
+
+  // ── Fetch all defects for add dialog ──
+  const fetchAllDefects = useCallback(async (page: number) => {
+    try {
+      setAllDefectsLoading(true);
+      const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('limit', String(allDefectsRowsPerPage));
+      if (debouncedAllDefectsSearch) params.set('search', debouncedAllDefectsSearch);
+      const res = await axios.get(`/api/defects?${params.toString()}`, { withCredentials: true });
+      const data = res.data.data;
+      setAllDefects(data.items || []);
+      setAllDefectsPagination(data.pagination || { page: 1, limit: allDefectsRowsPerPage, total: 0, hasMore: false });
+    } catch (err) {
+      console.error('Failed to fetch defects:', err);
+      setAllDefects([]);
+    } finally {
+      setAllDefectsLoading(false);
+    }
+  }, [debouncedAllDefectsSearch, allDefectsRowsPerPage]);
+
+  useEffect(() => {
+    if (addDefectsDialogOpen) {
+      fetchAllDefects(1);
+    }
+  }, [addDefectsDialogOpen, fetchAllDefects]);
 
   // ── Sidebar helpers ──
   const filteredTeams = teams.filter((team) =>
@@ -438,6 +633,112 @@ export function TeamPage() {
     }
   };
 
+  // ── User assignment handlers ──
+  const handleOpenAddUsers = () => {
+    setSelectedUserIds(new Set());
+    setAllUsersSearch('');
+    setAddUsersDialogOpen(true);
+  };
+
+  const toggleUserSelection = (userId: string) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
+  const handleAddUsers = async () => {
+    if (!selectedTeamId || selectedUserIds.size === 0) return;
+    setAddingUsers(true);
+    try {
+      await axios.post(
+        `/api/teams/${selectedTeamId}/users`,
+        { memberIds: [...selectedUserIds] },
+        { withCredentials: true },
+      );
+      setAddUsersDialogOpen(false);
+      fetchTeamUsers(1);
+      fetchTeams(pagination.page);
+    } catch (err) {
+      console.error('Failed to add users:', err);
+    } finally {
+      setAddingUsers(false);
+    }
+  };
+
+  const handleRemoveUserFromTeam = async (memberId: string) => {
+    if (!selectedTeamId) return;
+    try {
+      await axios.delete(`/api/teams/${selectedTeamId}/users?memberId=${memberId}`, { withCredentials: true });
+      fetchTeamUsers(teamUsersPagination.page);
+      fetchTeams(pagination.page);
+    } catch (err) {
+      console.error('Failed to remove user:', err);
+    }
+  };
+
+  const handleUpdateUserTeamRole = async (memberId: string, role: 'managing' | 'following') => {
+    if (!selectedTeamId) return;
+    try {
+      await axios.patch(
+        `/api/teams/${selectedTeamId}/users`,
+        { memberId, role },
+        { withCredentials: true },
+      );
+      fetchTeamUsers(teamUsersPagination.page);
+    } catch (err) {
+      console.error('Failed to update user role:', err);
+    }
+  };
+
+  // ── Defect assignment handlers ──
+  const handleOpenAddDefects = () => {
+    setSelectedDefectIds(new Set());
+    setAllDefectsSearch('');
+    setAddDefectsDialogOpen(true);
+  };
+
+  const toggleDefectSelection = (defectId: string) => {
+    setSelectedDefectIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(defectId)) next.delete(defectId);
+      else next.add(defectId);
+      return next;
+    });
+  };
+
+  const handleAddDefects = async () => {
+    if (!selectedTeamId || selectedDefectIds.size === 0) return;
+    setAddingDefects(true);
+    try {
+      await axios.post(
+        `/api/teams/${selectedTeamId}/defects`,
+        { defectIds: [...selectedDefectIds] },
+        { withCredentials: true },
+      );
+      setAddDefectsDialogOpen(false);
+      fetchTeamDefects(1);
+      fetchTeams(pagination.page);
+    } catch (err) {
+      console.error('Failed to add defects:', err);
+    } finally {
+      setAddingDefects(false);
+    }
+  };
+
+  const handleRemoveDefectFromTeam = async (defectId: string) => {
+    if (!selectedTeamId) return;
+    try {
+      await axios.delete(`/api/teams/${selectedTeamId}/defects?defectId=${defectId}`, { withCredentials: true });
+      fetchTeamDefects(teamDefectsPagination.page);
+      fetchTeams(pagination.page);
+    } catch (err) {
+      console.error('Failed to remove defect:', err);
+    }
+  };
+
   // ── Status badge helper ──
   const getStatusBadge = (status: string) => {
     const normalized = status === 'active' ? 'in_service' : status;
@@ -455,6 +756,14 @@ export function TeamPage() {
         </Button>
       );
     }
+    if (activeTab === 'Users') {
+      return (
+        <Button onClick={handleOpenAddUsers}>
+          <Plus className="h-4 w-4" />
+          Add Users
+        </Button>
+      );
+    }
     if (activeTab === 'Assets') {
       return (
         <Button onClick={handleOpenAddAssets}>
@@ -468,6 +777,14 @@ export function TeamPage() {
         <Button onClick={handleOpenAddDrivers}>
           <Plus className="h-4 w-4" />
           Add Drivers
+        </Button>
+      );
+    }
+    if (activeTab === 'Defects') {
+      return (
+        <Button onClick={handleOpenAddDefects}>
+          <Plus className="h-4 w-4" />
+          Add Defects
         </Button>
       );
     }
@@ -779,6 +1096,240 @@ export function TeamPage() {
     },
   ];
 
+  const teamUserColumns: DataTableColumn<UserRow>[] = [
+    {
+      key: 'name',
+      header: 'User name',
+      label: 'User Name',
+      render: (user) => (
+        <span className="font-medium text-foreground">
+          {user.firstName} {user.lastName}
+        </span>
+      ),
+    },
+    {
+      key: 'roleName',
+      header: 'Role',
+      label: 'Role',
+      render: (user) => (
+        <span className="text-muted-foreground">{user.roleName || '—'}</span>
+      ),
+    },
+    {
+      key: 'teamRole',
+      header: (
+        <span className="inline-flex items-center gap-1">
+          Following
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs text-left">
+                <p className="mb-1.5">
+                  <strong>Managing:</strong> Ability to edit Drivers, Assets and Managers within the Team. See and receive realtime alerts and notifications for Faults/Inspections of its Drivers and Assets.
+                </p>
+                <p>
+                  <strong>Following:</strong> See and receive realtime alerts and notifications for Faults/Inspections of the Drivers and Assets within the Team.
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </span>
+      ),
+      label: 'Following',
+      render: (user) => {
+        const role = user.teamRole || 'following';
+        return (
+          <div className="inline-flex rounded-md border border-border overflow-hidden">
+            <button
+              type="button"
+              className={cn(
+                'px-3 py-1 text-xs font-medium transition-colors',
+                role === 'managing'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-background text-muted-foreground hover:bg-muted',
+              )}
+              onClick={(e) => { e.stopPropagation(); handleUpdateUserTeamRole(user.id, 'managing'); }}
+            >
+              Managing
+            </button>
+            <button
+              type="button"
+              className={cn(
+                'px-3 py-1 text-xs font-medium transition-colors border-l border-border',
+                role === 'following'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-background text-muted-foreground hover:bg-muted',
+              )}
+              onClick={(e) => { e.stopPropagation(); handleUpdateUserTeamRole(user.id, 'following'); }}
+            >
+              Following
+            </button>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      align: 'right',
+      render: (user) => (
+        <div className="flex items-center justify-end">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => handleRemoveUserFromTeam(user.id)}
+            className="text-destructive hover:text-destructive"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
+  const getDefectStatusBadge = (status: string) => {
+    switch (status) {
+      case 'new':
+        return <Badge variant="default">New</Badge>;
+      case 'in_progress':
+        return <Badge variant="warning">In Progress</Badge>;
+      case 'corrected':
+        return <Badge variant="success">Corrected</Badge>;
+      case 'no_correction_needed':
+        return <Badge variant="outline">No Correction Needed</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const getDefectPriorityBadge = (priority: string) => {
+    switch (priority) {
+      case 'high':
+        return <Badge variant="destructive">High</Badge>;
+      case 'medium':
+        return <Badge variant="warning">Medium</Badge>;
+      case 'low':
+        return <Badge variant="outline">Low</Badge>;
+      default:
+        return <Badge variant="outline">{priority}</Badge>;
+    }
+  };
+
+  const getDefectSeverityBadge = (severity: string) => {
+    switch (severity) {
+      case 'critical':
+        return <Badge variant="destructive">Critical</Badge>;
+      case 'non_critical':
+        return <Badge variant="outline">Non-Critical</Badge>;
+      default:
+        return <Badge variant="outline">{severity}</Badge>;
+    }
+  };
+
+  const teamDefectColumns: DataTableColumn<DefectRow>[] = [
+    {
+      key: 'defectNumber',
+      header: 'Defect #',
+      label: 'Defect Number',
+      render: (defect) => (
+        <span className="font-medium text-foreground">{defect.defectNumber}</span>
+      ),
+    },
+    {
+      key: 'name',
+      header: 'Name',
+      label: 'Name',
+      render: (defect) => (
+        <span className="font-medium text-foreground">{defect.name}</span>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      label: 'Status',
+      render: (defect) => getDefectStatusBadge(defect.status),
+    },
+    {
+      key: 'priority',
+      header: 'Priority',
+      label: 'Priority',
+      render: (defect) => getDefectPriorityBadge(defect.priority),
+    },
+    {
+      key: 'severity',
+      header: 'Severity',
+      label: 'Severity',
+      render: (defect) => getDefectSeverityBadge(defect.severity),
+    },
+    {
+      key: 'assetName',
+      header: 'Asset',
+      label: 'Asset',
+      render: (defect) => (
+        <span className="text-muted-foreground">{defect.assetName || '—'}</span>
+      ),
+    },
+    {
+      key: 'driverName',
+      header: 'Driver',
+      label: 'Driver',
+      render: (defect) => (
+        <span className="text-muted-foreground">{defect.driverName || '—'}</span>
+      ),
+    },
+    {
+      key: 'date',
+      header: 'Date',
+      label: 'Date',
+      render: (defect) => (
+        <span className="text-muted-foreground">
+          {defect.date ? new Date(defect.date).toLocaleDateString() : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'comment',
+      header: 'Comment',
+      label: 'Comment',
+      render: (defect) =>
+        defect.comment ? (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-muted-foreground truncate max-w-[200px] inline-block cursor-default">
+                  {defect.comment}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs whitespace-pre-wrap">
+                {defect.comment}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      align: 'right',
+      render: (defect) => (
+        <div className="flex items-center justify-end">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => handleRemoveDefectFromTeam(defect.id)}
+            className="text-destructive hover:text-destructive"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="flex h-full">
       {/* Left Sidebar */}
@@ -891,9 +1442,28 @@ export function TeamPage() {
 
           {/* Users tab (specific team selected) */}
           {selectedTeamId && activeTab === 'Users' && (
-            <div className="flex items-center justify-center h-40 rounded-lg border bg-card text-muted-foreground">
-              Users coming soon
-            </div>
+            <>
+              <DataTableToolbar
+                columns={teamUserColumns}
+                hiddenColumnKeys={teamUsersTable.hiddenColumnKeys}
+                onHiddenColumnKeysChange={teamUsersTable.setHiddenColumnKeys}
+                density={teamUsersTable.density}
+                onDensityChange={teamUsersTable.setDensity}
+              />
+              <DataTable<UserRow>
+                columns={teamUserColumns}
+                data={teamUsers}
+                pagination={teamUsersPagination}
+                loading={teamUsersLoading}
+                rowsPerPage={teamUsersRowsPerPage}
+                onPageChange={fetchTeamUsers}
+                onRowsPerPageChange={setTeamUsersRowsPerPage}
+                rowKey={(u) => u.id}
+                density={teamUsersTable.density}
+                hiddenColumnKeys={teamUsersTable.hiddenColumnKeys}
+                emptyMessage='No users assigned. Click "Add Users" to assign users to this team.'
+              />
+            </>
           )}
 
           {/* Assets tab */}
@@ -952,8 +1522,38 @@ export function TeamPage() {
             </>
           )}
 
+          {/* Defects tab */}
+          {selectedTeamId && activeTab === 'Defects' && (
+            <>
+              <DataTableToolbar
+                columns={teamDefectColumns}
+                hiddenColumnKeys={teamDefectsTable.hiddenColumnKeys}
+                onHiddenColumnKeysChange={teamDefectsTable.setHiddenColumnKeys}
+                density={teamDefectsTable.density}
+                onDensityChange={teamDefectsTable.setDensity}
+                filterDefs={teamDefectFilterDefs}
+                filters={teamDefectsTable.filters}
+                onFilterChange={teamDefectsTable.setFilter}
+                onFiltersClear={teamDefectsTable.clearFilters}
+              />
+              <DataTable<DefectRow>
+                columns={teamDefectColumns}
+                data={filteredTeamDefects}
+                pagination={teamDefectsPagination}
+                loading={teamDefectsLoading}
+                rowsPerPage={teamDefectsRowsPerPage}
+                onPageChange={fetchTeamDefects}
+                onRowsPerPageChange={setTeamDefectsRowsPerPage}
+                rowKey={(d) => d.id}
+                density={teamDefectsTable.density}
+                hiddenColumnKeys={teamDefectsTable.hiddenColumnKeys}
+                emptyMessage='No defects assigned. Click "Add Defects" to assign defects to this team.'
+              />
+            </>
+          )}
+
           {/* Other tabs */}
-          {selectedTeamId && activeTab !== 'Users' && activeTab !== 'Assets' && activeTab !== 'Drivers' && (
+          {selectedTeamId && activeTab !== 'Users' && activeTab !== 'Assets' && activeTab !== 'Drivers' && activeTab !== 'Defects' && (
             <div className="flex items-center justify-center h-40 rounded-lg border bg-card text-muted-foreground">
               {activeTab} coming soon
             </div>
@@ -1170,6 +1770,172 @@ export function TeamPage() {
             </Button>
             <Button onClick={handleAddDrivers} disabled={addingDrivers || selectedDriverIds.size === 0}>
               {addingDrivers ? 'Adding...' : `Add Drivers (${selectedDriverIds.size})`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Users Dialog */}
+      <Dialog open={addUsersDialogOpen} onOpenChange={setAddUsersDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Add Users</DialogTitle>
+            <DialogDescription>Select the users to add to the team.</DialogDescription>
+          </DialogHeader>
+
+          <SearchInput
+            value={allUsersSearch}
+            onChange={setAllUsersSearch}
+            placeholder="Search users..."
+          />
+
+          <div className="rounded-lg border overflow-hidden mt-2 max-h-[400px] overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0">
+                <tr className="border-b bg-muted/50">
+                  <th className="w-10 px-4 py-3" />
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3">Name</th>
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3">Email</th>
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3">Role</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allUsersLoading ? (
+                  <TableSkeleton columns={4} rows={5} />
+                ) : allUsers.length === 0 ? (
+                  <tr><td colSpan={4} className="text-center py-8 text-muted-foreground">No users found</td></tr>
+                ) : (
+                  allUsers.map((user) => {
+                    const isAlreadyInTeam = selectedTeamId ? user.teamIds?.includes(selectedTeamId) : false;
+                    const isSelected = selectedUserIds.has(user.id);
+                    return (
+                      <tr
+                        key={user.id}
+                        className={cn(
+                          'border-b last:border-0 transition-colors cursor-pointer',
+                          isSelected ? 'bg-primary/5' : 'hover:bg-muted/30',
+                          isAlreadyInTeam && 'opacity-50',
+                        )}
+                        onClick={() => { if (!isAlreadyInTeam) toggleUserSelection(user.id); }}
+                      >
+                        <td className="px-4 py-3">
+                          <Checkbox
+                            checked={isSelected || isAlreadyInTeam}
+                            disabled={isAlreadyInTeam}
+                            onCheckedChange={() => { if (!isAlreadyInTeam) toggleUserSelection(user.id); }}
+                          />
+                        </td>
+                        <td className="px-4 py-3 font-medium text-foreground">
+                          {user.firstName} {user.lastName}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{user.email || '—'}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{user.roleName || '—'}</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <TablePagination
+            page={allUsersPagination.page}
+            limit={allUsersRowsPerPage}
+            total={allUsersPagination.total}
+            onPageChange={fetchAllUsers}
+            onRowsPerPageChange={setAllUsersRowsPerPage}
+          />
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddUsersDialogOpen(false)} disabled={addingUsers}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddUsers} disabled={addingUsers || selectedUserIds.size === 0}>
+              {addingUsers ? 'Adding...' : `Add Users (${selectedUserIds.size})`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Defects Dialog */}
+      <Dialog open={addDefectsDialogOpen} onOpenChange={setAddDefectsDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Add Defects</DialogTitle>
+            <DialogDescription>Select the defects to add to the team.</DialogDescription>
+          </DialogHeader>
+
+          <SearchInput
+            value={allDefectsSearch}
+            onChange={setAllDefectsSearch}
+            placeholder="Search defects..."
+          />
+
+          <div className="rounded-lg border overflow-hidden mt-2 max-h-[400px] overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0">
+                <tr className="border-b bg-muted/50">
+                  <th className="w-10 px-4 py-3" />
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3">Defect #</th>
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3">Name</th>
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3">Status</th>
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3">Teams</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allDefectsLoading ? (
+                  <TableSkeleton columns={5} rows={5} />
+                ) : allDefects.length === 0 ? (
+                  <tr><td colSpan={5} className="text-center py-8 text-muted-foreground">No defects found</td></tr>
+                ) : (
+                  allDefects.map((defect) => {
+                    const isAlreadyInTeam = selectedTeamId ? defect.teamIds?.includes(selectedTeamId) : false;
+                    const isSelected = selectedDefectIds.has(defect.id);
+                    return (
+                      <tr
+                        key={defect.id}
+                        className={cn(
+                          'border-b last:border-0 transition-colors cursor-pointer',
+                          isSelected ? 'bg-primary/5' : 'hover:bg-muted/30',
+                          isAlreadyInTeam && 'opacity-50',
+                        )}
+                        onClick={() => { if (!isAlreadyInTeam) toggleDefectSelection(defect.id); }}
+                      >
+                        <td className="px-4 py-3">
+                          <Checkbox
+                            checked={isSelected || isAlreadyInTeam}
+                            disabled={isAlreadyInTeam}
+                            onCheckedChange={() => { if (!isAlreadyInTeam) toggleDefectSelection(defect.id); }}
+                          />
+                        </td>
+                        <td className="px-4 py-3 font-medium text-foreground">{defect.defectNumber}</td>
+                        <td className="px-4 py-3 font-medium text-foreground">{defect.name}</td>
+                        <td className="px-4 py-3">{getDefectStatusBadge(defect.status)}</td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {defect.teamNames?.length > 0 ? defect.teamNames.join(', ') : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <TablePagination
+            page={allDefectsPagination.page}
+            limit={allDefectsRowsPerPage}
+            total={allDefectsPagination.total}
+            onPageChange={fetchAllDefects}
+            onRowsPerPageChange={setAllDefectsRowsPerPage}
+          />
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddDefectsDialogOpen(false)} disabled={addingDefects}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddDefects} disabled={addingDefects || selectedDefectIds.size === 0}>
+              {addingDefects ? 'Adding...' : `Add Defects (${selectedDefectIds.size})`}
             </Button>
           </DialogFooter>
         </DialogContent>
