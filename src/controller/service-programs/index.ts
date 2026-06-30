@@ -7,10 +7,10 @@ import { getServiceProgramsCollection } from '@/lib/mongodb';
 import { validateCreateServiceProgramInput, serializeServiceProgram } from './utils';
 import type { CreateServiceProgramInput, UpdateServiceProgramInput } from './types';
 
-/** List service programs with pagination, search, and optional category filter. */
+/** List service programs with pagination, search. */
 export async function getAllServicePrograms(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; category?: string },
+  options: { page?: number; limit?: number; search?: string },
 ) {
   const collection = await getServiceProgramsCollection();
   const page = Math.max(1, options.page || 1);
@@ -24,14 +24,7 @@ export async function getAllServicePrograms(
 
   if (options.search) {
     const regex = { $regex: options.search, $options: 'i' };
-    filter.$or = [
-      { title: regex },
-      { description: regex },
-    ];
-  }
-
-  if (options.category) {
-    filter.category = options.category;
+    filter.$or = [{ title: regex }];
   }
 
   const [items, total] = await Promise.all([
@@ -58,6 +51,50 @@ export async function getServiceProgramById(tenantId: string, programId: string)
   return serializeServiceProgram(doc);
 }
 
+/** Build the interval sub-document from input. */
+function buildIntervalDoc(input: CreateServiceProgramInput['interval']) {
+  if (!input) return { type: 'repeat' };
+  const doc: Record<string, unknown> = { type: input.type || 'repeat' };
+
+  if (input.type === 'repeat') {
+    if (input.mileage) doc.mileage = { enabled: !!input.mileage.enabled, every: input.mileage.every || 0 };
+    if (input.engineHours) doc.engineHours = { enabled: !!input.engineHours.enabled, every: input.engineHours.every || 0 };
+    if (input.calendar) doc.calendar = { enabled: !!input.calendar.enabled, every: input.calendar.every || 0, unit: input.calendar.unit || 'day' };
+
+    if (input.ends) {
+      const ends: Record<string, unknown> = { type: input.ends.type || 'never' };
+      if (input.ends.type === 'on' && input.ends.date) ends.date = new Date(input.ends.date);
+      if (input.ends.type === 'after' && input.ends.occurrences) ends.occurrences = input.ends.occurrences;
+      doc.ends = ends;
+    }
+  }
+
+  if (input.type === 'one_time') {
+    if (input.dueMileage) doc.dueMileage = { enabled: !!input.dueMileage.enabled, mode: input.dueMileage.mode || 'at', value: input.dueMileage.value || 0 };
+    if (input.dueEngineHours) doc.dueEngineHours = { enabled: !!input.dueEngineHours.enabled, mode: input.dueEngineHours.mode || 'at', value: input.dueEngineHours.value || 0 };
+    if (input.dueOnDate) doc.dueOnDate = { enabled: !!input.dueOnDate.enabled, date: input.dueOnDate.date ? new Date(input.dueOnDate.date) : undefined };
+  }
+
+  return doc;
+}
+
+/** Build the reminders sub-document from input. */
+function buildRemindersDoc(input: CreateServiceProgramInput['reminders']) {
+  if (!input) return { autoCreateWorkOrder: false, channels: [], recipientSelf: false };
+  const doc: Record<string, unknown> = {
+    autoCreateWorkOrder: input.autoCreateWorkOrder ?? false,
+    channels: input.channels || [],
+    recipientSelf: input.recipientSelf ?? false,
+  };
+  if (input.thresholdMileage) doc.thresholdMileage = { enabled: !!input.thresholdMileage.enabled, value: input.thresholdMileage.value || 0 };
+  if (input.thresholdEngineHours) doc.thresholdEngineHours = { enabled: !!input.thresholdEngineHours.enabled, value: input.thresholdEngineHours.value || 0 };
+  if (input.thresholdCalendar) doc.thresholdCalendar = { enabled: !!input.thresholdCalendar.enabled, value: input.thresholdCalendar.value || 0, unit: input.thresholdCalendar.unit || 'day' };
+  if (input.autoCreateWorkOrder && input.mechanicId) {
+    doc.mechanicId = ObjectId.createFromHexString(input.mechanicId);
+  }
+  return doc;
+}
+
 /** Create a new service program. */
 export async function createServiceProgram(
   tenantId: string,
@@ -77,16 +114,10 @@ export async function createServiceProgram(
   const doc: Record<string, unknown> = {
     tenantId: tenantOid,
     title: input.title.trim(),
-    description: input.description?.trim() || undefined,
-    category: input.category || 'scheduled_maintenance',
     serviceTaskIds: (input.serviceTaskIds || []).map((id) => ObjectId.createFromHexString(id)),
-    triggers: (input.triggers || []).map((t) => ({
-      triggerType: t.triggerType,
-      intervalType: t.intervalType,
-      interval: t.interval,
-      timeUnit: t.timeUnit || undefined,
-      reminderThreshold: t.reminderThreshold ?? undefined,
-    })),
+    interval: buildIntervalDoc(input.interval),
+    assetIds: (input.assetIds || []).map((id) => ObjectId.createFromHexString(id)),
+    reminders: buildRemindersDoc(input.reminders),
 
     createdBy: userOid,
     updatedBy: userOid,
@@ -135,19 +166,20 @@ export async function updateServiceProgram(
     $set.title = trimmed;
   }
 
-  if (input.description !== undefined) $set.description = input.description?.trim() || undefined;
-  if (input.category !== undefined) $set.category = input.category;
   if (input.serviceTaskIds !== undefined) {
     $set.serviceTaskIds = (input.serviceTaskIds || []).map((id) => ObjectId.createFromHexString(id));
   }
-  if (input.triggers !== undefined) {
-    $set.triggers = (input.triggers || []).map((t) => ({
-      triggerType: t.triggerType,
-      intervalType: t.intervalType,
-      interval: t.interval,
-      timeUnit: t.timeUnit || undefined,
-      reminderThreshold: t.reminderThreshold ?? undefined,
-    }));
+
+  if (input.interval !== undefined) {
+    $set.interval = buildIntervalDoc(input.interval);
+  }
+
+  if (input.assetIds !== undefined) {
+    $set.assetIds = (input.assetIds || []).map((id) => ObjectId.createFromHexString(id));
+  }
+
+  if (input.reminders !== undefined) {
+    $set.reminders = buildRemindersDoc(input.reminders);
   }
 
   await collection.updateOne({ _id: programOid, tenantId: tenantOid }, { $set });
@@ -200,10 +232,10 @@ export async function duplicateServiceProgram(tenantId: string, userId: string, 
   const doc: Record<string, unknown> = {
     tenantId: tenantOid,
     title: `${original.title} (Copy)`,
-    description: original.description || undefined,
-    category: original.category,
     serviceTaskIds: original.serviceTaskIds || [],
-    triggers: original.triggers || [],
+    interval: original.interval || { type: 'repeat' },
+    assetIds: original.assetIds || [],
+    reminders: original.reminders || { autoCreateWorkOrder: false, channels: [], recipientSelf: false },
 
     createdBy: userOid,
     updatedBy: userOid,

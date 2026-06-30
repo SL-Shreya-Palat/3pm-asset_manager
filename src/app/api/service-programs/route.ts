@@ -1,5 +1,5 @@
 /**
- * GET  /api/service-programs -- List service programs with pagination/search/category
+ * GET  /api/service-programs -- List service programs with pagination/search
  * POST /api/service-programs -- Create a new service program
  */
 import { NextRequest, NextResponse } from 'next/server';
@@ -16,9 +16,8 @@ export async function GET(request: NextRequest) {
   const page = parseInt(searchParams.get('page') || '1', 10);
   const limit = parseInt(searchParams.get('limit') || '25', 10);
   const search = searchParams.get('search') || undefined;
-  const category = searchParams.get('category') || undefined;
 
-  const result = await getAllServicePrograms(user.currentTenantId, { page, limit, search, category });
+  const result = await getAllServicePrograms(user.currentTenantId, { page, limit, search });
   return NextResponse.json({ data: result, error: null });
 }
 

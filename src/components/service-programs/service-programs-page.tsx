@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   Plus,
@@ -15,7 +16,6 @@ import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/ui/search-input';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
-import type { DataTableFilterDef } from '@/components/ui/data-table.types';
 import {
   Dialog,
   DialogContent,
@@ -25,40 +25,19 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
-import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
-import { ServiceProgramForm } from './service-program-form';
 import type { ServiceProgramRow, Pagination } from './types';
 
-const CATEGORY_LABELS: Record<string, string> = {
-  scheduled_maintenance: 'Scheduled',
-  unscheduled_maintenance: 'Unscheduled',
-  inspections: 'Inspections',
-  custom: 'Custom',
+const CALENDAR_UNIT_LABELS: Record<string, string> = {
+  day: 'day',
+  week: 'week',
+  month: 'month',
+  year: 'year',
 };
-
-const TRIGGER_TYPE_LABELS: Record<string, string> = {
-  time: 'Time',
-  distance: 'Distance',
-  engine_hours: 'Engine Hours',
-};
-
-const CATEGORY_FILTER: DataTableFilterDef[] = [
-  {
-    columnKey: 'category',
-    label: 'Category',
-    type: 'select',
-    options: [
-      { label: 'Scheduled', value: 'scheduled_maintenance' },
-      { label: 'Unscheduled', value: 'unscheduled_maintenance' },
-      { label: 'Inspections', value: 'inspections' },
-      { label: 'Custom', value: 'custom' },
-    ],
-  },
-];
 
 export function ServiceProgramsPage() {
+  const router = useRouter();
   const [programs, setPrograms] = useState<ServiceProgramRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1, limit: 25, total: 0, hasMore: false,
@@ -74,13 +53,7 @@ export function ServiceProgramsPage() {
   const {
     hiddenColumnKeys, setHiddenColumnKeys,
     density, setDensity,
-    filters, setFilter, clearFilters,
   } = useDataTable();
-
-  // Panel state
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [panelMode, setPanelMode] = useState<'create' | 'edit'>('create');
-  const [editingProgram, setEditingProgram] = useState<ServiceProgramRow | null>(null);
 
   // View dialog
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
@@ -115,11 +88,6 @@ export function ServiceProgramsPage() {
       params.set('limit', String(rowsPerPage));
       if (debouncedSearch) params.set('search', debouncedSearch);
 
-      const categoryFilter = filters.category;
-      if (categoryFilter && Array.isArray(categoryFilter) && categoryFilter.length === 1) {
-        params.set('category', categoryFilter[0]);
-      }
-
       const res = await axios.get(`/api/service-programs?${params.toString()}`, { withCredentials: true });
       const data = res.data.data;
       setPrograms(data.items || []);
@@ -130,7 +98,7 @@ export function ServiceProgramsPage() {
     } finally {
       setLoading(false);
     }
-  }, [rowsPerPage, debouncedSearch, filters.category]);
+  }, [rowsPerPage, debouncedSearch]);
 
   useEffect(() => {
     fetchTaskMap();
@@ -139,30 +107,6 @@ export function ServiceProgramsPage() {
   useEffect(() => {
     fetchPrograms(1);
   }, [fetchPrograms]);
-
-  // ── Panel handlers ──
-  const handleOpenCreate = () => {
-    setEditingProgram(null);
-    setPanelMode('create');
-    setPanelOpen(true);
-  };
-
-  const handleOpenEdit = (program: ServiceProgramRow) => {
-    setEditingProgram(program);
-    setPanelMode('edit');
-    setPanelOpen(true);
-  };
-
-  const handleClosePanel = () => {
-    setPanelOpen(false);
-    setEditingProgram(null);
-  };
-
-  const handleSaved = () => {
-    handleClosePanel();
-    fetchPrograms(panelMode === 'create' ? 1 : pagination.page);
-    fetchTaskMap(); // Refresh in case new tasks were created
-  };
 
   // ── View dialog ──
   const handleOpenView = (program: ServiceProgramRow) => {
@@ -202,17 +146,27 @@ export function ServiceProgramsPage() {
   };
 
   // ── Helpers ──
-  const getTriggerSummary = (program: ServiceProgramRow): string => {
-    if (!program.triggers || program.triggers.length === 0) return 'No triggers';
-    return program.triggers
-      .map((t) => {
-        const typeLabel = TRIGGER_TYPE_LABELS[t.triggerType] || t.triggerType;
-        if (t.triggerType === 'time' && t.timeUnit) {
-          return `${t.interval} ${t.timeUnit}`;
-        }
-        return `${t.interval} ${typeLabel.toLowerCase()}`;
-      })
-      .join(', ');
+  const getIntervalSummary = (program: ServiceProgramRow): string => {
+    const iv = program.interval;
+    if (!iv) return '—';
+    if (iv.type === 'repeat') {
+      const parts: string[] = [];
+      if (iv.mileage?.enabled && iv.mileage.every) parts.push(`${iv.mileage.every} mi`);
+      if (iv.engineHours?.enabled && iv.engineHours.every) parts.push(`${iv.engineHours.every} hrs`);
+      if (iv.calendar?.enabled && iv.calendar.every) {
+        const unit = CALENDAR_UNIT_LABELS[iv.calendar.unit] || iv.calendar.unit;
+        parts.push(`${iv.calendar.every} ${unit}${iv.calendar.every !== 1 ? 's' : ''}`);
+      }
+      return parts.length > 0 ? `Every ${parts.join(' / ')}` : 'Repeat';
+    }
+    if (iv.type === 'one_time') {
+      const parts: string[] = [];
+      if (iv.dueMileage?.enabled && iv.dueMileage.value) parts.push(`${iv.dueMileage.mode === 'in' ? 'In' : 'At'} ${iv.dueMileage.value} mi`);
+      if (iv.dueEngineHours?.enabled && iv.dueEngineHours.value) parts.push(`${iv.dueEngineHours.mode === 'in' ? 'In' : 'At'} ${iv.dueEngineHours.value} hrs`);
+      if (iv.dueOnDate?.enabled && iv.dueOnDate.date) parts.push(`On ${new Date(iv.dueOnDate.date).toLocaleDateString()}`);
+      return parts.length > 0 ? parts.join(' / ') : 'One Time';
+    }
+    return 'Repeat';
   };
 
   // ── Column definitions ──
@@ -232,16 +186,6 @@ export function ServiceProgramsPage() {
       ),
     },
     {
-      key: 'category',
-      header: 'Category',
-      label: 'Category',
-      render: (program) => (
-        <Badge variant="secondary" className="capitalize text-xs">
-          {CATEGORY_LABELS[program.category] || program.category}
-        </Badge>
-      ),
-    },
-    {
       key: 'serviceTasks',
       header: 'Service Tasks',
       label: 'Service Tasks',
@@ -254,22 +198,24 @@ export function ServiceProgramsPage() {
       ),
     },
     {
-      key: 'triggers',
-      header: 'Triggers',
-      label: 'Triggers',
+      key: 'interval',
+      header: 'Interval',
+      label: 'Interval',
       render: (program) => (
         <span className="text-muted-foreground text-sm">
-          {getTriggerSummary(program)}
+          {getIntervalSummary(program)}
         </span>
       ),
     },
     {
-      key: 'description',
-      header: 'Description',
-      label: 'Description',
+      key: 'assets',
+      header: 'Assets',
+      label: 'Assets',
       render: (program) => (
-        <span className="text-muted-foreground truncate max-w-[200px] inline-block">
-          {program.description || '—'}
+        <span className="text-muted-foreground">
+          {program.assetIds.length === 0
+            ? '—'
+            : `${program.assetIds.length} asset${program.assetIds.length !== 1 ? 's' : ''}`}
         </span>
       ),
     },
@@ -282,7 +228,7 @@ export function ServiceProgramsPage() {
           <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenView(program)}>
             <Eye className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleOpenEdit(program)}>
+          <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => router.push(`/maintenance/service-programs/${program.id}/edit`)}>
             <Pencil className="h-4 w-4" />
           </Button>
           <Button variant="ghost" size="icon-sm" className="cursor-pointer" onClick={() => handleDuplicate(program)}>
@@ -297,87 +243,55 @@ export function ServiceProgramsPage() {
   ];
 
   return (
-    <div className="relative flex h-full">
-      {/* Left — Main content */}
-      <div className="flex flex-col flex-1 min-w-0">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-4">
-          <h1 className="text-2xl font-semibold text-foreground">
-            Service Programs
-            <span className="text-muted-foreground font-normal ml-2">({pagination.total})</span>
-          </h1>
-          <Button onClick={handleOpenCreate}>
-            <Plus className="h-4 w-4" />
-            Add Program
-          </Button>
-        </div>
-
-        {/* Search */}
-        <div className="px-6 pb-4">
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            placeholder="Search service programs..."
-          />
-        </div>
-
-        {/* Toolbar + Table */}
-        <div className="flex-1 overflow-auto px-6 pb-6">
-          <DataTableToolbar
-            columns={programColumns}
-            hiddenColumnKeys={hiddenColumnKeys}
-            onHiddenColumnKeysChange={setHiddenColumnKeys}
-            density={density}
-            onDensityChange={setDensity}
-            filterDefs={CATEGORY_FILTER}
-            filters={filters}
-            onFilterChange={setFilter}
-            onFiltersClear={clearFilters}
-          />
-          <DataTable<ServiceProgramRow>
-            columns={programColumns}
-            data={programs}
-            pagination={pagination}
-            loading={loading}
-            rowsPerPage={rowsPerPage}
-            onPageChange={fetchPrograms}
-            onRowsPerPageChange={setRowsPerPage}
-            onRowClick={handleOpenView}
-            rowKey={(p) => p.id}
-            density={density}
-            hiddenColumnKeys={hiddenColumnKeys}
-            emptyMessage={
-              debouncedSearch
-                ? 'No service programs match your search.'
-                : 'No service programs yet. Click "Add Program" to create one.'
-            }
-          />
-        </div>
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 pt-6 pb-4">
+        <h1 className="text-2xl font-semibold text-foreground">
+          Service Programs
+          <span className="text-muted-foreground font-normal ml-2">({pagination.total})</span>
+        </h1>
+        <Button onClick={() => router.push('/maintenance/service-programs/new')}>
+          <Plus className="h-4 w-4" />
+          Add Program
+        </Button>
       </div>
 
-      {/* Overlay backdrop */}
-      {panelOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 transition-opacity"
-          onClick={handleClosePanel}
+      {/* Search */}
+      <div className="px-6 pb-4">
+        <SearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search service programs..."
         />
-      )}
+      </div>
 
-      {/* Right Panel — Service Program Form (slide-out) */}
-      <div
-        className={cn(
-          'fixed top-0 right-0 z-50 h-full w-[460px] border-l border-border bg-background transition-transform duration-300',
-          panelOpen ? 'translate-x-0' : 'translate-x-full',
-        )}
-      >
-        {panelOpen && (
-          <ServiceProgramForm
-            mode={panelMode}
-            program={editingProgram}
-            onClose={handleClosePanel}
-            onSaved={handleSaved}
-          />
-        )}
+      {/* Toolbar + Table */}
+      <div className="flex-1 overflow-auto px-6 pb-6">
+        <DataTableToolbar
+          columns={programColumns}
+          hiddenColumnKeys={hiddenColumnKeys}
+          onHiddenColumnKeysChange={setHiddenColumnKeys}
+          density={density}
+          onDensityChange={setDensity}
+        />
+        <DataTable<ServiceProgramRow>
+          columns={programColumns}
+          data={programs}
+          pagination={pagination}
+          loading={loading}
+          rowsPerPage={rowsPerPage}
+          onPageChange={fetchPrograms}
+          onRowsPerPageChange={setRowsPerPage}
+          onRowClick={handleOpenView}
+          rowKey={(p) => p.id}
+          density={density}
+          hiddenColumnKeys={hiddenColumnKeys}
+          emptyMessage={
+            debouncedSearch
+              ? 'No service programs match your search.'
+              : 'No service programs yet. Click "Add Program" to create one.'
+          }
+        />
       </div>
 
       {/* View Service Program Dialog */}
@@ -399,7 +313,7 @@ export function ServiceProgramsPage() {
               variant="outline"
               onClick={() => {
                 setViewDialogOpen(false);
-                if (viewProgram) handleOpenEdit(viewProgram);
+                if (viewProgram) router.push(`/maintenance/service-programs/${viewProgram.id}/edit`);
               }}
             >
               <Pencil className="h-4 w-4 mr-1" />
@@ -439,6 +353,9 @@ function ViewServiceProgramContent({
   program: ServiceProgramRow;
   taskMap: Record<string, string>;
 }) {
+  const iv = program.interval;
+  const rm = program.reminders;
+
   return (
     <div className="space-y-6">
       {/* Details */}
@@ -447,11 +364,6 @@ function ViewServiceProgramContent({
         <Separator className="mb-4" />
         <div className="space-y-4">
           <ViewField label="Title" value={program.title} />
-          <ViewField label="Description" value={program.description} />
-          <ViewField
-            label="Category"
-            value={CATEGORY_LABELS[program.category] || program.category}
-          />
         </div>
       </div>
 
@@ -478,49 +390,102 @@ function ViewServiceProgramContent({
         )}
       </div>
 
-      {/* Triggers */}
+      {/* Interval */}
       <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Intervals / Triggers</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-3">Interval</h3>
         <Separator className="mb-4" />
-        {(!program.triggers || program.triggers.length === 0) ? (
-          <p className="text-sm text-muted-foreground">No triggers configured.</p>
-        ) : (
-          <div className="space-y-3">
-            {program.triggers.map((trigger, idx) => (
-              <div
-                key={idx}
-                className="rounded-md border border-border p-3 space-y-1"
-              >
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="text-xs capitalize">
-                    {trigger.intervalType === 'one_time' ? 'One Time' : 'Repeat'}
-                  </Badge>
-                  <Badge variant="outline" className="text-xs">
-                    {TRIGGER_TYPE_LABELS[trigger.triggerType] || trigger.triggerType}
-                  </Badge>
-                </div>
-                <p className="text-sm text-foreground">
-                  Every {trigger.interval}{' '}
-                  {trigger.triggerType === 'time'
-                    ? trigger.timeUnit || 'days'
-                    : trigger.triggerType === 'distance'
-                      ? 'miles/km'
-                      : 'hours'}
-                </p>
-                {trigger.reminderThreshold != null && trigger.reminderThreshold > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    Reminder: {trigger.reminderThreshold}{' '}
-                    {trigger.triggerType === 'time'
-                      ? 'days'
-                      : trigger.triggerType === 'distance'
-                        ? 'miles/km'
-                        : 'hours'}{' '}
-                    before due
+        {iv ? (
+          <div className="rounded-md border border-border p-3 space-y-2">
+            <Badge variant="secondary" className="text-xs capitalize">
+              {iv.type === 'one_time' ? 'One Time' : 'Repeat'}
+            </Badge>
+            {iv.type === 'repeat' && (
+              <div className="space-y-1">
+                {iv.mileage?.enabled && iv.mileage.every > 0 && (
+                  <p className="text-sm text-foreground">Every {iv.mileage.every} mi</p>
+                )}
+                {iv.engineHours?.enabled && iv.engineHours.every > 0 && (
+                  <p className="text-sm text-foreground">Every {iv.engineHours.every} hrs</p>
+                )}
+                {iv.calendar?.enabled && iv.calendar.every > 0 && (
+                  <p className="text-sm text-foreground">
+                    Every {iv.calendar.every} {iv.calendar.unit}{iv.calendar.every !== 1 ? 's' : ''}
+                  </p>
+                )}
+                {iv.ends && iv.ends.type !== 'never' && (
+                  <p className="text-sm text-muted-foreground">
+                    {iv.ends.type === 'on' && iv.ends.date
+                      ? `Ends on ${new Date(iv.ends.date).toLocaleDateString()}`
+                      : iv.ends.type === 'after' && iv.ends.occurrences
+                        ? `Ends after ${iv.ends.occurrences} occurrences`
+                        : ''}
                   </p>
                 )}
               </div>
-            ))}
+            )}
+            {iv.type === 'one_time' && (
+              <div className="space-y-1">
+                {iv.dueMileage?.enabled && iv.dueMileage.value > 0 && (
+                  <p className="text-sm text-foreground">{iv.dueMileage.mode === 'in' ? 'In' : 'At'} {iv.dueMileage.value} mi</p>
+                )}
+                {iv.dueEngineHours?.enabled && iv.dueEngineHours.value > 0 && (
+                  <p className="text-sm text-foreground">{iv.dueEngineHours.mode === 'in' ? 'In' : 'At'} {iv.dueEngineHours.value} hrs</p>
+                )}
+                {iv.dueOnDate?.enabled && iv.dueOnDate.date && (
+                  <p className="text-sm text-foreground">On {new Date(iv.dueOnDate.date).toLocaleDateString()}</p>
+                )}
+              </div>
+            )}
           </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No interval configured.</p>
+        )}
+      </div>
+
+      {/* Assets */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground mb-3">Assets</h3>
+        <Separator className="mb-4" />
+        {program.assetIds.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No assets assigned.</p>
+        ) : (
+          <p className="text-sm text-foreground">
+            {program.assetIds.length} asset{program.assetIds.length !== 1 ? 's' : ''} assigned
+          </p>
+        )}
+      </div>
+
+      {/* Reminders */}
+      <div>
+        <h3 className="text-sm font-semibold text-foreground mb-3">Reminders</h3>
+        <Separator className="mb-4" />
+        {rm ? (
+          <div className="space-y-2">
+            {rm.thresholdMileage?.enabled && rm.thresholdMileage.value > 0 && (
+              <ViewField label="Threshold (Mileage)" value={`${rm.thresholdMileage.value} mi before due`} />
+            )}
+            {rm.thresholdEngineHours?.enabled && rm.thresholdEngineHours.value > 0 && (
+              <ViewField label="Threshold (Engine Hours)" value={`${rm.thresholdEngineHours.value} hrs before due`} />
+            )}
+            {rm.thresholdCalendar?.enabled && rm.thresholdCalendar.value > 0 && (
+              <ViewField label="Threshold (Calendar)" value={`${rm.thresholdCalendar.value} ${rm.thresholdCalendar.unit}${rm.thresholdCalendar.value !== 1 ? 's' : ''} before due`} />
+            )}
+            <ViewField
+              label="Auto create work order"
+              value={rm.autoCreateWorkOrder ? 'Yes' : 'No'}
+            />
+            {rm.recipientSelf && (
+              <ViewField label="Recipients" value="Myself" />
+            )}
+            {rm.channels.length > 0 && (
+              <ViewField
+                label="Channels"
+                value={rm.channels.map((c) => c.charAt(0).toUpperCase() + c.slice(1)).join(', ')}
+              />
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No reminders configured.</p>
         )}
       </div>
     </div>
