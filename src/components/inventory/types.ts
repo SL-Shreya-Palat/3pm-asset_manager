@@ -1,0 +1,42 @@
+/** Frontend types for the inventory (parts) module. */
+
+export interface PartVendorRow {
+  vendorId: string;
+  unitCost: number;
+}
+
+export interface StockLocationRow {
+  locationId: string;
+  quantity: number;
+}
+
+export interface PartRow {
+  id: string;
+  name: string;
+  partNumber: string;
+  upc?: string;
+  description?: string;
+  photoUrl?: string;
+  manufacturerId?: string;
+  measurementUnitId?: string;
+  categoryId?: string;
+  reorderPoint?: number;
+  maximumQuantity?: number;
+  vendors: PartVendorRow[];
+  stockLocations: StockLocationRow[];
+  createdAt: string;
+}
+
+/** Lookup option for settings dropdowns. */
+export interface LookupOption {
+  id: string;
+  name: string;
+  symbol?: string;
+}
+
+export interface Pagination {
+  page: number;
+  limit: number;
+  total: number;
+  hasMore: boolean;
+}
