@@ -1,11 +1,12 @@
 /**
  * Service due-status engine (query-time, no scheduler — matches Whip Around v1).
  *
- * For each program assigned to an asset we compute, per trigger, whether the
- * service is `ok` / `due_soon` / `overdue` / `unknown`, based on the asset's
- * current meter + today's date vs the interval and the last time the program
- * was performed (derived from serviceHistory, falling back to the asset's
- * last-service fields, then to "now"/current meter so a freshly-assigned
+ * For each program assigned to an asset we compute, per condition, whether the
+ * service is `ok` / `due_soon` / `overdue` / `unknown`, from the program's
+ * `interval` (repeat: mileage / engine-hours / calendar — or one-time conditions)
+ * + `reminders` thresholds, vs the asset's current meter / today's date and the
+ * last time the program was performed (from serviceHistory, falling back to the
+ * asset's last-service fields, then to "now"/current meter so a freshly-assigned
  * program never reads as already overdue).
  */
 import { ObjectId } from 'mongodb';
@@ -17,12 +18,25 @@ import {
 
 export type ServiceStatus = 'ok' | 'due_soon' | 'overdue' | 'unknown';
 
-interface Trigger {
-  triggerType: string;
-  intervalType: string;
-  interval: number;
-  timeUnit?: string;
-  reminderThreshold?: number;
+interface MeterCondition { enabled?: boolean; every?: number }
+interface CalendarCondition { enabled?: boolean; every?: number; unit?: string }
+interface OneTimeMeter { enabled?: boolean; mode?: string; value?: number }
+interface OneTimeDate { enabled?: boolean; date?: Date | string }
+
+interface ProgramInterval {
+  type?: string;
+  mileage?: MeterCondition;
+  engineHours?: MeterCondition;
+  calendar?: CalendarCondition;
+  dueMileage?: OneTimeMeter;
+  dueEngineHours?: OneTimeMeter;
+  dueOnDate?: OneTimeDate;
+}
+
+interface ProgramReminders {
+  thresholdMileage?: { enabled?: boolean; value?: number };
+  thresholdEngineHours?: { enabled?: boolean; value?: number };
+  thresholdCalendar?: { enabled?: boolean; value?: number; unit?: string };
 }
 
 interface Baseline {
@@ -47,72 +61,121 @@ export interface TriggerStatus {
 
 const STATUS_RANK: Record<ServiceStatus, number> = { overdue: 3, due_soon: 2, ok: 1, unknown: 0 };
 
-function addTime(base: Date, interval: number, unit?: string): Date {
+/** Add a calendar interval (day/week/month/year) to a date. */
+function addCalendar(base: Date, every: number, unit?: string): Date {
   const d = new Date(base);
-  if (unit === 'weeks') d.setDate(d.getDate() + interval * 7);
-  else if (unit === 'months') d.setMonth(d.getMonth() + interval);
-  else d.setDate(d.getDate() + interval); // days (default)
+  switch (unit) {
+    case 'week': d.setDate(d.getDate() + every * 7); break;
+    case 'month': d.setMonth(d.getMonth() + every); break;
+    case 'year': d.setFullYear(d.getFullYear() + every); break;
+    default: d.setDate(d.getDate() + every); // day
+  }
   return d;
+}
+
+/** Convert a calendar amount to days (for threshold comparison). */
+function toDays(value: number, unit?: string): number {
+  switch (unit) {
+    case 'week': return value * 7;
+    case 'month': return value * 30;
+    case 'year': return value * 365;
+    default: return value;
+  }
 }
 
 function daysBetween(from: Date, to: Date): number {
   return Math.round((to.getTime() - from.getTime()) / 86_400_000);
 }
 
-function meterStatusOf(remaining: number, threshold: number): ServiceStatus {
+function statusOf(remaining: number, threshold: number): ServiceStatus {
   if (remaining < 0) return 'overdue';
   if (threshold > 0 && remaining <= threshold) return 'due_soon';
   return 'ok';
 }
 
-/** Pure: compute a program's status from its triggers + baseline + current. */
+/** Compute a program's status from its interval + reminders + baseline + current. */
 export function computeProgramStatus(
-  triggers: Trigger[],
+  interval: ProgramInterval | undefined,
+  reminders: ProgramReminders | undefined,
   baseline: Baseline,
   current: Current,
 ): { status: ServiceStatus; triggers: TriggerStatus[] } {
-  const results: TriggerStatus[] = triggers.map((t) => {
-    const threshold = t.reminderThreshold ?? 0;
+  const iv = interval || {};
+  const rm = reminders || {};
+  const results: TriggerStatus[] = [];
 
-    // One-time service already performed → satisfied.
-    if (t.intervalType === 'one_time' && baseline.hasHistory) {
-      return { triggerType: t.triggerType, status: 'ok', label: 'Completed', remaining: null };
+  const mileageThreshold = rm.thresholdMileage?.enabled ? rm.thresholdMileage.value || 0 : 0;
+  const engineThreshold = rm.thresholdEngineHours?.enabled ? rm.thresholdEngineHours.value || 0 : 0;
+  const calendarThresholdDays = rm.thresholdCalendar?.enabled
+    ? toDays(rm.thresholdCalendar.value || 0, rm.thresholdCalendar.unit)
+    : 0;
+
+  const distance = (nextDue: number) => {
+    if (current.odometer == null) {
+      results.push({ triggerType: 'distance', status: 'unknown', label: 'No odometer reading', remaining: null });
+      return;
     }
+    const remaining = nextDue - current.odometer;
+    results.push({
+      triggerType: 'distance',
+      status: statusOf(remaining, mileageThreshold),
+      label: remaining < 0 ? `Overdue by ${-remaining} mi/km` : `Due in ${remaining} mi/km`,
+      remaining,
+    });
+  };
 
-    if (t.triggerType === 'time') {
-      const nextDue = addTime(baseline.lastDate, t.interval, t.timeUnit);
-      const remaining = daysBetween(current.now, nextDue);
-      const status: ServiceStatus = remaining < 0 ? 'overdue' : threshold > 0 && remaining <= threshold ? 'due_soon' : 'ok';
-      const label = remaining < 0 ? `Overdue by ${-remaining} day(s)` : `Due in ${remaining} day(s)`;
-      return { triggerType: t.triggerType, status, label, remaining };
+  const engineHours = (nextDue: number) => {
+    if (current.engineHours == null) {
+      results.push({ triggerType: 'engine_hours', status: 'unknown', label: 'No engine-hours reading', remaining: null });
+      return;
     }
+    const remaining = nextDue - current.engineHours;
+    results.push({
+      triggerType: 'engine_hours',
+      status: statusOf(remaining, engineThreshold),
+      label: remaining < 0 ? `Overdue by ${-remaining} hour(s)` : `Due in ${remaining} hour(s)`,
+      remaining,
+    });
+  };
 
-    if (t.triggerType === 'distance') {
-      if (current.odometer == null) {
-        return { triggerType: t.triggerType, status: 'unknown', label: 'No odometer reading', remaining: null };
-      }
-      const base = baseline.lastOdometer ?? current.odometer;
-      const nextDue = base + t.interval;
-      const remaining = nextDue - current.odometer;
-      const status = meterStatusOf(remaining, threshold);
-      const label = remaining < 0 ? `Overdue by ${-remaining} mi/km` : `Due in ${remaining} mi/km`;
-      return { triggerType: t.triggerType, status, label, remaining };
+  const onDate = (nextDue: Date) => {
+    const remaining = daysBetween(current.now, nextDue);
+    results.push({
+      triggerType: 'time',
+      status: statusOf(remaining, calendarThresholdDays),
+      label: remaining < 0 ? `Overdue by ${-remaining} day(s)` : `Due in ${remaining} day(s)`,
+      remaining,
+    });
+  };
+
+  if (iv.type === 'one_time') {
+    // A one-time service that's already been performed is satisfied.
+    if (baseline.hasHistory) {
+      return { status: 'ok', triggers: [{ triggerType: 'one_time', status: 'ok', label: 'Completed', remaining: null }] };
     }
-
-    if (t.triggerType === 'engine_hours') {
-      if (current.engineHours == null) {
-        return { triggerType: t.triggerType, status: 'unknown', label: 'No engine-hours reading', remaining: null };
-      }
-      const base = baseline.lastEngineHours ?? current.engineHours;
-      const nextDue = base + t.interval;
-      const remaining = nextDue - current.engineHours;
-      const status = meterStatusOf(remaining, threshold);
-      const label = remaining < 0 ? `Overdue by ${-remaining} hour(s)` : `Due in ${remaining} hour(s)`;
-      return { triggerType: t.triggerType, status, label, remaining };
+    if (iv.dueMileage?.enabled) {
+      const base = baseline.lastOdometer ?? current.odometer ?? 0;
+      distance(iv.dueMileage.mode === 'in' ? base + (iv.dueMileage.value || 0) : iv.dueMileage.value || 0);
     }
-
-    return { triggerType: t.triggerType, status: 'unknown', label: '', remaining: null };
-  });
+    if (iv.dueEngineHours?.enabled) {
+      const base = baseline.lastEngineHours ?? current.engineHours ?? 0;
+      engineHours(iv.dueEngineHours.mode === 'in' ? base + (iv.dueEngineHours.value || 0) : iv.dueEngineHours.value || 0);
+    }
+    if (iv.dueOnDate?.enabled && iv.dueOnDate.date) {
+      onDate(new Date(iv.dueOnDate.date));
+    }
+  } else {
+    // Repeat — whichever condition occurs first.
+    if (iv.mileage?.enabled && iv.mileage.every) {
+      distance((baseline.lastOdometer ?? current.odometer ?? 0) + iv.mileage.every);
+    }
+    if (iv.engineHours?.enabled && iv.engineHours.every) {
+      engineHours((baseline.lastEngineHours ?? current.engineHours ?? 0) + iv.engineHours.every);
+    }
+    if (iv.calendar?.enabled && iv.calendar.every) {
+      onDate(addCalendar(baseline.lastDate, iv.calendar.every, iv.calendar.unit));
+    }
+  }
 
   const status = results.reduce<ServiceStatus>(
     (worst, r) => (STATUS_RANK[r.status] > STATUS_RANK[worst] ? r.status : worst),
@@ -181,7 +244,8 @@ export async function getAssetServiceStatus(tenantId: string, assetId: string) {
         };
 
     const { status, triggers } = computeProgramStatus(
-      (program.triggers as Trigger[]) || [],
+      program.interval as ProgramInterval | undefined,
+      program.reminders as ProgramReminders | undefined,
       baseline,
       current,
     );
@@ -193,7 +257,6 @@ export async function getAssetServiceStatus(tenantId: string, assetId: string) {
     return {
       programId,
       title: (program.title as string) || '',
-      category: (program.category as string) || '',
       status,
       triggers,
       serviceTaskIds: ((program.serviceTaskIds as ObjectId[]) || []).map((id) => id.toString()),

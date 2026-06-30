@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/button';
 
 import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/ui/search-input';
+import { PageHeader } from '@/components/ui/page-header';
+import { FilterTabs } from '@/components/ui/filter-tabs';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import {
@@ -259,35 +261,20 @@ export function PurchaseOrdersPage() {
     <div className="relative flex h-full">
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0">
-        <div className="flex items-center justify-between px-6 pt-6 pb-4">
-          <h1 className="text-2xl font-semibold text-foreground">
-            Purchase Orders
-            <span className="text-muted-foreground font-normal ml-2">({pagination.total})</span>
-          </h1>
+        <PageHeader title="Purchase Orders" count={pagination.total}>
           <Button onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             Create PO
           </Button>
-        </div>
+        </PageHeader>
 
         {/* Status Tabs */}
         <div className="px-6 pb-4">
-          <div className="flex gap-1 flex-wrap">
-            {PO_STATUS_TABS.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={cn(
-                  'px-3 py-1.5 text-sm rounded-md transition-colors',
-                  activeTab === tab.key
-                    ? 'bg-primary text-primary-foreground font-medium'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <FilterTabs
+            value={activeTab}
+            onChange={setActiveTab}
+            tabs={PO_STATUS_TABS.map((t) => ({ value: t.key, label: t.label }))}
+          />
         </div>
 
         <div className="px-6 pb-4">

@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/ui/search-input';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
+import { PageHeader } from '@/components/ui/page-header';
 import type { DataTableFilterDef } from '@/components/ui/data-table.types';
 import {
   Dialog,
@@ -273,16 +274,12 @@ export function VendorsPage() {
       {/* Left — Main content */}
       <div className="flex flex-col flex-1 min-w-0">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-6 pb-4">
-          <h1 className="text-2xl font-semibold text-foreground">
-            Vendors
-            <span className="text-muted-foreground font-normal ml-2">({pagination.total})</span>
-          </h1>
+        <PageHeader title="Vendors" count={pagination.total}>
           <Button onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             Add Vendor
           </Button>
-        </div>
+        </PageHeader>
 
         {/* Search */}
         <div className="px-6 pb-4">

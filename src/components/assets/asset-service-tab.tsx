@@ -11,6 +11,7 @@ import axios from 'axios';
 import { Wrench, AlertTriangle, Clock, CheckCircle2, Plus, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { StatCard } from '@/components/ui/stat-card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -103,9 +104,9 @@ export function AssetServiceTab({ assetId }: { assetId: string }) {
     <div>
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <SummaryCard icon={<AlertTriangle className="h-4 w-4" />} label="Overdue" value={summary.overdue} accent="text-red-600" />
-        <SummaryCard icon={<Clock className="h-4 w-4" />} label="Due soon" value={summary.dueSoon} accent="text-amber-600" />
-        <SummaryCard icon={<CheckCircle2 className="h-4 w-4" />} label="Up to date" value={summary.ok} accent="text-emerald-600" />
+        <StatCard icon={<AlertTriangle className="h-4 w-4" />} label="Overdue" value={summary.overdue} accent="text-red-600" />
+        <StatCard icon={<Clock className="h-4 w-4" />} label="Due soon" value={summary.dueSoon} accent="text-amber-600" />
+        <StatCard icon={<CheckCircle2 className="h-4 w-4" />} label="Up to date" value={summary.ok} accent="text-emerald-600" />
       </div>
 
       {/* Programs */}
@@ -190,17 +191,6 @@ export function AssetServiceTab({ assetId }: { assetId: string }) {
           onLogged={handleLogged}
         />
       )}
-    </div>
-  );
-}
-
-function SummaryCard({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: number; accent: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <div className="flex items-center gap-2 text-muted-foreground mb-1">
-        {icon}<span className="text-xs font-medium">{label}</span>
-      </div>
-      <p className={`text-2xl font-semibold ${accent}`}>{value}</p>
     </div>
   );
 }

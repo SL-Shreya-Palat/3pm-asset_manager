@@ -9,10 +9,11 @@ import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { CheckCircle2, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { SearchInput } from '@/components/ui/search-input';
+import { PageHeader } from '@/components/ui/page-header';
+import { FilterTabs } from '@/components/ui/filter-tabs';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import type { DataTablePagination } from '@/components/ui/data-table.types';
@@ -108,51 +109,44 @@ export function InspectionHistory() {
   ];
 
   return (
-    <div className="p-6">
-      <div className="mb-5">
-        <h1 className="text-2xl font-semibold text-foreground">Inspection History</h1>
-        <p className="text-sm text-muted-foreground mt-1">{pagination.total} inspection(s)</p>
+    <div className="flex flex-col h-full">
+      <PageHeader title="Inspection History" count={pagination.total} />
+
+      <div className="px-6 pb-4">
+        <FilterTabs
+          value={result}
+          onChange={setResult}
+          tabs={RESULT_FILTERS.map((f) => ({ value: f.key, label: f.label }))}
+        />
       </div>
 
-      <div className="flex items-center gap-3 mb-4">
-        <div className="flex-1 max-w-xs">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search by number, asset, form…" />
-        </div>
-        <div className="flex gap-1">
-          {RESULT_FILTERS.map((f) => (
-            <Button
-              key={f.key}
-              variant={result === f.key ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setResult(f.key)}
-            >
-              {f.label}
-            </Button>
-          ))}
-        </div>
+      <div className="px-6 pb-4">
+        <SearchInput value={search} onChange={setSearch} placeholder="Search by number, asset, form…" />
       </div>
 
-      <DataTableToolbar
-        columns={columns}
-        hiddenColumnKeys={hiddenColumnKeys}
-        onHiddenColumnKeysChange={setHiddenColumnKeys}
-        density={density}
-        onDensityChange={setDensity}
-      />
-      <DataTable<Row>
-        columns={columns}
-        data={rows}
-        pagination={pagination}
-        loading={loading}
-        rowsPerPage={rowsPerPage}
-        onPageChange={fetchRows}
-        onRowsPerPageChange={setRowsPerPage}
-        onRowClick={(r) => setDetailId(r.id)}
-        rowKey={(r) => r.id}
-        hiddenColumnKeys={hiddenColumnKeys}
-        density={density}
-        emptyMessage="No inspections yet."
-      />
+      <div className="flex-1 overflow-auto px-6 pb-6">
+        <DataTableToolbar
+          columns={columns}
+          hiddenColumnKeys={hiddenColumnKeys}
+          onHiddenColumnKeysChange={setHiddenColumnKeys}
+          density={density}
+          onDensityChange={setDensity}
+        />
+        <DataTable<Row>
+          columns={columns}
+          data={rows}
+          pagination={pagination}
+          loading={loading}
+          rowsPerPage={rowsPerPage}
+          onPageChange={fetchRows}
+          onRowsPerPageChange={setRowsPerPage}
+          onRowClick={(r) => setDetailId(r.id)}
+          rowKey={(r) => r.id}
+          hiddenColumnKeys={hiddenColumnKeys}
+          density={density}
+          emptyMessage="No inspections yet."
+        />
+      </div>
 
       <InspectionDetailDialog id={detailId} onClose={() => setDetailId(null)} />
     </div>

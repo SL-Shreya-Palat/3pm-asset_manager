@@ -26,6 +26,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { PageHeader } from '@/components/ui/page-header';
 import { cn } from '@/lib/utils';
 import {
   Tooltip,
@@ -1383,13 +1384,9 @@ export function TeamPage() {
 
       {/* Right Side */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-6 pt-6 pb-4">
-          <h1 className="text-2xl font-semibold text-foreground">
-            {headerTitle}
-            <span className="text-muted-foreground font-normal ml-2">({headerCount})</span>
-          </h1>
+        <PageHeader title={headerTitle} count={headerCount}>
           {renderHeaderButton()}
-        </div>
+        </PageHeader>
 
         {/* Tabs - only shown when a specific team is selected */}
         {selectedTeamId && (

@@ -16,6 +16,7 @@ import {
 import { InspectFormPickerDialog } from '@/components/inspections/inspect-button';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { PageHeader } from '@/components/ui/page-header';
 import {
   Dialog,
   DialogContent,
@@ -492,18 +493,16 @@ export function AssetTable() {
         onOpenChange={(o) => { if (!o) setInspectAssetId(null); }}
       />
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Assets</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage your fleet vehicles and equipment
-          </p>
-        </div>
+      <PageHeader
+        title="Assets"
+        description="Manage your fleet vehicles and equipment"
+        className="px-0 pt-0 pb-4"
+      >
         <Button onClick={() => router.push('/assets/new')}>
           <Plus className="h-4 w-4" />
           Add Asset
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">

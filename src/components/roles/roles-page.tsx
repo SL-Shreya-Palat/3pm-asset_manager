@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { PageHeader } from '@/components/ui/page-header';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
@@ -193,16 +194,12 @@ export function RolesPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 pt-6 pb-4">
-        <h1 className="text-2xl font-semibold text-foreground">
-          Roles
-          <span className="text-muted-foreground font-normal ml-2">({pagination.total})</span>
-        </h1>
+      <PageHeader title="Roles" count={pagination.total}>
         <Button onClick={() => router.push('/people/roles/new')}>
           <Plus className="h-4 w-4" />
           Add Role
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Search */}
       <div className="px-6 pb-4">

@@ -3,12 +3,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-import { X, Trash2, Upload, FileText, Plus, Package } from 'lucide-react';
+import {
+  X, Trash2, Upload, FileText, Plus, Package,
+  Truck, Wrench, Users, Calendar, Flag, AlignLeft, Paperclip,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Separator } from '@/components/ui/separator';
+import { FormSection } from '@/components/ui/form-section';
 import {
   Select,
   SelectContent,
@@ -436,9 +439,7 @@ export function WorkOrderForm({
         <div className="p-6 space-y-6">
 
           {/* ── Details / Asset ── */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Details</h3>
-            <Separator className="mb-4" />
+          <FormSection icon={Truck} title="Details">
             <div>
               <Label>Asset <span className="text-destructive">*</span></Label>
               <Select value={assetId} onValueChange={(val) => { setAssetId(val); clearFieldError('assetId'); }} disabled={lockAsset}>
@@ -457,12 +458,10 @@ export function WorkOrderForm({
               </Select>
               {fieldErrors.assetId && <p className="text-sm text-destructive mt-1">{fieldErrors.assetId}</p>}
             </div>
-          </div>
+          </FormSection>
 
           {/* ── Items / Service Tasks ── */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Items</h3>
-            <Separator className="mb-4" />
+          <FormSection icon={Wrench} title="Items">
             <div>
               <Label>Items {!isDefectSourced && <span className="text-destructive">*</span>}</Label>
               <div className="mt-1.5 space-y-2">
@@ -501,13 +500,10 @@ export function WorkOrderForm({
                 </button>
               </p>
             </div>
-          </div>
+          </FormSection>
 
           {/* ── Assignee ── */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Assignee</h3>
-            <Separator className="mb-4" />
-
+          <FormSection icon={Users} title="Assignee">
             {/* Tab buttons */}
             <div className="flex gap-1 mb-4">
               {(['vendor', 'mechanic', 'third_party'] as const).map((tab) => (
@@ -688,12 +684,10 @@ export function WorkOrderForm({
                 )}
               </div>
             )}
-          </div>
+          </FormSection>
 
           {/* ── Due Date ── */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Due Date</h3>
-            <Separator className="mb-4" />
+          <FormSection icon={Calendar} title="Due Date">
             <div>
               <Label>Due Date</Label>
               <Input
@@ -703,12 +697,10 @@ export function WorkOrderForm({
                 className="mt-1.5"
               />
             </div>
-          </div>
+          </FormSection>
 
           {/* ── Status ── */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Status</h3>
-            <Separator className="mb-4" />
+          <FormSection icon={Flag} title="Status">
             <div>
               <Label>Choose Status <span className="text-destructive">*</span></Label>
               <Select value={statusId} onValueChange={(val) => { setStatusId(val); clearFieldError('statusId'); }}>
@@ -748,12 +740,10 @@ export function WorkOrderForm({
                 </button>
               </p>
             </div>
-          </div>
+          </FormSection>
 
           {/* ── Description ── */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Description</h3>
-            <Separator className="mb-4" />
+          <FormSection icon={AlignLeft} title="Description">
             <div>
               <Label htmlFor="woDescription">Description</Label>
               <Textarea
@@ -766,13 +756,10 @@ export function WorkOrderForm({
                 className="mt-1.5"
               />
             </div>
-          </div>
+          </FormSection>
 
           {/* ── Parts ── */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Parts</h3>
-            <Separator className="mb-4" />
-
+          <FormSection icon={Package} title="Parts">
             <div className="flex items-end gap-2">
               <div className="flex-1">
                 <Label>Part</Label>
@@ -856,12 +843,13 @@ export function WorkOrderForm({
             <p className="text-xs text-muted-foreground mt-2">
               Added parts are deducted from inventory stock when you save.
             </p>
-          </div>
+          </FormSection>
 
           {/* ── Attachments ── */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-foreground">Attachments</h3>
+          <FormSection
+            icon={Paperclip}
+            title="Attachments"
+            action={
               <Button
                 type="button"
                 variant="outline"
@@ -872,8 +860,8 @@ export function WorkOrderForm({
                 <Upload className="h-3.5 w-3.5 mr-1" />
                 {uploading ? 'Uploading...' : 'Upload'}
               </Button>
-            </div>
-            <Separator className="mb-4" />
+            }
+          >
             <input
               ref={fileInputRef}
               type="file"
@@ -904,7 +892,7 @@ export function WorkOrderForm({
                 </div>
               ))}
             </div>
-          </div>
+          </FormSection>
 
           {/* Error banner */}
           {error && (

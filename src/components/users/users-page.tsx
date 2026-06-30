@@ -21,6 +21,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { PageHeader } from '@/components/ui/page-header';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { InviteUserDialog } from './invite-user-dialog';
 import type { UserRow, Pagination } from './types';
@@ -159,16 +160,12 @@ export function UsersPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 pt-6 pb-4">
-        <h1 className="text-2xl font-semibold text-foreground">
-          Users
-          <span className="text-muted-foreground font-normal ml-2">({pagination.total})</span>
-        </h1>
+      <PageHeader title="Users" count={pagination.total}>
         <Button onClick={() => setInviteDialogOpen(true)}>
           <Plus className="h-4 w-4" />
           Invite User
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Search */}
       <div className="px-6 pb-4">

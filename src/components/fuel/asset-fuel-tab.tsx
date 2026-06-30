@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { StatCard } from '@/components/ui/stat-card';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -221,10 +222,10 @@ export function AssetFuelTab({ assetId }: AssetFuelTabProps) {
       {/* Summary cards */}
       {analytics && analytics.totalTransactions > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <SummaryCard icon={<DollarSign className="h-4 w-4" />} label="Total Cost" value={formatCurrency(analytics.totalCost)} />
-          <SummaryCard icon={<Droplets className="h-4 w-4" />} label="Total Volume" value={`${formatNumber(analytics.totalVolume)} gal`} />
-          <SummaryCard icon={<Gauge className="h-4 w-4" />} label="Avg Economy" value={analytics.avgEconomy ? `${formatNumber(analytics.avgEconomy)} MPG` : '—'} />
-          <SummaryCard icon={<TrendingUp className="h-4 w-4" />} label="Avg Cost/Mile" value={analytics.avgCostPerMile ? formatCurrency(analytics.avgCostPerMile) : '—'} />
+          <StatCard icon={<DollarSign className="h-4 w-4" />} label="Total Cost" value={formatCurrency(analytics.totalCost)} />
+          <StatCard icon={<Droplets className="h-4 w-4" />} label="Total Volume" value={`${formatNumber(analytics.totalVolume)} gal`} />
+          <StatCard icon={<Gauge className="h-4 w-4" />} label="Avg Economy" value={analytics.avgEconomy ? `${formatNumber(analytics.avgEconomy)} MPG` : '—'} />
+          <StatCard icon={<TrendingUp className="h-4 w-4" />} label="Avg Cost/Mile" value={analytics.avgCostPerMile ? formatCurrency(analytics.avgCostPerMile) : '—'} />
         </div>
       )}
 
@@ -326,18 +327,6 @@ export function AssetFuelTab({ assetId }: AssetFuelTabProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function SummaryCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <div className="flex items-center gap-2 text-muted-foreground mb-1">
-        {icon}
-        <span className="text-xs font-medium">{label}</span>
-      </div>
-      <p className="text-lg font-semibold text-foreground">{value}</p>
     </div>
   );
 }

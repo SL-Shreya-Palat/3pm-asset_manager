@@ -9,6 +9,11 @@ import {
   Eye,
   Wrench,
   CheckCircle2,
+  ClipboardList,
+  Package,
+  Users,
+  Paperclip,
+  History,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -27,7 +32,9 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Separator } from '@/components/ui/separator';
+import { FormSection } from '@/components/ui/form-section';
+import { PageHeader } from '@/components/ui/page-header';
+import { FilterTabs } from '@/components/ui/filter-tabs';
 import { MeterTypeSelect, ProgramChecklist } from '@/components/maintenance/service-fields';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
@@ -289,50 +296,23 @@ export function WorkOrdersPage() {
     <div className="relative flex h-full">
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0">
-        <div className="flex items-center justify-between px-6 pt-6 pb-4">
-          <h1 className="text-2xl font-semibold text-foreground">
-            Work Orders
-            <span className="text-muted-foreground font-normal ml-2">({pagination.total})</span>
-          </h1>
+        <PageHeader title="Work Orders" count={pagination.total}>
           <Button onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             Create Work Order
           </Button>
-        </div>
+        </PageHeader>
 
         {/* Dynamic Status Tabs */}
         <div className="px-6 pb-4">
-          <div className="flex gap-1 flex-wrap">
-            <button
-              onClick={() => setActiveTab('all')}
-              className={cn(
-                'px-3 py-1.5 text-sm rounded-md transition-colors',
-                activeTab === 'all'
-                  ? 'bg-primary text-primary-foreground font-medium'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-              )}
-            >
-              All
-            </button>
-            {statusTabs.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  'px-3 py-1.5 text-sm rounded-md transition-colors flex items-center gap-1.5',
-                  activeTab === tab.id
-                    ? 'bg-primary text-primary-foreground font-medium'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                )}
-              >
-                <div
-                  className="h-2.5 w-2.5 rounded-full shrink-0"
-                  style={{ backgroundColor: tab.color }}
-                />
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <FilterTabs
+            value={activeTab}
+            onChange={setActiveTab}
+            tabs={[
+              { value: 'all', label: 'All' },
+              ...statusTabs.map((tab) => ({ value: tab.id, label: tab.label, color: tab.color })),
+            ]}
+          />
         </div>
 
         <div className="px-6 pb-4">
@@ -597,9 +577,7 @@ function ViewWOContent({
   return (
     <div className="space-y-6">
       {/* Overview */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Overview</h3>
-        <Separator className="mb-4" />
+      <FormSection icon={ClipboardList} title="Overview">
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <ViewField label="WO Number" value={order.workOrderNumber} />
@@ -626,13 +604,11 @@ function ViewWOContent({
           )}
           {order.description && <ViewField label="Description" value={order.description} />}
         </div>
-      </div>
+      </FormSection>
 
       {/* Service Tasks */}
       {order.serviceTaskIds.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Items</h3>
-          <Separator className="mb-4" />
+        <FormSection icon={Wrench} title="Items">
           <div className="space-y-2">
             {order.serviceTaskIds.map((taskId, i) => (
               <div key={i} className="rounded-md border border-border px-3 py-2">
@@ -640,14 +616,12 @@ function ViewWOContent({
               </div>
             ))}
           </div>
-        </div>
+        </FormSection>
       )}
 
       {/* Parts */}
       {order.parts && order.parts.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Parts</h3>
-          <Separator className="mb-4" />
+        <FormSection icon={Package} title="Parts">
           <div className="rounded-md border border-border divide-y divide-border">
             {order.parts.map((p, i) => (
               <div key={i} className="flex items-center justify-between px-3 py-2">
@@ -663,13 +637,11 @@ function ViewWOContent({
               <span className="text-sm font-semibold">{(order.partsCost ?? 0).toFixed(2)}</span>
             </div>
           </div>
-        </div>
+        </FormSection>
       )}
 
       {/* Assignee */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Assignee</h3>
-        <Separator className="mb-4" />
+      <FormSection icon={Users} title="Assignee">
         <div className="space-y-4">
           <ViewField label="Type" value={assigneeTypeLabel} />
           <ViewField label="Name" value={order.assigneeName} />
@@ -679,13 +651,11 @@ function ViewWOContent({
           {order.thirdPartyName && <ViewField label="Third Party Name" value={order.thirdPartyName} />}
           {order.thirdPartyEmail && <ViewField label="Third Party Email" value={order.thirdPartyEmail} />}
         </div>
-      </div>
+      </FormSection>
 
       {/* Attachments */}
       {order.attachments.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Attachments</h3>
-          <Separator className="mb-4" />
+        <FormSection icon={Paperclip} title="Attachments">
           <div className="space-y-2">
             {order.attachments.map((att, i) => (
               <div key={i} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
@@ -698,14 +668,12 @@ function ViewWOContent({
               </div>
             ))}
           </div>
-        </div>
+        </FormSection>
       )}
 
       {/* Status History */}
       {order.statusHistory.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Status History</h3>
-          <Separator className="mb-4" />
+        <FormSection icon={History} title="Status History">
           <div className="space-y-2">
             {order.statusHistory.map((entry, i) => (
               <div key={i} className="flex items-start gap-3 text-sm">
@@ -726,7 +694,7 @@ function ViewWOContent({
               </div>
             ))}
           </div>
-        </div>
+        </FormSection>
       )}
     </div>
   );

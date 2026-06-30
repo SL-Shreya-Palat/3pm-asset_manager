@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/ui/search-input';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
+import { PageHeader } from '@/components/ui/page-header';
 import {
   Dialog,
   DialogContent,
@@ -208,16 +209,12 @@ export function DriversPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 pt-6 pb-4">
-        <h1 className="text-2xl font-semibold text-foreground">
-          Drivers
-          <span className="text-muted-foreground font-normal ml-2">({pagination.total})</span>
-        </h1>
+      <PageHeader title="Drivers" count={pagination.total}>
         <Button onClick={() => router.push('/people/drivers/new')}>
           <Plus className="h-4 w-4" />
           Add Driver
         </Button>
-      </div>
+      </PageHeader>
 
       {/* Search */}
       <div className="px-6 pb-4">
