@@ -47,11 +47,6 @@ export async function getUsersCollection(): Promise<Collection> {
   return db.collection('users');
 }
 
-export async function getOtpsCollection(): Promise<Collection> {
-  const db = await getDb();
-  return db.collection('otps');
-}
-
 export async function getSessionsCollection(): Promise<Collection> {
   const db = await getDb();
   return db.collection('sessions');
@@ -281,4 +276,9 @@ export async function getPrestartFormDefectSettingsCollection(): Promise<Collect
 export async function getInspectionSubmissionsCollection(): Promise<Collection> {
   const db = await getDb();
   return db.collection('inspectionSubmissions');
+}
+
+export async function getInspectionLaunchesCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('inspectionLaunches');
 }

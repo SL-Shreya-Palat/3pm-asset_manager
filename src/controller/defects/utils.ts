@@ -92,14 +92,30 @@ export function serializeDefect(doc: Record<string, unknown>): Record<string, un
   };
 }
 
-/** Generate the next defect number (DF-0001) using atomic counter. */
-export async function generateDefectNumber(tenantId: string): Promise<string> {
+/**
+ * Reserve `count` sequential defect numbers in a single atomic increment.
+ * Returns them in order (e.g. ['DF-0007', 'DF-0008']). Used when one inspection
+ * yields several defects, so we hit the counter once instead of N times.
+ */
+export async function reserveDefectNumbers(tenantId: string, count: number): Promise<string[]> {
+  if (count <= 0) return [];
   const counters = await getCountersCollection();
   const result = await counters.findOneAndUpdate(
     { _id: `defect_${tenantId}` as unknown as ObjectId },
-    { $inc: { seq: 1 } },
+    { $inc: { seq: count } },
     { upsert: true, returnDocument: 'after' },
   );
-  const seq = (result?.seq as number) || 1;
-  return `DF-${String(seq).padStart(4, '0')}`;
+  const end = (result?.seq as number) || count; // last seq after the increment
+  const start = end - count + 1;
+  const numbers: string[] = [];
+  for (let seq = start; seq <= end; seq++) {
+    numbers.push(`DF-${String(seq).padStart(4, '0')}`);
+  }
+  return numbers;
+}
+
+/** Generate the next defect number (DF-0001) using the atomic counter. */
+export async function generateDefectNumber(tenantId: string): Promise<string> {
+  const [number] = await reserveDefectNumbers(tenantId, 1);
+  return number;
 }

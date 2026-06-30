@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ASSET_STATUS_CONFIG, type AssetStatus } from '@/constants/assets';
+import { InspectButton } from '@/components/inspections/inspect-button';
 
 export default function AssetDetailPage() {
   const params = useParams();
@@ -126,6 +127,7 @@ export default function AssetDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <InspectButton assetId={String(params.id)} />
           <Button
             variant={normalizedStatus === 'in_service' ? 'destructive' : 'default'}
             onClick={handleToggleStatus}

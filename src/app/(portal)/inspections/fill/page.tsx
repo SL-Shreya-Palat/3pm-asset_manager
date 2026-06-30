@@ -1,0 +1,88 @@
+'use client';
+
+/**
+ * Asset-first inspection fill — opens the chosen form in the embedded
+ * form-builder (its own fill UI). Before opening, it records an inspection
+ * "launch" (asset + form) so the submission that comes back via the webhook is
+ * linked to this exact asset.
+ */
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import axios from 'axios';
+import { ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+
+const FORM_BUILDER_URL =
+  process.env.NEXT_PUBLIC_FORM_BUILDER_URL || 'http://localhost:3002';
+
+function FillInner() {
+  const sp = useSearchParams();
+  const router = useRouter();
+  const assetId = sp.get('assetId') || '';
+  const formId = sp.get('formId') || '';
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const startedRef = useRef(false);
+
+  useEffect(() => {
+    if (!assetId || !formId || startedRef.current) return;
+    startedRef.current = true;
+    let active = true;
+    (async () => {
+      try {
+        // 1) Record the asset-first launch (correlates the submission → asset).
+        await axios.post('/api/inspections/launch', { assetId, formId }, { withCredentials: true });
+        // 2) Mint a form-builder session bound to this tenant's org.
+        const res = await axios.post('/api/embed/form-builder-session', {}, { withCredentials: true });
+        const sid = res.data?.data?.sessionId;
+        if (!sid) throw new Error('No form-builder session');
+        if (active) setSessionId(sid);
+      } catch (e: unknown) {
+        const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error;
+        if (active) setError(msg || 'Unable to open the inspection form.');
+      }
+    })();
+    return () => { active = false; };
+  }, [assetId, formId]);
+
+  if (!assetId || !formId) {
+    return <div className="p-6 text-muted-foreground">Missing asset or form.</div>;
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="px-6 pt-6 pb-3 flex items-center gap-3">
+        <Button variant="ghost" size="icon" onClick={() => router.push(`/assets/${assetId}`)}>
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <h1 className="text-xl font-semibold">Inspection</h1>
+      </div>
+
+      {error ? (
+        <div className="p-6 text-sm text-red-500">{error}</div>
+      ) : !sessionId ? (
+        <div className="flex items-center justify-center h-64">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-muted-foreground">Opening form…</p>
+          </div>
+        </div>
+      ) : (
+        <iframe
+          src={`${FORM_BUILDER_URL}/embed/forms/${formId}?sessionId=${sessionId}`}
+          className="w-full h-[calc(100vh-120px)] border-0"
+          title="Inspection form"
+          allow="clipboard-write"
+        />
+      )}
+    </div>
+  );
+}
+
+export default function InspectionFillPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-muted-foreground">Loading…</div>}>
+      <FillInner />
+    </Suspense>
+  );
+}

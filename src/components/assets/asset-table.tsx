@@ -8,10 +8,12 @@ import {
   MoreHorizontal,
   Users,
   ClipboardList,
+  ClipboardCheck,
   KeyRound,
   Power,
   Trash2,
 } from 'lucide-react';
+import { InspectFormPickerDialog } from '@/components/inspections/inspect-button';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -63,6 +65,7 @@ export function AssetTable() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch, debouncedSearch] = useDebouncedSearch(300);
   const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [inspectAssetId, setInspectAssetId] = useState<string | null>(null);
 
   // Table features: filters, column visibility, density
   const {
@@ -422,6 +425,15 @@ export function AssetTable() {
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation();
+                setInspectAssetId(asset.id);
+              }}
+            >
+              <ClipboardCheck className="h-4 w-4" />
+              Inspect
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
                 handleOpenChangeTeam(asset);
               }}
             >
@@ -473,6 +485,11 @@ export function AssetTable() {
 
   return (
     <div className="p-6">
+      <InspectFormPickerDialog
+        open={!!inspectAssetId}
+        assetId={inspectAssetId ?? ''}
+        onOpenChange={(o) => { if (!o) setInspectAssetId(null); }}
+      />
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
