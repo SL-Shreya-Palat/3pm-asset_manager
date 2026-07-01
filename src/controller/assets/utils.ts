@@ -33,10 +33,10 @@ export function validateCreateAssetInput(input: CreateAssetInput): ValidationRes
     errors.status = `Status must be one of: ${ASSET_STATUSES.join(', ')}`;
   }
 
-  // vin - exactly 17 chars if provided
+  // vin - 5–17 chars if provided (supports standard VINs and NZ chassis numbers)
   if (input.vin !== undefined && input.vin !== '') {
-    if (typeof input.vin !== 'string' || input.vin.trim().length !== 17) {
-      errors.vin = 'VIN must be exactly 17 characters';
+    if (typeof input.vin !== 'string' || input.vin.trim().length < 5 || input.vin.trim().length > 17) {
+      errors.vin = 'VIN / chassis number must be between 5 and 17 characters';
     }
   }
 
@@ -104,6 +104,16 @@ export function validateCreateAssetInput(input: CreateAssetInput): ValidationRes
     }
   }
 
+  // driverAccessIds
+  if (input.driverAccessIds && Array.isArray(input.driverAccessIds)) {
+    for (const id of input.driverAccessIds) {
+      if (!isValidObjectId(id)) {
+        errors.driverAccessIds = 'All driver access IDs must be valid ObjectIds';
+        break;
+      }
+    }
+  }
+
   // currentOdometer >= 0
   if (input.currentOdometer !== undefined && input.currentOdometer !== null) {
     if (typeof input.currentOdometer !== 'number' || input.currentOdometer < 0) {
@@ -160,6 +170,7 @@ export function serializeAsset(doc: Record<string, unknown>): Record<string, unk
     photoUrls: doc.photoUrls || [],
     formIds: Array.isArray(doc.formIds) ? doc.formIds.map((id: { toString: () => string }) => id.toString()) : [],
     serviceProgramIds: Array.isArray(doc.serviceProgramIds) ? doc.serviceProgramIds.map((id: { toString: () => string }) => id.toString()) : [],
+    driverAccessIds: Array.isArray(doc.driverAccessIds) ? doc.driverAccessIds.map((id: { toString: () => string }) => id.toString()) : [],
     isActive: doc.isActive ?? true,
     isArchived: doc.isArchived ?? false,
     createdAt: doc.createdAt ? (doc.createdAt as Date).toISOString() : null,

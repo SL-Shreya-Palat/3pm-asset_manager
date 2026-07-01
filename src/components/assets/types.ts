@@ -23,6 +23,8 @@ export interface AssetRow {
   lastServiceDate?: string;
   lastServiceMileage?: number;
   lastServiceEngineHours?: number;
+  formIds?: string[];
+  driverAccessIds?: string[];
   createdAt: string;
 }
 

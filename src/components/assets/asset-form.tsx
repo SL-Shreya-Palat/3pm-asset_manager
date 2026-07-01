@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { Settings, SquarePen } from 'lucide-react';
+import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -45,6 +46,8 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
   const [serviceProgramsList, setServiceProgramsList] = useState<{ id: string; title: string }[]>([]);
   const [selectedFormIds, setSelectedFormIds] = useState<Set<string>>(new Set());
   const [selectedServiceProgramIds, setSelectedServiceProgramIds] = useState<Set<string>>(new Set());
+  const [vinDecoding, setVinDecoding] = useState(false);
+  const [vinDecoded, setVinDecoded] = useState(false);
 
   // Form fields — Manufacturer Details
   const [name, setName] = useState('');
@@ -96,11 +99,24 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
     reader.readAsDataURL(file);
   };
 
-  // Populate form with initial data (edit mode)
+  // Populate form with initial data (edit or VIN-decoded create)
   useEffect(() => {
     if (initialData) {
-      setName((initialData.name as string) || '');
-      setVin((initialData.vin as string) || '');
+      // Auto-generate name from VIN-decoded data if no name provided
+      const dataName = initialData.name as string | undefined;
+      if (dataName) {
+        setName(dataName);
+      } else if (mode === 'create') {
+        const parts = [
+          initialData.year ? String(initialData.year) : '',
+          (initialData.make as string) || '',
+          (initialData.model as string) || '',
+        ].filter(Boolean);
+        setName(parts.join(' '));
+      }
+      const initVin = (initialData.vin as string) || '';
+      setVin(initVin);
+      if (initVin) setVinDecoded(true);
       setLicensePlate((initialData.licensePlate as string) || '');
       setMake((initialData.make as string) || '');
       setModel((initialData.model as string) || '');
@@ -148,6 +164,17 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
       }
     }
   }, [initialData]);
+
+  // Once asset types are loaded, resolve vehicleType from VIN-decoded initialData
+  useEffect(() => {
+    const vehicleType = initialData?.vehicleType as string | undefined;
+    if (vehicleType && assetTypes.length > 0 && !assetTypeId) {
+      resolveAssetTypeByName(vehicleType, assetTypes).then((id) => {
+        if (id) setAssetTypeId(id);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assetTypes]);
 
   const fetchAssetTypes = useCallback(async () => {
     try {
@@ -204,6 +231,76 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
     fetchServicePrograms();
   }, [fetchAssetTypes, fetchTeams, fetchForms, fetchServicePrograms]);
 
+  /**
+   * Find an existing asset type by name (case-insensitive) or create a new one.
+   * Returns the assetTypeId or empty string.
+   */
+  const resolveAssetTypeByName = useCallback(async (vehicleTypeName: string, types: AssetTypeOption[]): Promise<string> => {
+    if (!vehicleTypeName) return '';
+    const lower = vehicleTypeName.toLowerCase();
+    const match = types.find((t) => t.name.toLowerCase() === lower);
+    if (match) return match.id;
+
+    // Auto-create asset type
+    try {
+      const res = await axios.post('/api/asset-types', { name: vehicleTypeName }, { withCredentials: true });
+      const created = res.data.data;
+      if (created?.id) {
+        // Refresh list so it shows in the dropdown
+        await fetchAssetTypes();
+        return created.id as string;
+      }
+    } catch {
+      // Silently fail — user can still pick manually
+    }
+    return '';
+  }, [fetchAssetTypes]);
+
+  /** Decode the VIN currently in the input field and fill related fields. */
+  const handleVinDecode = useCallback(async () => {
+    const trimmed = vin.trim().toUpperCase();
+    if (trimmed.length < 5) return;
+
+    setVinDecoding(true);
+    setError('');
+    try {
+      const res = await axios.get(`/api/vin-decode?vin=${encodeURIComponent(trimmed)}`, { withCredentials: true });
+      const data = res.data.data;
+      if (!data) {
+        setError(res.data.error || 'Failed to decode VIN');
+        return;
+      }
+
+      // Fill decoded fields
+      if (data.vin) setVin(data.vin);
+      if (data.make) setMake(data.make);
+      if (data.model) setModel(data.model);
+      if (data.year) setYear(data.year);
+      if (data.bodyClass) setAssetSubtype(data.bodyClass);
+      setVinDecoded(true);
+
+      // Auto-generate name if empty
+      if (!name.trim()) {
+        const parts = [data.year, data.make, data.model].filter(Boolean);
+        if (parts.length > 0) setName(parts.join(' '));
+      }
+
+      // Resolve asset type from vehicleType
+      if (data.vehicleType) {
+        const typeId = await resolveAssetTypeByName(data.vehicleType, assetTypes);
+        if (typeId) setAssetTypeId(typeId);
+      }
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.data?.error) {
+        setError(err.response.data.error);
+      } else {
+        setError('Failed to decode VIN');
+      }
+    } finally {
+      setVinDecoding(false);
+    }
+  }, [vin, name, assetTypes, resolveAssetTypeByName]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -212,7 +309,7 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
     // Validate required fields
     const errors: Record<string, string> = {};
     if (!name.trim()) errors.name = 'Asset name is required';
-    if (vin.trim() && vin.trim().length !== 17) errors.vin = 'VIN must be exactly 17 characters';
+    if (vin.trim() && (vin.trim().length < 5 || vin.trim().length > 17)) errors.vin = 'VIN / chassis number must be between 5 and 17 characters';
     if (year && (parseInt(year, 10) < 1900 || parseInt(year, 10) > 2100)) errors.year = 'Year must be between 1900 and 2100';
 
     if (Object.keys(errors).length > 0) {
@@ -377,17 +474,35 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="vin">VIN</Label>
-                <Input
-                  id="vin"
-                  value={vin}
-                  onChange={(e) => {
-                    setVin(e.target.value);
-                    if (fieldErrors.vin) setFieldErrors((prev) => { const { vin: _, ...rest } = prev; return rest; });
-                  }}
-                  placeholder="17-character VIN"
-                  maxLength={17}
-                  className={`mt-1.5 ${fieldErrors.vin ? 'border-destructive' : ''}`}
-                />
+                <div className="relative mt-1.5">
+                  <Input
+                    id="vin"
+                    value={vin}
+                    onChange={(e) => {
+                      setVin(e.target.value);
+                      if (vinDecoded) setVinDecoded(false);
+                      if (fieldErrors.vin) setFieldErrors((prev) => { const { vin: _, ...rest } = prev; return rest; });
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && vin.trim().length >= 5) {
+                        e.preventDefault();
+                        handleVinDecode();
+                      }
+                    }}
+                    placeholder="VIN or chassis number"
+                    disabled={vinDecoding}
+                    className={`pr-20 ${fieldErrors.vin ? 'border-destructive' : ''}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleVinDecode}
+                    disabled={vinDecoding || vinDecoded || vin.trim().length < 5}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                  >
+                    {vinDecoding && <Spinner size="sm" />}
+                    Decode
+                  </button>
+                </div>
                 {fieldErrors.vin && (
                   <p className="text-sm text-destructive mt-1">{fieldErrors.vin}</p>
                 )}
