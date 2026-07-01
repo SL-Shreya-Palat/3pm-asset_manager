@@ -3,12 +3,15 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { ChevronRight, User, Settings, LogOut, Search } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NotificationBell } from '@/components/layout/notification-bell';
 import { DevScanButton } from '@/components/layout/dev-scan-button';
+import { useGlobalSearch, type SearchResult } from '@/hooks/use-global-search';
+import { GlobalSearchDropdown } from '@/components/layout/global-search-dropdown';
+import { useRoleAccess } from '@/hooks/use-role-access';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,6 +38,7 @@ const ROUTE_LABELS: Record<string, string> = {
   defects: 'Defects',
   'purchase-orders': 'Purchase Orders',
   inventory: 'Inventory',
+  'driver-wellness': 'Driver Wellness',
 };
 
 /** Singular form mapping for "Create New …" breadcrumbs. */
@@ -94,8 +98,14 @@ export function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
-  const [query, setQuery] = useState('');
+  const { hasFullAccess } = useRoleAccess();
   const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const {
+    query, setQuery, results, loading,
+    isOpen, setIsOpen, activeIndex, setActiveIndex,
+  } = useGlobalSearch(300);
 
   const breadcrumbs = buildBreadcrumbs(pathname);
 
@@ -114,6 +124,50 @@ export function Header() {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // Close on click outside
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node;
+      if (
+        dropdownRef.current && !dropdownRef.current.contains(target) &&
+        inputRef.current && !inputRef.current.contains(target)
+      ) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [setIsOpen]);
+
+  const handleSelectResult = useCallback((result: SearchResult) => {
+    setIsOpen(false);
+    setQuery('');
+    router.push(result.href);
+  }, [setIsOpen, setQuery, router]);
+
+  function handleSearchKeyDown(e: React.KeyboardEvent) {
+    if (!isOpen || results.length === 0) {
+      if (e.key === 'Escape') {
+        inputRef.current?.blur();
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex(Math.min(activeIndex + 1, results.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex(Math.max(activeIndex - 1, 0));
+    } else if (e.key === 'Enter' && activeIndex >= 0) {
+      e.preventDefault();
+      handleSelectResult(results[activeIndex]);
+    } else if (e.key === 'Escape') {
+      setIsOpen(false);
+      inputRef.current?.blur();
+    }
+  }
 
   return (
     <header className="flex h-14 items-center border-b border-border bg-card px-6">
@@ -146,8 +200,21 @@ export function Header() {
             placeholder="Search... (Ctrl+K)"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleSearchKeyDown}
+            onFocus={() => { if (query.trim()) setIsOpen(true); }}
             className="pl-9 h-9 w-full bg-muted/50 border-transparent focus-visible:border-input focus-visible:bg-transparent"
           />
+          {isOpen && (
+            <GlobalSearchDropdown
+              ref={dropdownRef}
+              results={results}
+              loading={loading}
+              activeIndex={activeIndex}
+              query={query}
+              onSelect={handleSelectResult}
+              onHover={setActiveIndex}
+            />
+          )}
         </div>
       </div>
 
@@ -186,10 +253,12 @@ export function Header() {
               <User className="h-4 w-4" />
               Profile
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push('/settings')}>
-              <Settings className="h-4 w-4" />
-              Settings
-            </DropdownMenuItem>
+            {hasFullAccess && (
+              <DropdownMenuItem onClick={() => router.push('/settings')}>
+                <Settings className="h-4 w-4" />
+                Settings
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => {

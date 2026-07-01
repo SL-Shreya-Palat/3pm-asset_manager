@@ -3,86 +3,57 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard,
-  ClipboardCheck,
-  Wrench,
-  Truck,
-  Store,
-  Fuel,
-  Users,
   LogOut,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import { navItems } from '@/constants/navigation';
+import type { NavItem, NavChild } from '@/constants/navigation';
+import { useRoleAccess } from '@/hooks/use-role-access';
 
-interface NavChild {
-  label: string;
-  href: string;
+function useFilteredNavItems() {
+  const { hasFullAccess, isMobileOnly, canAccessModule } = useRoleAccess();
+
+  return useMemo(() => {
+    const canSeeItem = (item: NavChild | NavItem) => {
+      if (item.adminOnly) return hasFullAccess;
+      if (item.requiredModule) return canAccessModule(item.requiredModule);
+      // Items with no gate (e.g. Dashboard) are visible to all portal users
+      return !isMobileOnly;
+    };
+
+    const filtered: NavItem[] = [];
+    for (const item of navItems) {
+      if (item.children) {
+        // Filter children, show parent only if any child is visible
+        const visibleChildren = item.children.filter(canSeeItem);
+        if (visibleChildren.length > 0) {
+          filtered.push({ ...item, children: visibleChildren });
+        }
+      } else {
+        if (canSeeItem(item)) {
+          filtered.push(item);
+        }
+      }
+    }
+    return filtered;
+  }, [hasFullAccess, isMobileOnly, canAccessModule]);
 }
-
-interface NavItem {
-  label: string;
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  children?: NavChild[];
-}
-
-const navItems: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  {
-    label: 'Inspections',
-    href: '/inspections',
-    icon: ClipboardCheck,
-    children: [
-      { label: 'Inspection History', href: '/inspections/history' },
-      { label: 'Forms', href: '/inspections/forms' },
-      { label: 'Defect Settings', href: '/inspections/defect-settings' },
-      { label: 'Exception Report', href: '/inspections/exception-report' },
-    ],
-  },
-  {
-    label: 'Maintenance',
-    href: '/maintenance',
-    icon: Wrench,
-    children: [
-      { label: 'Service Tasks', href: '/maintenance/service-tasks' },
-      { label: 'Service Programs', href: '/maintenance/service-programs' },
-      { label: 'Service Schedule', href: '/maintenance/service-schedule' },
-      { label: 'Work Orders', href: '/maintenance/work-orders' },
-      { label: 'Defects', href: '/maintenance/defects' },
-      { label: 'Purchase Orders', href: '/maintenance/purchase-orders' },
-      { label: 'Inventory', href: '/maintenance/inventory' },
-    ],
-  },
-  { label: 'Assets', href: '/assets', icon: Truck },
-  { label: 'Vendors', href: '/vendors', icon: Store },
-  { label: 'Fuel', href: '/fuel', icon: Fuel },
-  {
-    label: 'People',
-    href: '/people',
-    icon: Users,
-    children: [
-      { label: 'Users', href: '/people/users' },
-      { label: 'Teams', href: '/people/teams' },
-      { label: 'Drivers', href: '/people/drivers' },
-      { label: 'Roles', href: '/people/roles' },
-    ],
-  },
-];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const filteredItems = useFilteredNavItems();
   const [collapsed, setCollapsed] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(() => {
     // Auto-expand parent if a child route is active
     const expanded = new Set<string>();
-    for (const item of navItems) {
+    for (const item of filteredItems) {
       if (item.children && pathname.startsWith(item.href + '/')) {
         expanded.add(item.href);
       }
@@ -112,8 +83,8 @@ export function Sidebar() {
       {/* Logo / brand */}
       <div className="flex h-14 items-center px-4 border-b border-sidebar-border">
         <Link href="/dashboard" className="flex items-center gap-2 overflow-hidden">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-            AM
+          <div className="flex h-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-xs px-2">
+            3PM
           </div>
           {!collapsed && (
             <span className="text-sm font-semibold text-sidebar-foreground truncate">
@@ -126,7 +97,7 @@ export function Sidebar() {
       {/* Navigation */}
       <ScrollArea className="flex-1 py-2">
         <nav className="flex flex-col gap-1 px-2">
-          {navItems.map((item) => {
+          {filteredItems.map((item) => {
             const isActive =
               pathname === item.href || pathname.startsWith(item.href + '/');
             const Icon = item.icon;

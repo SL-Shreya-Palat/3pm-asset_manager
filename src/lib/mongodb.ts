@@ -140,6 +140,15 @@ export async function getDriversCollection(): Promise<Collection> {
 }
 
 // ---------------------------------------------------------------------------
+// Driver wellness checks collection
+// ---------------------------------------------------------------------------
+
+export async function getDriverWellnessChecksCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('driverWellnessChecks');
+}
+
+// ---------------------------------------------------------------------------
 // Vendors collection
 // ---------------------------------------------------------------------------
 

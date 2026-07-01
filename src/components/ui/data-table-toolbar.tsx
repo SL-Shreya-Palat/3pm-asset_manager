@@ -4,19 +4,24 @@ import { useState } from 'react';
 import {
   Filter,
   Columns3,
-  Rows3,
+  AlignJustify,
+  AlignCenter,
+  AlignStartVertical,
   X,
+  Check,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Separator } from '@/components/ui/separator';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
+  DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -75,15 +80,20 @@ export function DataTableToolbar<T>({
         />
       )}
 
-      {/* Column Selection */}
-      <ColumnsControl
-        columns={columns}
-        hiddenColumnKeys={hiddenColumnKeys}
-        onHiddenColumnKeysChange={onHiddenColumnKeysChange}
-      />
+      {/* Table controls group */}
+      <div className="inline-flex items-center rounded-lg border border-border bg-muted/40 p-0.5 gap-0.5">
+        {/* Column Selection */}
+        <ColumnsControl
+          columns={columns}
+          hiddenColumnKeys={hiddenColumnKeys}
+          onHiddenColumnKeysChange={onHiddenColumnKeysChange}
+        />
 
-      {/* Density */}
-      <DensityControl density={density} onDensityChange={onDensityChange} />
+        <Separator orientation="vertical" className="h-5" />
+
+        {/* Density */}
+        <DensityControl density={density} onDensityChange={onDensityChange} />
+      </div>
 
       {/* Search (right-aligned) */}
       {searchNode && <div className="ml-auto">{searchNode}</div>}
@@ -109,11 +119,18 @@ function FiltersControl({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-1.5">
-          <Filter className="h-4 w-4" />
+        <Button
+          variant="outline"
+          size="sm"
+          className={cn(
+            'gap-1.5 border-dashed',
+            activeCount > 0 && 'border-primary/50 bg-primary/5 text-primary hover:bg-primary/10 hover:text-primary',
+          )}
+        >
+          <Filter className="h-3.5 w-3.5" />
           Filters
           {activeCount > 0 && (
-            <Badge variant="default" className="ml-1 h-5 min-w-[20px] px-1.5 text-xs rounded-full">
+            <Badge className="ml-0.5 h-5 min-w-[20px] px-1.5 text-xs rounded-full bg-primary text-primary-foreground">
               {activeCount}
             </Badge>
           )}
@@ -123,7 +140,7 @@ function FiltersControl({
         <div className="flex items-center justify-between px-4 py-3 border-b">
           <p className="text-sm font-medium">Filters</p>
           {activeCount > 0 && onFiltersClear && (
-            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onFiltersClear}>
+            <Button variant="ghost" size="sm" className="h-7 text-xs text-primary hover:text-primary" onClick={onFiltersClear}>
               Clear all
             </Button>
           )}
@@ -141,14 +158,14 @@ function FiltersControl({
                 />
               )}
               {def.type === 'select' && def.options && (
-                <div className="space-y-1.5">
+                <div className="space-y-1">
                   {def.options.map((opt) => {
                     const selected = (filters[def.columnKey] as string[]) ?? [];
                     const isChecked = selected.includes(opt.value);
                     return (
                       <label
                         key={opt.value}
-                        className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 rounded px-2 py-1"
+                        className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 rounded px-2 py-1.5"
                       >
                         <Checkbox
                           checked={isChecked}
@@ -186,7 +203,6 @@ function ColumnsControl<T>({
 }) {
   const [search, setSearch] = useState('');
 
-  // All columns except 'actions' appear in the list; pinned ones are shown but disabled
   const listColumns = columns.filter((col) => col.key !== 'actions');
   const toggleableColumns = listColumns.filter((col) => !col.pinned);
   const filtered = search
@@ -215,24 +231,36 @@ function ColumnsControl<T>({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-1.5">
-          <Columns3 className="h-4 w-4" />
-          Columns
-          {hiddenColumnKeys.size > 0 && (
-            <Badge variant="secondary" className="ml-1 h-5 min-w-[20px] px-1.5 text-xs rounded-full">
-              {visibleCount}/{toggleableColumns.length}
-            </Badge>
-          )}
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                'inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+                'text-muted-foreground hover:text-foreground hover:bg-background/80',
+                hiddenColumnKeys.size > 0 && 'text-primary hover:text-primary',
+              )}
+            >
+              <Columns3 className="h-3.5 w-3.5" />
+              <span>Columns</span>
+              {hiddenColumnKeys.size > 0 && (
+                <span className="text-[10px] font-semibold text-primary">
+                  {visibleCount}/{toggleableColumns.length}
+                </span>
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Toggle column visibility</TooltipContent>
+        </Tooltip>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-0">
-        <div className="p-3 border-b">
+      <PopoverContent align="start" className="w-56 p-0">
+        <div className="p-2.5 border-b">
           <div className="relative">
             <Input
               placeholder="Search columns..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-8 pr-8"
+              className="h-8 pr-8 text-xs"
             />
             {search && (
               <button
@@ -245,34 +273,38 @@ function ColumnsControl<T>({
             )}
           </div>
         </div>
-        <div className="flex items-center justify-between px-3 py-2 border-b">
-          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleShowAll}>
+        <div className="flex items-center justify-between px-2.5 py-1.5 border-b">
+          <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2" onClick={handleShowAll}>
             Show all
           </Button>
-          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleHideAll}>
+          <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2" onClick={handleHideAll}>
             Hide all
           </Button>
         </div>
         <div className="max-h-64 overflow-y-auto p-1">
-          {filtered.map((col) => (
-            <label
-              key={col.key}
-              className={`flex items-center gap-2 text-sm rounded px-2 py-1.5 ${
-                col.pinned
-                  ? 'opacity-50 cursor-not-allowed'
-                  : 'cursor-pointer hover:bg-muted/50'
-              }`}
-            >
-              <Checkbox
-                checked={col.pinned ? true : !hiddenColumnKeys.has(col.key)}
-                disabled={col.pinned}
-                onCheckedChange={col.pinned ? undefined : (checked) => handleToggle(col.key, !!checked)}
-              />
-              {col.label ?? col.header}
-            </label>
-          ))}
+          {filtered.map((col) => {
+            const isVisible = col.pinned ? true : !hiddenColumnKeys.has(col.key);
+            return (
+              <label
+                key={col.key}
+                className={cn(
+                  'flex items-center gap-2 text-sm rounded-md px-2 py-1.5',
+                  col.pinned
+                    ? 'opacity-40 cursor-not-allowed'
+                    : 'cursor-pointer hover:bg-muted/60',
+                )}
+              >
+                <Checkbox
+                  checked={isVisible}
+                  disabled={col.pinned}
+                  onCheckedChange={col.pinned ? undefined : (checked) => handleToggle(col.key, !!checked)}
+                />
+                <span className="flex-1 truncate">{col.label ?? col.header}</span>
+              </label>
+            );
+          })}
           {filtered.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-3">No columns match</p>
+            <p className="text-xs text-muted-foreground text-center py-3">No columns match</p>
           )}
         </div>
       </PopoverContent>
@@ -282,10 +314,10 @@ function ColumnsControl<T>({
 
 /* ── Density Control ───────────────────────────────────────────────── */
 
-const DENSITY_OPTIONS: { value: DataTableDensity; label: string }[] = [
-  { value: 'compact', label: 'Compact' },
-  { value: 'default', label: 'Default' },
-  { value: 'comfortable', label: 'Comfortable' },
+const DENSITY_OPTIONS: { value: DataTableDensity; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { value: 'compact', label: 'Compact', icon: AlignStartVertical },
+  { value: 'default', label: 'Default', icon: AlignCenter },
+  { value: 'comfortable', label: 'Comfortable', icon: AlignJustify },
 ];
 
 function DensityControl({
@@ -295,24 +327,45 @@ function DensityControl({
   density: DataTableDensity;
   onDensityChange: (d: DataTableDensity) => void;
 }) {
+  const currentOption = DENSITY_OPTIONS.find((o) => o.value === density) ?? DENSITY_OPTIONS[1];
+
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-1.5">
-          <Rows3 className="h-4 w-4" />
-          Density
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        <DropdownMenuLabel>Row Density</DropdownMenuLabel>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                'inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
+                'text-muted-foreground hover:text-foreground hover:bg-background/80',
+              )}
+            >
+              <currentOption.icon className="h-3.5 w-3.5" />
+              <span>Density</span>
+            </button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Adjust row density</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="start" className="w-44">
+        <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Row Density</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuRadioGroup value={density} onValueChange={(v) => onDensityChange(v as DataTableDensity)}>
-          {DENSITY_OPTIONS.map((opt) => (
-            <DropdownMenuRadioItem key={opt.value} value={opt.value}>
-              {opt.label}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
+        {DENSITY_OPTIONS.map((opt) => {
+          const Icon = opt.icon;
+          const isActive = density === opt.value;
+          return (
+            <DropdownMenuItem
+              key={opt.value}
+              onClick={() => onDensityChange(opt.value)}
+              className={cn('gap-2', isActive && 'bg-primary/10 text-primary')}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              <span className="flex-1">{opt.label}</span>
+              {isActive && <Check className="h-3.5 w-3.5" />}
+            </DropdownMenuItem>
+          );
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   );

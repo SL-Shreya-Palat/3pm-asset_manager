@@ -218,7 +218,7 @@ export function ServiceTasksPage() {
         </PageHeader>
 
         {/* Toolbar + Table */}
-        <div className="flex-1 overflow-auto px-6 pb-6">
+        <div className="flex-1 overflow-auto px-6 pt-6 pb-6">
           <DataTableToolbar
             columns={taskColumns}
             hiddenColumnKeys={hiddenColumnKeys}

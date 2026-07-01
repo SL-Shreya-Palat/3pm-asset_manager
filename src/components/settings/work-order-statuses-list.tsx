@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { Plus, Pencil, Trash2, ArrowRight } from 'lucide-react';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { Input } from '@/components/ui/input';
@@ -11,6 +10,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { SearchInput } from '@/components/ui/search-input';
+import { DataTable, type DataTableColumn, type DataTablePagination } from '@/components/ui/data-table';
+import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
+import { useDataTable } from '@/hooks/use-data-table';
 import {
   Dialog,
   DialogContent,
@@ -37,6 +39,11 @@ export function WorkOrderStatusesList() {
   const [items, setItems] = useState<WorkOrderStatusItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch, debouncedSearch] = useDebouncedSearch(300);
+
+  // Table state
+  const { hiddenColumnKeys, setHiddenColumnKeys, density, setDensity } = useDataTable();
+  const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -73,6 +80,92 @@ export function WorkOrderStatusesList() {
   }, [debouncedSearch]);
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
+
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
+
+  // Client-side pagination
+  const paginatedData = useMemo(() => {
+    const start = (page - 1) * rowsPerPage;
+    return items.slice(start, start + rowsPerPage);
+  }, [items, page, rowsPerPage]);
+
+  const pagination: DataTablePagination = useMemo(() => ({
+    page,
+    limit: rowsPerPage,
+    total: items.length,
+    hasMore: page * rowsPerPage < items.length,
+  }), [page, rowsPerPage, items.length]);
+
+  // Columns
+  const columns: DataTableColumn<WorkOrderStatusItem>[] = useMemo(() => [
+    {
+      key: 'color',
+      header: 'Color',
+      className: 'w-[60px]',
+      render: (item) => (
+        <div
+          className="h-5 w-5 rounded-full border border-border"
+          style={{ backgroundColor: item.color }}
+        />
+      ),
+    },
+    {
+      key: 'label',
+      header: 'Label',
+      pinned: true,
+      render: (item) => (
+        <span className="font-medium text-foreground">
+          {item.label}
+          {item.approvalRequired && (
+            <span className="text-xs text-muted-foreground ml-1">*</span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: 'description',
+      header: 'Description',
+      render: (item) => (
+        <span className="text-muted-foreground">{item.description || '—'}</span>
+      ),
+    },
+    {
+      key: 'sequence',
+      header: 'Sequence',
+      align: 'center',
+      render: (item) => (
+        <span className="text-muted-foreground">{item.sequence}</span>
+      ),
+    },
+    {
+      key: 'workOrderCount',
+      header: 'No. of Work Orders',
+      align: 'center',
+      render: (item) => (
+        <span className="text-muted-foreground">{item.workOrderCount}</span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      align: 'right',
+      pinned: true,
+      render: (item) => (
+        <RowActions>
+          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => openEditDialog(item)} />
+          <RowActionButton
+            label="Delete"
+            tone="destructive"
+            icon={<Trash2 />}
+            onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
+          />
+        </RowActions>
+      ),
+    },
+  ], []);
 
   const openCreateDialog = () => {
     setDialogMode('create');
@@ -151,79 +244,31 @@ export function WorkOrderStatusesList() {
         </Button>
       </div>
 
-      {/* Search */}
-      <div className="mb-4">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search statuses..." />
-      </div>
+      {/* Toolbar */}
+      <DataTableToolbar
+        columns={columns}
+        hiddenColumnKeys={hiddenColumnKeys}
+        onHiddenColumnKeysChange={setHiddenColumnKeys}
+        density={density}
+        onDensityChange={setDensity}
+        searchNode={
+          <SearchInput value={search} onChange={setSearch} placeholder="Search statuses..." />
+        }
+      />
 
       {/* Table */}
-      <div className="rounded-md border border-border overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-muted/50 border-b border-border">
-              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground w-[40px]">Color</th>
-              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Label</th>
-              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Description</th>
-              <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">Sequence</th>
-              <th className="text-center px-4 py-2.5 font-medium text-muted-foreground">No. of Work Orders</th>
-              <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i} className="border-b border-border last:border-0">
-                  <td className="px-4 py-2.5">
-                    <Skeleton className="h-5 w-5 rounded-full" />
-                  </td>
-                  {Array.from({ length: 5 }).map((_, j) => (
-                    <td key={j} className="px-4 py-2.5">
-                      <Skeleton className="h-4 w-full max-w-[120px]" />
-                    </td>
-                  ))}
-                </tr>
-              ))
-            ) : items.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="text-center py-8 text-muted-foreground">
-                  {debouncedSearch ? 'No results match your search.' : 'No work order statuses yet.'}
-                </td>
-              </tr>
-            ) : (
-              items.map((item) => (
-                <tr key={item.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                  <td className="px-4 py-2.5">
-                    <div
-                      className="h-5 w-5 rounded-full border border-border"
-                      style={{ backgroundColor: item.color }}
-                    />
-                  </td>
-                  <td className="px-4 py-2.5 font-medium text-foreground">
-                    {item.label}
-                    {item.approvalRequired && (
-                      <span className="text-xs text-muted-foreground ml-1">*</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-muted-foreground">{item.description || '—'}</td>
-                  <td className="px-4 py-2.5 text-center text-muted-foreground">{item.sequence}</td>
-                  <td className="px-4 py-2.5 text-center text-muted-foreground">{item.workOrderCount}</td>
-                  <td className="px-4 py-2.5 text-right">
-                    <RowActions>
-                      <RowActionButton label="Edit" icon={<Pencil />} onClick={() => openEditDialog(item)} />
-                      <RowActionButton
-                        label="Delete"
-                        tone="destructive"
-                        icon={<Trash2 />}
-                        onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
-                      />
-                    </RowActions>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columns}
+        data={paginatedData}
+        pagination={pagination}
+        loading={loading}
+        onPageChange={setPage}
+        onRowsPerPageChange={(rpp) => { setRowsPerPage(rpp); setPage(1); }}
+        rowsPerPage={rowsPerPage}
+        density={density}
+        hiddenColumnKeys={hiddenColumnKeys}
+        emptyMessage={debouncedSearch ? 'No results match your search.' : 'No work order statuses yet.'}
+      />
 
       {/* Visual Status Flow */}
       {items.length > 0 && (

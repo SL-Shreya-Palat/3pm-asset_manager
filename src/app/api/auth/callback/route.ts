@@ -36,7 +36,10 @@ export async function GET(request: NextRequest) {
       // When an accepted invitation exists, pass the invited tenantId
       // so provisioning skips the owner tenant sync
       ...(acceptedInvitation
-        ? { invitedTenantId: acceptedInvitation.tenantId.toString() }
+        ? {
+            invitedTenantId: acceptedInvitation.tenantId.toString(),
+            invitedRoleId: acceptedInvitation.roleId?.toString(),
+          }
         : {}),
     });
 
