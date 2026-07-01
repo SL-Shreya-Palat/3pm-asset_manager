@@ -6,6 +6,7 @@ import axios from 'axios';
 import {
   Plus,
   MoreHorizontal,
+  Pencil,
   Users,
   ClipboardList,
   ClipboardCheck,
@@ -40,6 +41,7 @@ import { DataTable, type DataTableColumn, type DataTableFilterDef } from '@/comp
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
+import { StatCard } from '@/components/ui/stat-card';
 import {
   Tooltip,
   TooltipContent,
@@ -272,17 +274,15 @@ export function AssetTable() {
     }
   }, []);
 
-  const handleOpenAssignForms = async (asset: AssetRow) => {
+  const handleOpenAssignForms = (asset: AssetRow) => {
     setAssignFormsAsset(asset);
-    try {
-      const res = await axios.get(`/api/assets/${asset.id}`, { withCredentials: true });
-      const fullAsset = res.data.data;
-      setSelectedFormIds(new Set(fullAsset?.formIds || []));
-    } catch {
-      setSelectedFormIds(new Set(asset.formIds || []));
-    }
+    setSelectedFormIds(new Set(asset.formIds || []));
     setAssignFormsOpen(true);
     fetchForms();
+    // Refresh from server in background
+    axios.get(`/api/assets/${asset.id}`, { withCredentials: true })
+      .then((res) => setSelectedFormIds(new Set(res.data.data?.formIds || [])))
+      .catch(() => {});
   };
 
   const handleSaveForms = async () => {
@@ -317,17 +317,15 @@ export function AssetTable() {
     }
   }, []);
 
-  const handleOpenDriverAccess = async (asset: AssetRow) => {
+  const handleOpenDriverAccess = (asset: AssetRow) => {
     setDriverAccessAsset(asset);
-    try {
-      const res = await axios.get(`/api/assets/${asset.id}`, { withCredentials: true });
-      const fullAsset = res.data.data;
-      setSelectedDriverIds(new Set(fullAsset?.driverAccessIds || []));
-    } catch {
-      setSelectedDriverIds(new Set(asset.driverAccessIds || []));
-    }
+    setSelectedDriverIds(new Set(asset.driverAccessIds || []));
     setDriverAccessOpen(true);
     fetchDrivers();
+    // Refresh from server in background
+    axios.get(`/api/assets/${asset.id}`, { withCredentials: true })
+      .then((res) => setSelectedDriverIds(new Set(res.data.data?.driverAccessIds || [])))
+      .catch(() => {});
   };
 
   const handleSaveDriverAccess = async () => {
@@ -382,15 +380,6 @@ export function AssetTable() {
       pinned: true,
       render: (asset) => (
         <span className="font-medium text-foreground">{asset.name}</span>
-      ),
-    },
-    {
-      key: 'assetNumber',
-      header: 'Asset #',
-      label: 'Asset Number',
-      pinned: true,
-      render: (asset) => (
-        <span className="text-muted-foreground">{asset.assetNumber || '—'}</span>
       ),
     },
     {
@@ -581,6 +570,15 @@ export function AssetTable() {
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation();
+                router.push(`/assets/${asset.id}/edit`);
+              }}
+            >
+              <Pencil className="h-4 w-4" />
+              Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
                 setInspectAssetId(asset.id);
               }}
             >
@@ -672,54 +670,51 @@ export function AssetTable() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
         {STAT_CARDS.map((card) => (
-          <div
+          <StatCard
             key={card.key}
-            className="rounded-lg border bg-card px-3 py-2 shadow-sm"
-          >
-            <p className="text-xs text-muted-foreground">{card.label}</p>
-            <p className="text-lg font-semibold text-foreground">
-              {card.key === 'total' ? pagination.total : 0}
-            </p>
-          </div>
+            label={card.label}
+            value={card.key === 'total' ? pagination.total : 0}
+            loading={loading}
+          />
         ))}
       </div>
 
       {/* Toolbar + Search */}
-      <div className="flex items-center gap-2 mb-3">
-        <DataTableToolbar
-          columns={assetColumns}
-          hiddenColumnKeys={hiddenColumnKeys}
-          onHiddenColumnKeysChange={setHiddenColumnKeys}
-          density={density}
-          onDensityChange={setDensity}
-          filterDefs={assetFilterDefs}
-          filters={filters}
-          onFilterChange={setFilter}
-          onFiltersClear={clearFilters}
-          actions={
-            selectedKeys.size > 0 ? (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                onClick={() => setBarcodeDialogOpen(true)}
-              >
-                <Barcode className="h-4 w-4" />
-                Generate barcode
-                <Badge variant="default" className="ml-1 h-5 min-w-5 px-1.5 text-xs rounded-full">
-                  {selectedKeys.size}
-                </Badge>
-              </Button>
-            ) : null
-          }
-        />
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search assets..."
-          className="max-w-sm w-full ml-auto"
-        />
-      </div>
+      <DataTableToolbar
+        columns={assetColumns}
+        hiddenColumnKeys={hiddenColumnKeys}
+        onHiddenColumnKeysChange={setHiddenColumnKeys}
+        density={density}
+        onDensityChange={setDensity}
+        filterDefs={assetFilterDefs}
+        filters={filters}
+        onFilterChange={setFilter}
+        onFiltersClear={clearFilters}
+        actions={
+          selectedKeys.size > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setBarcodeDialogOpen(true)}
+            >
+              <Barcode className="h-4 w-4" />
+              Generate barcode
+              <Badge variant="default" className="ml-1 h-5 min-w-5 px-1.5 text-xs rounded-full">
+                {selectedKeys.size}
+              </Badge>
+            </Button>
+          ) : null
+        }
+        searchNode={
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Search assets..."
+            className="max-w-sm w-full"
+          />
+        }
+      />
 
       {/* Table */}
       <DataTable<AssetRow>

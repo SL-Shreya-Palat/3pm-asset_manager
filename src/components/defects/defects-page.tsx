@@ -398,36 +398,6 @@ export function DefectsPage() {
           )}
         </div>
 
-        <div className="px-6 pb-4 flex items-center gap-3">
-          <div className="flex-1">
-            <SearchInput value={search} onChange={setSearch} placeholder="Search defects..." />
-          </div>
-          <Select
-            value=""
-            onValueChange={handleBulkStatusUpdate}
-            disabled={selectedKeys.size === 0 || updatingStatus}
-          >
-            <SelectTrigger className={cn(
-              'w-[180px] shrink-0',
-              selectedKeys.size === 0 && 'opacity-50',
-            )}>
-              <SelectValue placeholder={
-                updatingStatus
-                  ? 'Updating...'
-                  : selectedKeys.size > 0
-                    ? `Update Status (${selectedKeys.size})`
-                    : 'Update Status'
-              } />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="new">New</SelectItem>
-              <SelectItem value="in_progress">In Progress</SelectItem>
-              <SelectItem value="corrected">Corrected</SelectItem>
-              <SelectItem value="no_correction_needed">No Correction Needed</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
         <div className="flex-1 overflow-auto px-6 pb-6">
           <DataTableToolbar
             columns={defectColumns}
@@ -435,6 +405,35 @@ export function DefectsPage() {
             onHiddenColumnKeysChange={setHiddenColumnKeys}
             density={density}
             onDensityChange={setDensity}
+            actions={
+              <Select
+                value=""
+                onValueChange={handleBulkStatusUpdate}
+                disabled={selectedKeys.size === 0 || updatingStatus}
+              >
+                <SelectTrigger className={cn(
+                  'w-[180px] shrink-0',
+                  selectedKeys.size === 0 && 'opacity-50',
+                )}>
+                  <SelectValue placeholder={
+                    updatingStatus
+                      ? 'Updating...'
+                      : selectedKeys.size > 0
+                        ? `Update Status (${selectedKeys.size})`
+                        : 'Update Status'
+                  } />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="new">New</SelectItem>
+                  <SelectItem value="in_progress">In Progress</SelectItem>
+                  <SelectItem value="corrected">Corrected</SelectItem>
+                  <SelectItem value="no_correction_needed">No Correction Needed</SelectItem>
+                </SelectContent>
+              </Select>
+            }
+            searchNode={
+              <SearchInput value={search} onChange={setSearch} placeholder="Search defects..." className="max-w-sm w-full" />
+            }
           />
           <DataTable<DefectRow>
             columns={defectColumns}

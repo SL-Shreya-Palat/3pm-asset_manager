@@ -37,6 +37,8 @@ interface DataTableToolbarProps<T> {
   onFiltersClear?: () => void;
   /** Optional extra action buttons rendered at the start of the toolbar. */
   actions?: React.ReactNode;
+  /** Optional search input rendered at the end of the toolbar (right-aligned). */
+  searchNode?: React.ReactNode;
 }
 
 /* ── Toolbar ───────────────────────────────────────────────────────── */
@@ -52,6 +54,7 @@ export function DataTableToolbar<T>({
   onFilterChange,
   onFiltersClear,
   actions,
+  searchNode,
 }: DataTableToolbarProps<T>) {
   const activeFilterCount = filters ? Object.keys(filters).length : 0;
   const hasFilters = filterDefs && filterDefs.length > 0;
@@ -81,6 +84,9 @@ export function DataTableToolbar<T>({
 
       {/* Density */}
       <DensityControl density={density} onDensityChange={onDensityChange} />
+
+      {/* Search (right-aligned) */}
+      {searchNode && <div className="ml-auto">{searchNode}</div>}
     </div>
   );
 }

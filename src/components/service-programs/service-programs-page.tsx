@@ -246,15 +246,6 @@ export function ServiceProgramsPage() {
         </Button>
       </PageHeader>
 
-      {/* Search */}
-      <div className="px-6 pb-4">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search service programs..."
-        />
-      </div>
-
       {/* Toolbar + Table */}
       <div className="flex-1 overflow-auto px-6 pb-6">
         <DataTableToolbar
@@ -263,6 +254,9 @@ export function ServiceProgramsPage() {
           onHiddenColumnKeysChange={setHiddenColumnKeys}
           density={density}
           onDensityChange={setDensity}
+          searchNode={
+            <SearchInput value={search} onChange={setSearch} placeholder="Search service programs..." className="max-w-sm w-full" />
+          }
         />
         <DataTable<ServiceProgramRow>
           columns={programColumns}

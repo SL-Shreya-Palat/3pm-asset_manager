@@ -261,10 +261,6 @@ export function InventoryPage() {
           </Button>
         </PageHeader>
 
-        <div className="px-6 pb-4">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search parts..." />
-        </div>
-
         <div className="flex-1 overflow-auto px-6 pb-6">
           <DataTableToolbar
             columns={partColumns}
@@ -287,6 +283,9 @@ export function InventoryPage() {
                   </Badge>
                 </Button>
               ) : null
+            }
+            searchNode={
+              <SearchInput value={search} onChange={setSearch} placeholder="Search parts..." className="max-w-sm w-full" />
             }
           />
           <DataTable<PartRow>

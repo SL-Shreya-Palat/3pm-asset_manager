@@ -1,18 +1,21 @@
 import * as React from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface DetailFieldProps {
   label: string;
   value?: React.ReactNode;
   /** Optional small icon beside the label. */
   icon?: LucideIcon;
+  /** Show skeleton loading state. */
+  loading?: boolean;
   className?: string;
 }
 
 /** A single label/value pair for detail/read-only panels. Renders a muted em-dash
  *  when the value is empty so layouts stay aligned. */
-export function DetailField({ label, value, icon: Icon, className }: DetailFieldProps) {
+export function DetailField({ label, value, icon: Icon, loading, className }: DetailFieldProps) {
   const empty = value === null || value === undefined || value === '';
   return (
     <div className={cn('min-w-0', className)}>
@@ -20,9 +23,13 @@ export function DetailField({ label, value, icon: Icon, className }: DetailField
         {Icon && <Icon className="h-3.5 w-3.5 shrink-0" />}
         <p className="text-xs font-medium uppercase tracking-wide truncate">{label}</p>
       </div>
-      <p className={cn('mt-1 text-sm break-words', empty ? 'text-muted-foreground/50' : 'font-medium text-foreground')}>
-        {empty ? '—' : value}
-      </p>
+      {loading ? (
+        <Skeleton className="mt-1 h-5 w-24" />
+      ) : (
+        <p className={cn('mt-1 text-sm break-words', empty ? 'text-muted-foreground/50' : 'font-medium text-foreground')}>
+          {empty ? '—' : value}
+        </p>
+      )}
     </div>
   );
 }

@@ -396,37 +396,30 @@ export function FuelPage() {
         </PageHeader>
 
         {/* Analytics summary cards */}
-        {analytics && analytics.totalTransactions > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-6 pb-4">
-            <StatCard
-              icon={<DollarSign className="h-4 w-4" />}
-              label="Total Fuel Cost"
-              value={formatCurrency(analytics.totalCost)}
-            />
-            <StatCard
-              icon={<Droplets className="h-4 w-4" />}
-              label="Total Volume"
-              value={`${formatNumber(analytics.totalVolume)} gal`}
-            />
-            <StatCard
-              icon={<Gauge className="h-4 w-4" />}
-              label="Avg Economy"
-              value={analytics.avgEconomy ? `${formatNumber(analytics.avgEconomy)} MPG` : '—'}
-            />
-            <StatCard
-              icon={<TrendingUp className="h-4 w-4" />}
-              label="Avg Cost/Mile"
-              value={analytics.avgCostPerMile ? formatCurrency(analytics.avgCostPerMile) : '—'}
-            />
-          </div>
-        )}
-
-        {/* Search */}
-        <div className="px-6 pb-4">
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            placeholder="Search by asset, driver, station..."
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-6 pb-4">
+          <StatCard
+            icon={<DollarSign className="h-4 w-4" />}
+            label="Total Fuel Cost"
+            value={formatCurrency(analytics?.totalCost)}
+            loading={!analytics}
+          />
+          <StatCard
+            icon={<Droplets className="h-4 w-4" />}
+            label="Total Volume"
+            value={`${formatNumber(analytics?.totalVolume)} gal`}
+            loading={!analytics}
+          />
+          <StatCard
+            icon={<Gauge className="h-4 w-4" />}
+            label="Avg Economy"
+            value={analytics?.avgEconomy ? `${formatNumber(analytics.avgEconomy)} MPG` : '—'}
+            loading={!analytics}
+          />
+          <StatCard
+            icon={<TrendingUp className="h-4 w-4" />}
+            label="Avg Cost/Mile"
+            value={analytics?.avgCostPerMile ? formatCurrency(analytics.avgCostPerMile) : '—'}
+            loading={!analytics}
           />
         </div>
 
@@ -442,6 +435,14 @@ export function FuelPage() {
             filters={filters}
             onFilterChange={setFilter}
             onFiltersClear={clearFilters}
+            searchNode={
+              <SearchInput
+                value={search}
+                onChange={setSearch}
+                placeholder="Search by asset, driver, station..."
+                className="max-w-sm w-full"
+              />
+            }
           />
           <DataTable<FuelTransactionRow>
             columns={fuelColumns}

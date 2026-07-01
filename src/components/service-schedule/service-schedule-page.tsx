@@ -338,15 +338,6 @@ export function ServiceSchedulePage() {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="px-6 pb-4">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search by asset name, program title..."
-        />
-      </div>
-
       {/* Toolbar + Table */}
       <div className="flex-1 overflow-auto px-6 pb-6">
         <DataTableToolbar
@@ -355,6 +346,9 @@ export function ServiceSchedulePage() {
           onHiddenColumnKeysChange={setHiddenColumnKeys}
           density={density}
           onDensityChange={setDensity}
+          searchNode={
+            <SearchInput value={search} onChange={setSearch} placeholder="Search by asset name, program title..." className="max-w-sm w-full" />
+          }
         />
         <DataTable<ServiceScheduleRow>
           columns={columns}
