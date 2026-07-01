@@ -12,9 +12,11 @@ import {
   KeyRound,
   Power,
   Trash2,
+  Barcode,
 } from 'lucide-react';
 import { InspectFormPickerDialog } from '@/components/inspections/inspect-button';
 import { VinLookupDialog } from './vin-lookup-dialog';
+import { GenerateBarcodeDialog } from './generate-barcode-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
@@ -78,6 +80,22 @@ export function AssetTable() {
     filters, setFilter, clearFilters,
   } = useDataTable();
 
+  // Derive dynamic filter options from loaded assets
+  const assetTypeOptions = useMemo(() => {
+    const unique = [...new Set(assets.map((a) => a.assetTypeName).filter(Boolean))] as string[];
+    return unique.sort().map((v) => ({ label: v, value: v }));
+  }, [assets]);
+
+  const teamOptions = useMemo(() => {
+    const unique = [...new Set(assets.flatMap((a) => a.teamNames ?? []).filter(Boolean))];
+    return unique.sort().map((v) => ({ label: v, value: v }));
+  }, [assets]);
+
+  const yearOptions = useMemo(() => {
+    const unique = [...new Set(assets.map((a) => a.year).filter(Boolean))] as number[];
+    return unique.sort((a, b) => b - a).map((v) => ({ label: String(v), value: String(v) }));
+  }, [assets]);
+
   const assetFilterDefs: DataTableFilterDef[] = useMemo(() => [
     {
       columnKey: 'status',
@@ -88,7 +106,44 @@ export function AssetTable() {
         { label: 'Out of Service', value: 'out_of_service' },
       ],
     },
-  ], []);
+    ...(assetTypeOptions.length > 0
+      ? [{
+          columnKey: 'assetTypeName',
+          label: 'Asset Type',
+          type: 'select' as const,
+          options: assetTypeOptions,
+        }]
+      : []),
+    ...(teamOptions.length > 0
+      ? [{
+          columnKey: 'teamNames',
+          label: 'Team',
+          type: 'select' as const,
+          options: teamOptions,
+        }]
+      : []),
+    ...(yearOptions.length > 0
+      ? [{
+          columnKey: 'year',
+          label: 'Year',
+          type: 'select' as const,
+          options: yearOptions,
+        }]
+      : []),
+    {
+      columnKey: 'fuelType',
+      label: 'Fuel Type',
+      type: 'select',
+      options: [
+        { label: 'Diesel', value: 'diesel' },
+        { label: 'Petrol', value: 'petrol' },
+        { label: 'Electric', value: 'electric' },
+        { label: 'LPG', value: 'lpg' },
+        { label: 'CNG', value: 'cng' },
+        { label: 'Other', value: 'other' },
+      ],
+    },
+  ], [assetTypeOptions, teamOptions, yearOptions]);
 
   const filteredAssets = useMemo(
     () => applyTableFilters(assets, filters, assetFilterDefs),
@@ -118,6 +173,15 @@ export function AssetTable() {
   const [driversLoading, setDriversLoading] = useState(false);
   const [selectedDriverIds, setSelectedDriverIds] = useState<Set<string>>(new Set());
   const [savingDrivers, setSavingDrivers] = useState(false);
+
+  // Row selection & barcode dialog
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [barcodeDialogOpen, setBarcodeDialogOpen] = useState(false);
+
+  const selectedAssets = useMemo(
+    () => assets.filter((a) => selectedKeys.has(a.id)),
+    [assets, selectedKeys],
+  );
 
   const fetchAssets = useCallback(async (page: number) => {
     try {
@@ -588,6 +652,11 @@ export function AssetTable() {
         open={vinDialogOpen}
         onOpenChange={setVinDialogOpen}
       />
+      <GenerateBarcodeDialog
+        open={barcodeDialogOpen}
+        onOpenChange={setBarcodeDialogOpen}
+        items={selectedAssets.map((a) => ({ id: a.id, name: a.name, code: a.assetNumber }))}
+      />
       {/* Header */}
       <PageHeader
         title="Assets"
@@ -627,6 +696,22 @@ export function AssetTable() {
           filters={filters}
           onFilterChange={setFilter}
           onFiltersClear={clearFilters}
+          actions={
+            selectedKeys.size > 0 ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setBarcodeDialogOpen(true)}
+              >
+                <Barcode className="h-4 w-4" />
+                Generate barcode
+                <Badge variant="default" className="ml-1 h-5 min-w-5 px-1.5 text-xs rounded-full">
+                  {selectedKeys.size}
+                </Badge>
+              </Button>
+            ) : null
+          }
         />
         <SearchInput
           value={search}
@@ -649,6 +734,9 @@ export function AssetTable() {
         rowKey={(a) => a.id}
         density={density}
         hiddenColumnKeys={hiddenColumnKeys}
+        selectable
+        selectedKeys={selectedKeys}
+        onSelectedKeysChange={setSelectedKeys}
         emptyMessage={
           debouncedSearch
             ? 'No assets match your search'

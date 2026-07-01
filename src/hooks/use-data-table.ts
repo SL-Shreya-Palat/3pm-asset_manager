@@ -78,6 +78,10 @@ export function applyTableFilters<T>(
       if (def.type === 'select') {
         const selected = value as string[];
         if (selected.length === 0) return true;
+        // Handle array cell values (e.g. teamNames)
+        if (Array.isArray(cellValue)) {
+          return cellValue.some((v) => selected.includes(String(v)));
+        }
         return selected.includes(String(cellValue ?? ''));
       }
 

@@ -20,6 +20,7 @@ export interface AssetRow {
   estimatedCost?: number;
   currencyCode?: string;
   subscriptionType?: string;
+  fuelType?: string;
   lastServiceDate?: string;
   lastServiceMileage?: number;
   lastServiceEngineHours?: number;

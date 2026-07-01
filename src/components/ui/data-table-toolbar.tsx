@@ -35,6 +35,8 @@ interface DataTableToolbarProps<T> {
   filters?: Record<string, string | string[]>;
   onFilterChange?: (key: string, value: string | string[]) => void;
   onFiltersClear?: () => void;
+  /** Optional extra action buttons rendered at the start of the toolbar. */
+  actions?: React.ReactNode;
 }
 
 /* ── Toolbar ───────────────────────────────────────────────────────── */
@@ -49,12 +51,16 @@ export function DataTableToolbar<T>({
   filters,
   onFilterChange,
   onFiltersClear,
+  actions,
 }: DataTableToolbarProps<T>) {
   const activeFilterCount = filters ? Object.keys(filters).length : 0;
   const hasFilters = filterDefs && filterDefs.length > 0;
 
   return (
     <div className="flex items-center gap-2 mb-3">
+      {/* Extra actions */}
+      {actions}
+
       {/* Filters */}
       {hasFilters && onFilterChange && (
         <FiltersControl
