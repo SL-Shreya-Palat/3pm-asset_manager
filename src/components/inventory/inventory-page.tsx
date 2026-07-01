@@ -33,6 +33,34 @@ import { GenerateBarcodeDialog } from '@/components/assets/generate-barcode-dial
 import { PartForm } from './part-form';
 import type { PartRow, LookupOption, Pagination } from './types';
 
+// ── Stock helpers (pure — shared by the table and the detail view) ──
+
+/** Total on-hand across all locations. */
+function getTotalStock(part: PartRow): number {
+  return (part.stockLocations || []).reduce((sum, s) => sum + s.quantity, 0);
+}
+
+/** Stock status label + tone: out of stock (≤0) → low stock (≤ reorder point) → in stock. */
+function getStockStatus(
+  part: PartRow,
+  total: number,
+): { label: string; variant: 'success' | 'warning' | 'destructive' } {
+  if (total <= 0) return { label: 'Out of stock', variant: 'destructive' };
+  if (part.reorderPoint != null && total <= part.reorderPoint) return { label: 'Low stock', variant: 'warning' };
+  return { label: 'In stock', variant: 'success' };
+}
+
+/** Unit price used for costing — the first vendor cost above 0 (0 = unpriced). */
+function getUnitPrice(part: PartRow): number {
+  const vendor = (part.vendors || []).find((v) => v.unitCost > 0);
+  return vendor ? vendor.unitCost : 0;
+}
+
+/** A part is "unpriced" when no vendor has a unit cost above 0 — it costs $0 on work orders. */
+function isUnpriced(part: PartRow): boolean {
+  return getUnitPrice(part) <= 0;
+}
+
 export function InventoryPage() {
   const [parts, setParts] = useState<PartRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
@@ -153,10 +181,6 @@ export function InventoryPage() {
     } catch { /* silent */ } finally { setDeleting(false); }
   };
 
-  // Total stock helper
-  const getTotalStock = (part: PartRow): number =>
-    (part.stockLocations || []).reduce((sum, s) => sum + s.quantity, 0);
-
   // Column definitions
   const partColumns: DataTableColumn<PartRow>[] = [
     {
@@ -165,11 +189,14 @@ export function InventoryPage() {
       label: 'Part name',
       pinned: true,
       render: (part) => (
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
             <Package className="h-4 w-4" />
           </div>
           <span className="font-medium text-foreground">{part.name}</span>
+          {isUnpriced(part) && (
+            <Badge variant="warning" className="text-xs">Unpriced</Badge>
+          )}
         </div>
       ),
     },
@@ -204,11 +231,24 @@ export function InventoryPage() {
       label: 'Total stock',
       render: (part) => {
         const total = getTotalStock(part);
-        const isLow = part.reorderPoint != null && total <= part.reorderPoint;
+        const status = getStockStatus(part, total);
         return (
-          <Badge variant={isLow ? 'destructive' : 'secondary'}>
-            {total}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-foreground tabular-nums">{total}</span>
+            <Badge variant={status.variant}>{status.label}</Badge>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'stockValue',
+      header: 'Stock Value',
+      label: 'Stock value',
+      render: (part) => {
+        const price = getUnitPrice(part);
+        if (price <= 0) return <span className="text-muted-foreground">—</span>;
+        return (
+          <span className="text-foreground tabular-nums">${(getTotalStock(part) * price).toFixed(2)}</span>
         );
       },
     },
@@ -402,7 +442,10 @@ function ViewPartContent({
   locationMap: Record<string, string>;
   vendorMap: Record<string, string>;
 }) {
-  const totalStock = (part.stockLocations || []).reduce((sum, s) => sum + s.quantity, 0);
+  const totalStock = getTotalStock(part);
+  const status = getStockStatus(part, totalStock);
+  const unitPrice = getUnitPrice(part);
+  const stockValue = totalStock * unitPrice;
 
   return (
     <div className="space-y-6">
@@ -424,7 +467,11 @@ function ViewPartContent({
 
       {/* Stock */}
       <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Stock Management</h3>
+        <div className="flex items-center gap-2 mb-3">
+          <h3 className="text-sm font-semibold text-foreground">Stock Management</h3>
+          <Badge variant={status.variant}>{status.label}</Badge>
+          {isUnpriced(part) && <Badge variant="warning">Unpriced</Badge>}
+        </div>
         <Separator className="mb-4" />
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-4">
@@ -432,7 +479,11 @@ function ViewPartContent({
             <ViewField label="Reorder Point" value={part.reorderPoint != null ? String(part.reorderPoint) : undefined} />
             <ViewField label="Max Quantity" value={part.maximumQuantity != null ? String(part.maximumQuantity) : undefined} />
           </div>
-          <ViewField label="Measurement Unit" value={part.measurementUnitId ? unitMap[part.measurementUnitId] : undefined} />
+          <div className="grid grid-cols-3 gap-4">
+            <ViewField label="Measurement Unit" value={part.measurementUnitId ? unitMap[part.measurementUnitId] : undefined} />
+            <ViewField label="Unit Price" value={unitPrice > 0 ? `$${unitPrice.toFixed(2)}` : undefined} />
+            <ViewField label="Stock Value" value={unitPrice > 0 ? `$${stockValue.toFixed(2)}` : undefined} />
+          </div>
         </div>
       </div>
 
@@ -460,7 +511,7 @@ function ViewPartContent({
           <div className="space-y-2">
             {part.stockLocations.map((s, i) => (
               <div key={i} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-                <span className="text-sm text-foreground">{locationMap[s.locationId] || s.locationId}</span>
+                <span className="text-sm text-foreground">{(s.locationId && locationMap[s.locationId]) || 'Unassigned'}</span>
                 <Badge variant="secondary">{s.quantity}</Badge>
               </div>
             ))}

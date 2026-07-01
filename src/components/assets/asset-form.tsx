@@ -20,7 +20,6 @@ import { BaseForm } from '@/components/ui/base-form';
 import { AssetTypeDialog } from './asset-type-dialog';
 import { CURRENCIES } from '@/constants/assets';
 import { Skeleton } from '@/components/ui/skeleton';
-import { FormSettingsDialog } from './form-settings-dialog';
 import type { AssetTypeOption, TeamOption, FormItem } from './types';
 
 interface AssetFormProps {
@@ -41,8 +40,6 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
   // Forms & Service Programs
   const [formsList, setFormsList] = useState<FormItem[]>([]);
   const [formsLoading, setFormsLoading] = useState(true);
-  const [settingsFormId, setSettingsFormId] = useState<string | null>(null);
-  const [defectMarks, setDefectMarks] = useState<Record<string, Set<string>>>({});
   const [serviceProgramsList, setServiceProgramsList] = useState<{ id: string; title: string }[]>([]);
   const [selectedFormIds, setSelectedFormIds] = useState<Set<string>>(new Set());
   const [selectedServiceProgramIds, setSelectedServiceProgramIds] = useState<Set<string>>(new Set());
@@ -201,6 +198,7 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
       const items = res.data.data?.items || [];
       setFormsList(items.map((f: Record<string, unknown>) => ({
         id: f.id as string,
+        formId: (f.formId as string) || (f.id as string),
         title: (f.title as string) || '',
         schema: (f.currentSchema as FormItem['schema']) || null,
       })));
@@ -369,46 +367,10 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
 
     try {
       setSaving(true);
-      let resolvedAssetId: string | undefined = assetId;
-
       if (mode === 'edit' && assetId) {
         await axios.put(`/api/assets/${assetId}`, payload, { withCredentials: true });
       } else {
-        const createRes = await axios.post('/api/assets', payload, { withCredentials: true });
-        resolvedAssetId = createRes.data?.data?.id;
-      }
-
-      // Auto-create defects for marked fields (best effort)
-      if (resolvedAssetId) {
-        const defectPromises: Promise<unknown>[] = [];
-        for (const [formId, fieldKeys] of Object.entries(defectMarks)) {
-          if (fieldKeys.size === 0) continue;
-          const form = formsList.find((f) => f.id === formId);
-          if (!form?.schema) continue;
-
-          const allFields = form.schema.pages.flatMap((p) => p.items);
-          for (const fieldKey of fieldKeys) {
-            const field = allFields.find((item) => item.fieldKey === fieldKey);
-            if (!field) continue;
-
-            defectPromises.push(
-              axios.post('/api/defects', {
-                name: field.label,
-                date: new Date().toISOString().split('T')[0],
-                comment: 'Auto-created from form field',
-                assetId: resolvedAssetId,
-                priority: 'medium',
-                severity: 'non_critical',
-              }, { withCredentials: true }).catch(() => {
-                // Best effort — swallow individual defect creation errors
-              })
-            );
-          }
-        }
-
-        if (defectPromises.length > 0) {
-          await Promise.allSettled(defectPromises);
-        }
+        await axios.post('/api/assets', payload, { withCredentials: true });
       }
 
       router.push('/assets');
@@ -788,14 +750,16 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
                           />
                           <span className="text-sm text-foreground">{form.title}</span>
                         </label>
-                        <button
-                          type="button"
-                          onClick={() => setSettingsFormId(form.id)}
+                        <a
+                          href={`/inspections/forms/${form.formId}/defect-settings`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
                           className="p-1 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                          title="Form settings"
+                          title="Configure defect settings for this form (opens in a new tab)"
                         >
                           <Settings className="h-4 w-4" />
-                        </button>
+                        </a>
                       </div>
                     ))
                   )}
@@ -874,19 +838,6 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
         open={assetTypeDialogOpen}
         onOpenChange={setAssetTypeDialogOpen}
         onTypeCreated={fetchAssetTypes}
-      />
-      <FormSettingsDialog
-        form={formsList.find((f) => f.id === settingsFormId) || null}
-        open={settingsFormId !== null}
-        onOpenChange={(open) => {
-          if (!open) setSettingsFormId(null);
-        }}
-        defectFieldKeys={settingsFormId ? defectMarks[settingsFormId] || new Set() : new Set()}
-        onDefectFieldKeysChange={(fieldKeys) => {
-          if (settingsFormId) {
-            setDefectMarks((prev) => ({ ...prev, [settingsFormId]: fieldKeys }));
-          }
-        }}
       />
     </BaseForm>
   );

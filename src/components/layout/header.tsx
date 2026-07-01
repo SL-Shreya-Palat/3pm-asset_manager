@@ -8,7 +8,6 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NotificationBell } from '@/components/layout/notification-bell';
-import { DevScanButton } from '@/components/layout/dev-scan-button';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -153,7 +152,6 @@ export function Header() {
 
       {/* Notifications + Profile */}
       <div className="flex items-center gap-1 flex-1 justify-end min-w-0">
-        <DevScanButton />
         <NotificationBell />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

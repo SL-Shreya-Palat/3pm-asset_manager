@@ -3,6 +3,8 @@ export interface POLineItemRow {
   quantity: number;
   unitCost: number;
   total: number;
+  /** Units received into stock so far (0 until received). */
+  receivedQuantity?: number;
 }
 
 export interface PODocumentRow {

@@ -24,7 +24,13 @@ export type NotificationType =
   | 'work_order_overdue'
   | 'inspection_submitted'
   | 'service_due'
-  | 'service_overdue';
+  | 'service_overdue'
+  | 'part_low_stock'
+  | 'part_out_of_stock'
+  | 'purchase_order_submitted'
+  | 'purchase_order_approved'
+  | 'purchase_order_rejected'
+  | 'purchase_order_received';
 
 export interface NotificationPayload {
   type: NotificationType;

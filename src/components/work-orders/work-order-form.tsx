@@ -1,17 +1,19 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
-  X, Trash2, Upload, FileText, Plus, Package,
-  Truck, Wrench, Users, Calendar, Flag, AlignLeft, Paperclip,
+  X, Trash2, Plus, Package,
+  Truck, Wrench, Users, Calendar, Flag, AlignLeft, Paperclip, AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import { FormSection } from '@/components/ui/form-section';
+import { AttachmentUploader, type UploadedFile } from '@/components/ui/attachment-uploader';
 import {
   Select,
   SelectContent,
@@ -37,6 +39,22 @@ interface PartLine {
   unitCost: number;
 }
 
+/** An open defect that this WO can be created to correct. */
+interface DefectLookup {
+  id: string;
+  defectNumber: string;
+  name: string;
+  status: string;
+}
+
+/** Map a defect status to a Badge variant. */
+function defectStatusBadge(status: string): 'default' | 'secondary' | 'success' | 'warning' {
+  if (status === 'corrected') return 'success';
+  if (status === 'in_progress') return 'default';
+  if (status === 'no_correction_needed') return 'secondary';
+  return 'warning'; // new
+}
+
 interface WorkOrderFormProps {
   mode: 'create' | 'edit';
   workOrder?: WorkOrderRow | null;
@@ -52,14 +70,6 @@ interface WorkOrderFormProps {
   lockAsset?: boolean;
 }
 
-interface AttachmentState {
-  url: string;
-  filename: string;
-  originalName: string;
-  contentType: string;
-  size: number;
-}
-
 type AssigneeTab = 'vendor' | 'mechanic' | 'third_party';
 
 export function WorkOrderForm({
@@ -73,11 +83,12 @@ export function WorkOrderForm({
   lockAsset = false,
 }: WorkOrderFormProps) {
   const router = useRouter();
-  const isDefectSourced = source === 'defect';
+  // Defect-sourced covers raising a WO from a defect (create) AND later editing
+  // that WO (its stored source), so items stay optional in both cases.
+  const isDefectSourced = source === 'defect' || workOrder?.source === 'defect';
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Form fields — prefill asset + default to mechanic when raised from a defect.
   const [assetId, setAssetId] = useState(mode === 'create' && isDefectSourced ? (initialAssetId || '') : '');
@@ -92,13 +103,16 @@ export function WorkOrderForm({
   const [dueDate, setDueDate] = useState('');
   const [statusId, setStatusId] = useState('');
   const [description, setDescription] = useState('');
-  const [attachments, setAttachments] = useState<AttachmentState[]>([]);
-  const [uploading, setUploading] = useState(false);
+  const [attachments, setAttachments] = useState<UploadedFile[]>([]);
 
   // Parts used on this WO (deducted from inventory on save).
   const [parts, setParts] = useState<PartLine[]>([]);
   const [partToAdd, setPartToAdd] = useState('');
   const [qtyToAdd, setQtyToAdd] = useState('1');
+
+  // Defects this WO will correct — open defects for the selected asset.
+  const [availableDefects, setAvailableDefects] = useState<DefectLookup[]>([]);
+  const [selectedDefectIds, setSelectedDefectIds] = useState<string[]>(initialDefectIds || []);
 
   // Prepopulated assignee fields (read-only)
   const [assigneeContact, setAssigneeContact] = useState('');
@@ -181,6 +195,33 @@ export function WorkOrderForm({
   }, []);
 
   useEffect(() => { fetchLookups(); }, [fetchLookups]);
+
+  // Open, unlinked defects for the chosen asset — powers the "Defects to correct"
+  // picker (create mode only; editing a WO's defect links isn't supported).
+  const fetchAssetDefects = useCallback(async (aid: string) => {
+    if (!aid) { setAvailableDefects([]); return; }
+    try {
+      const res = await axios.get(`/api/defects?assetId=${aid}&limit=100`, { withCredentials: true });
+      const items = (res.data.data?.items || []) as Array<Record<string, unknown>>;
+      setAvailableDefects(
+        items.map((d) => ({
+          id: d.id as string,
+          defectNumber: (d.defectNumber as string) || '',
+          name: (d.name as string) || '',
+          status: (d.status as string) || '',
+        })),
+      );
+    } catch {
+      setAvailableDefects([]);
+    }
+  }, []);
+
+  // Defer so setState isn't called synchronously inside the effect body.
+  useEffect(() => {
+    if (mode !== 'create') return;
+    const t = setTimeout(() => fetchAssetDefects(assetId), 0);
+    return () => clearTimeout(t);
+  }, [assetId, mode, fetchAssetDefects]);
 
   // Populate form (edit mode)
   useEffect(() => {
@@ -280,50 +321,14 @@ export function WorkOrderForm({
     clearFieldError('serviceTaskIds');
   };
 
-  // File upload
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setUploading(true);
-    try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const formData = new FormData();
-        formData.append('file', file);
-
-        const res = await axios.post('/api/upload/documents', formData, {
-          withCredentials: true,
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-
-        if (res.data?.data) {
-          setAttachments((prev) => [...prev, {
-            url: res.data.data.url,
-            filename: res.data.data.filename,
-            originalName: res.data.data.originalName,
-            contentType: res.data.data.contentType,
-            size: res.data.data.size,
-          }]);
-        }
-      }
-    } catch {
-      setError('Failed to upload file');
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
+  // A WO can correct one or more of the asset's defects, chosen from the dropdown.
+  const addDefect = (defectId: string) => {
+    if (!defectId) return;
+    setSelectedDefectIds((prev) => (prev.includes(defectId) ? prev : [...prev, defectId]));
+    clearFieldError('serviceTaskIds');
   };
-
-  const removeAttachment = (idx: number) => setAttachments((prev) => prev.filter((_, i) => i !== idx));
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
+  const removeDefect = (defectId: string) =>
+    setSelectedDefectIds((prev) => prev.filter((id) => id !== defectId));
 
   // ── Parts ──
   const handleAddPart = () => {
@@ -361,7 +366,9 @@ export function WorkOrderForm({
 
     const errors: Record<string, string> = {};
     if (!assetId) errors.assetId = 'Asset is required';
-    if (!isDefectSourced && serviceTaskIds.length === 0) errors.serviceTaskIds = 'At least one service task is required';
+    if (!isDefectSourced && serviceTaskIds.length === 0 && selectedDefectIds.length === 0) {
+      errors.serviceTaskIds = 'Select at least one service task or defect to correct';
+    }
     if (assigneeTab === 'vendor' && !assigneeId) errors.assigneeId = 'Vendor is required';
     if (assigneeTab === 'mechanic' && !assigneeId) errors.assigneeId = 'Mechanic is required';
     if (assigneeTab === 'third_party' && showThirdPartyFields) {
@@ -378,8 +385,9 @@ export function WorkOrderForm({
     const payload: Record<string, unknown> = {
       assetId,
       serviceTaskIds,
-      source,
-      ...(isDefectSourced ? { defectIds: initialDefectIds || [] } : {}),
+      // A WO with any linked defects is defect-sourced; otherwise keep the caller's source.
+      source: mode === 'create' && selectedDefectIds.length > 0 ? 'defect' : source,
+      ...(mode === 'create' ? { defectIds: selectedDefectIds } : {}),
       parts: parts.map((p) => ({ partId: p.partId, quantity: p.quantity, unitCost: p.unitCost })),
       assigneeType: assigneeTab,
       statusId,
@@ -442,7 +450,7 @@ export function WorkOrderForm({
           <FormSection icon={Truck} title="Details">
             <div>
               <Label>Asset <span className="text-destructive">*</span></Label>
-              <Select value={assetId} onValueChange={(val) => { setAssetId(val); clearFieldError('assetId'); }} disabled={lockAsset}>
+              <Select value={assetId} onValueChange={(val) => { setAssetId(val); setSelectedDefectIds([]); clearFieldError('assetId'); }} disabled={lockAsset}>
                 <SelectTrigger className={`mt-1.5 ${fieldErrors.assetId ? 'border-destructive' : ''}`}>
                   <SelectValue placeholder="Select asset" />
                 </SelectTrigger>
@@ -468,21 +476,27 @@ export function WorkOrderForm({
                 {serviceTasks.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No service tasks available.</p>
                 ) : (
-                  <div className="rounded-md border border-border max-h-[200px] overflow-y-auto">
-                    {serviceTasks.map((task) => (
-                      <label
-                        key={task.id}
-                        className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/30 border-b border-border last:border-0"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={serviceTaskIds.includes(task.id)}
-                          onChange={() => toggleServiceTask(task.id)}
-                          className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
-                        />
-                        <span className="text-sm text-foreground">{task.name}</span>
-                      </label>
-                    ))}
+                  <div className="rounded-lg border border-border bg-card shadow-sm max-h-[200px] overflow-y-auto overflow-hidden">
+                    {serviceTasks.map((task) => {
+                      const checked = serviceTaskIds.includes(task.id);
+                      return (
+                        <label
+                          key={task.id}
+                          className={cn(
+                            'flex items-center gap-3 px-3 py-2.5 cursor-pointer border-b border-border last:border-0 transition-colors',
+                            checked ? 'bg-primary/5' : 'hover:bg-muted/40',
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleServiceTask(task.id)}
+                            className="h-4 w-4 rounded border-border accent-primary focus:ring-primary"
+                          />
+                          <span className={cn('text-sm text-foreground', checked && 'font-medium')}>{task.name}</span>
+                        </label>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -501,6 +515,72 @@ export function WorkOrderForm({
               </p>
             </div>
           </FormSection>
+
+          {/* ── Defects to correct (optional) ── */}
+          {mode === 'create' && (
+            <FormSection icon={AlertTriangle} title="Defects to correct">
+              <div>
+                <Label>Defects</Label>
+                <Select value="" onValueChange={addDefect} disabled={!assetId}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue placeholder={assetId ? 'Select a defect' : 'Select an asset first'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableDefects.filter((d) => !selectedDefectIds.includes(d.id)).length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        {assetId ? 'No defects for this asset' : 'Select an asset first'}
+                      </div>
+                    ) : (
+                      availableDefects
+                        .filter((d) => !selectedDefectIds.includes(d.id))
+                        .map((d) => (
+                          <SelectItem key={d.id} value={d.id}>
+                            {d.defectNumber ? `${d.defectNumber} · ` : ''}{d.name}
+                            {d.status ? ` (${d.status.replace(/_/g, ' ')})` : ''}
+                          </SelectItem>
+                        ))
+                    )}
+                  </SelectContent>
+                </Select>
+
+                {selectedDefectIds.length > 0 && (
+                  <div className="mt-3 rounded-lg border border-border bg-card shadow-sm divide-y divide-border overflow-hidden">
+                    {selectedDefectIds.map((id) => {
+                      const d = availableDefects.find((x) => x.id === id);
+                      return (
+                        <div key={id} className="flex items-center gap-3 px-3 py-2.5">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
+                            <AlertTriangle className="h-4 w-4" />
+                          </span>
+                          <span className="text-sm text-foreground flex-1 truncate">
+                            {d ? `${d.defectNumber ? `${d.defectNumber} · ` : ''}${d.name}` : 'Defect'}
+                          </span>
+                          {d?.status && (
+                            <Badge variant={defectStatusBadge(d.status)} className="capitalize shrink-0">
+                              {d.status.replace(/_/g, ' ')}
+                            </Badge>
+                          )}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => removeDefect(id)}
+                            className="text-muted-foreground hover:text-destructive shrink-0"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground mt-2">
+                  Linked defects are marked in progress now and resolved when this work order is completed.
+                </p>
+              </div>
+            </FormSection>
+          )}
 
           {/* ── Assignee ── */}
           <FormSection icon={Users} title="Assignee">
@@ -554,15 +634,15 @@ export function WorkOrderForm({
                   <div className="space-y-3">
                     <div>
                       <Label>Contact</Label>
-                      <Input value={assigneeContact} readOnly className="mt-1.5 bg-muted/50" />
+                      <Input value={assigneeContact} readOnly className="mt-1.5" />
                     </div>
                     <div>
                       <Label>Email</Label>
-                      <Input value={assigneeEmail} readOnly className="mt-1.5 bg-muted/50" />
+                      <Input value={assigneeEmail} readOnly className="mt-1.5" />
                     </div>
                     <div>
                       <Label>Phone</Label>
-                      <Input value={assigneePhone} readOnly className="mt-1.5 bg-muted/50" />
+                      <Input value={assigneePhone} readOnly className="mt-1.5" />
                     </div>
                   </div>
                 )}
@@ -611,15 +691,15 @@ export function WorkOrderForm({
                   <div className="space-y-3">
                     <div>
                       <Label>Contact</Label>
-                      <Input value={assigneeContact} readOnly className="mt-1.5 bg-muted/50" />
+                      <Input value={assigneeContact} readOnly className="mt-1.5" />
                     </div>
                     <div>
                       <Label>Email</Label>
-                      <Input value={assigneeEmail} readOnly className="mt-1.5 bg-muted/50" />
+                      <Input value={assigneeEmail} readOnly className="mt-1.5" />
                     </div>
                     <div>
                       <Label>Phone</Label>
-                      <Input value={assigneePhone} readOnly className="mt-1.5 bg-muted/50" />
+                      <Input value={assigneePhone} readOnly className="mt-1.5" />
                     </div>
                   </div>
                 )}
@@ -796,19 +876,21 @@ export function WorkOrderForm({
             </div>
 
             {parts.length > 0 && (
-              <div className="mt-4 rounded-md border border-border divide-y divide-border">
+              <div className="mt-4 rounded-lg border border-border bg-card shadow-sm divide-y divide-border overflow-hidden">
                 {parts.map((p) => {
                   const stock = availableParts.find((a) => a.id === p.partId)?.stock ?? null;
                   const low = stock != null && p.quantity > stock;
                   return (
-                    <div key={p.partId} className="flex items-center gap-3 px-3 py-2">
-                      <Package className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <div key={p.partId} className="flex items-center gap-3 px-3 py-2.5">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                        <Package className="h-4 w-4" />
+                      </span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-foreground truncate">{p.partName}</p>
+                        <p className="text-sm font-medium text-foreground truncate">{p.partName}</p>
                         <p className="text-xs text-muted-foreground">
-                          {p.partNumber ? `${p.partNumber} · ` : ''}{p.unitCost.toFixed(2)} ea
+                          {p.partNumber ? `${p.partNumber} · ` : ''}${p.unitCost.toFixed(2)} ea
                           {stock != null && (
-                            <span className={low ? 'text-destructive' : ''}> · {stock} in stock</span>
+                            <span className={low ? 'text-destructive font-medium' : ''}> · {stock} in stock</span>
                           )}
                         </p>
                       </div>
@@ -817,26 +899,26 @@ export function WorkOrderForm({
                         min={1}
                         value={p.quantity}
                         onChange={(e) => updatePartQty(p.partId, parseInt(e.target.value, 10))}
-                        className="w-16 h-8"
+                        className="w-16 h-8 text-center"
                       />
-                      <span className="text-sm text-foreground w-20 text-right">
-                        {(p.unitCost * p.quantity).toFixed(2)}
+                      <span className="text-sm font-semibold text-foreground w-24 text-right tabular-nums">
+                        ${(p.unitCost * p.quantity).toFixed(2)}
                       </span>
                       <Button
                         type="button"
                         variant="ghost"
                         size="icon-sm"
                         onClick={() => removePart(p.partId)}
-                        className="text-destructive hover:text-destructive"
+                        className="text-muted-foreground hover:text-destructive shrink-0"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   );
                 })}
-                <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
-                  <span className="text-sm font-medium">Parts total</span>
-                  <span className="text-sm font-semibold">{partsCost.toFixed(2)}</span>
+                <div className="flex items-center justify-between px-3 py-2.5 bg-muted/40">
+                  <span className="text-sm font-medium text-foreground">Parts total</span>
+                  <span className="text-sm font-semibold text-foreground tabular-nums">${partsCost.toFixed(2)}</span>
                 </div>
               </div>
             )}
@@ -846,52 +928,15 @@ export function WorkOrderForm({
           </FormSection>
 
           {/* ── Attachments ── */}
-          <FormSection
-            icon={Paperclip}
-            title="Attachments"
-            action={
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
-              >
-                <Upload className="h-3.5 w-3.5 mr-1" />
-                {uploading ? 'Uploading...' : 'Upload'}
-              </Button>
-            }
-          >
-            <input
-              ref={fileInputRef}
-              type="file"
+          <FormSection icon={Paperclip} title="Attachments">
+            <AttachmentUploader
+              files={attachments}
+              onChange={setAttachments}
               accept=".doc,.docx,.pdf,.csv,.xls,.xlsx,.jpg,.jpeg,.png,.heic"
-              multiple
-              className="hidden"
-              onChange={handleFileUpload}
+              hint="Supported: DOC, PDF, CSV, XLS, JPG, HEIC or PNG — Max 50 MB per file"
+              emptyText="No attachments uploaded."
+              onError={setError}
             />
-            <p className="text-xs text-muted-foreground mb-3">
-              Supported: DOC, PDF, CSV, XLS, JPG, HEIC or PNG — Max 50 MB per file
-            </p>
-
-            {attachments.length === 0 && (
-              <p className="text-sm text-muted-foreground">No attachments uploaded.</p>
-            )}
-
-            <div className="space-y-2">
-              {attachments.map((att, idx) => (
-                <div key={idx} className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
-                  <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-foreground truncate">{att.originalName}</p>
-                    <p className="text-xs text-muted-foreground">{formatFileSize(att.size)}</p>
-                  </div>
-                  <Button type="button" variant="ghost" size="icon-sm" onClick={() => removeAttachment(idx)} className="text-destructive hover:text-destructive">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
-            </div>
           </FormSection>
 
           {/* Error banner */}

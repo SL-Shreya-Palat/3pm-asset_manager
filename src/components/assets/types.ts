@@ -70,6 +70,8 @@ export interface FormSchemaPage {
 
 export interface FormItem {
   id: string;
+  /** Builder form id — used to open the central Defect Settings for this form. */
+  formId: string;
   title: string;
   schema: {
     pages: FormSchemaPage[];

@@ -19,7 +19,7 @@ import {
 
 export async function getAllDefects(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; status?: string; priority?: string; severity?: string; teamId?: string },
+  options: { page?: number; limit?: number; search?: string; status?: string; priority?: string; severity?: string; teamId?: string; assetId?: string },
 ) {
   const collection = await getDefectsCollection();
   const page = Math.max(1, options.page || 1);
@@ -48,6 +48,11 @@ export async function getAllDefects(
   // Filter by team: use direct teamIds array on defect documents
   if (options.teamId) {
     filter.teamIds = ObjectId.createFromHexString(options.teamId);
+  }
+
+  // Filter by asset (e.g. the work-order form's "defects to correct" picker)
+  if (options.assetId && ObjectId.isValid(options.assetId)) {
+    filter.assetId = ObjectId.createFromHexString(options.assetId);
   }
 
   if (options.search) {
@@ -87,6 +92,134 @@ export async function getAllDefects(
       return serializeDefect(item as unknown as Record<string, unknown>, { teamNames });
     }),
     pagination: { page, limit, total, hasMore: skip + limit < total },
+  };
+}
+
+// ─── Exception summary (Exception Report KPIs) ───────────────────────────────
+
+export async function getDefectSummary(tenantId: string) {
+  const col = await getDefectsCollection();
+  const assetsCol = await getAssetsCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const base = { tenantId: tenantOid, isArchived: { $ne: true } };
+
+  const [total, newCount, inProgress, corrected, noCorrection, criticalOpen, outOfService] =
+    await Promise.all([
+      col.countDocuments(base),
+      col.countDocuments({ ...base, status: 'new' }),
+      col.countDocuments({ ...base, status: 'in_progress' }),
+      col.countDocuments({ ...base, status: 'corrected' }),
+      col.countDocuments({ ...base, status: 'no_correction_needed' }),
+      col.countDocuments({ ...base, status: { $in: ['new', 'in_progress'] }, severity: 'critical' }),
+      assetsCol.countDocuments({ tenantId: tenantOid, status: 'out_of_service', isArchived: { $ne: true } }),
+    ]);
+
+  return {
+    total,
+    open: newCount + inProgress,
+    new: newCount,
+    inProgress,
+    corrected,
+    noCorrection,
+    criticalOpen,
+    outOfService,
+  };
+}
+
+// ─── Exceptions grouped by asset (Exception Report — fleet-safety view) ───────
+
+/**
+ * Group exceptions (defects) under their asset for the fleet-safety view.
+ * Grounded assets (status = out_of_service) float to the top, then assets with
+ * the most critical-open exceptions. Each group carries the live asset name and
+ * its exceptions serialized like the flat list.
+ */
+export async function getExceptionsByAsset(
+  tenantId: string,
+  options: { status?: string; severity?: string; search?: string } = {},
+) {
+  const col = await getDefectsCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+
+  const match: Record<string, unknown> = {
+    tenantId: tenantOid,
+    isArchived: { $ne: true },
+  };
+
+  // 'open' is a virtual status = new + in_progress; 'all' means no status filter.
+  if (options.status === 'open') {
+    match.status = { $in: ['new', 'in_progress'] };
+  } else if (options.status && options.status !== 'all') {
+    match.status = options.status;
+  }
+
+  if (options.severity && options.severity !== 'all') {
+    match.severity = options.severity;
+  }
+
+  if (options.search) {
+    const regex = { $regex: options.search, $options: 'i' };
+    match.$or = [
+      { defectNumber: regex },
+      { name: regex },
+      { assetName: regex },
+      { driverName: regex },
+    ];
+  }
+
+  const openStatuses = ['new', 'in_progress'];
+
+  const groups = await col
+    .aggregate([
+      { $match: match },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$assetId',
+          storedAssetName: { $first: '$assetName' },
+          exceptions: { $push: '$$ROOT' },
+          total: { $sum: 1 },
+          openCount: {
+            $sum: { $cond: [{ $in: ['$status', openStatuses] }, 1, 0] },
+          },
+          criticalOpenCount: {
+            $sum: {
+              $cond: [
+                { $and: [{ $eq: ['$severity', 'critical'] }, { $in: ['$status', openStatuses] }] },
+                1,
+                0,
+              ],
+            },
+          },
+          latest: { $max: '$createdAt' },
+        },
+      },
+      { $lookup: { from: 'assets', localField: '_id', foreignField: '_id', as: 'asset' } },
+      {
+        $addFields: {
+          assetName: {
+            $ifNull: [{ $arrayElemAt: ['$asset.name', 0] }, '$storedAssetName'],
+          },
+          outOfService: {
+            $eq: [{ $arrayElemAt: ['$asset.status', 0] }, 'out_of_service'],
+          },
+        },
+      },
+      { $project: { asset: 0 } },
+      { $sort: { outOfService: -1, criticalOpenCount: -1, openCount: -1, latest: -1 } },
+    ])
+    .toArray();
+
+  return {
+    groups: groups.map((g) => ({
+      assetId: g._id ? (g._id as ObjectId).toString() : null,
+      assetName: (g.assetName as string) || 'Unassigned',
+      outOfService: Boolean(g.outOfService),
+      total: g.total as number,
+      openCount: g.openCount as number,
+      criticalOpenCount: g.criticalOpenCount as number,
+      exceptions: (g.exceptions as Array<Record<string, unknown>>).map((d) => serializeDefect(d)),
+    })),
   };
 }
 
@@ -347,7 +480,6 @@ export async function removeTeamFromDefect(
   const defectOid = ObjectId.createFromHexString(defectId);
   const userOid = ObjectId.createFromHexString(userId);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const result = await collection.updateOne(
     {
       _id: defectOid,
@@ -357,6 +489,7 @@ export async function removeTeamFromDefect(
     {
       $pull: { teamIds: teamOid },
       $set: { updatedBy: userOid, updatedAt: new Date() },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any,
   );
 

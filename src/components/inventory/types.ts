@@ -6,7 +6,8 @@ export interface PartVendorRow {
 }
 
 export interface StockLocationRow {
-  locationId: string;
+  /** null = "Unassigned" bucket (stock not tied to a named location). */
+  locationId: string | null;
   quantity: number;
 }
 

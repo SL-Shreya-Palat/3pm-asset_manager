@@ -72,6 +72,23 @@ export async function exchangeToken(guid: string): Promise<{
 }
 
 /**
+ * Short-lived cache of verified sessions, keyed by the raw session-cookie value.
+ *
+ * getSession() runs on every route handler, and a single page load fires a burst
+ * of parallel requests (list fetches + the notification poll + the SSE stream +
+ * RSC prefetches). Without caching, each one blocks on its own IdP verify-token
+ * round-trip, and under that load some fail → getSession() returns null → spurious
+ * 401s (and the overloaded dev server drops RSC payloads). Caching dedupes the
+ * verify so the first success covers the whole burst.
+ *
+ * Only SUCCESSFUL verifies are cached — a transient IdP failure recovers on the
+ * next request instead of locking the user out for the TTL. On logout the cookie
+ * is cleared, so the no-cookie fast path below bypasses the cache entirely.
+ */
+const SESSION_CACHE_TTL_MS = 30_000;
+const sessionCache = new Map<string, { session: UserSession; expiresAt: number }>();
+
+/**
  * Verify the session cookie against the 3pm-auth IdP.
  * Returns the user session if valid, null otherwise.
  */
@@ -82,14 +99,21 @@ export async function getSession(): Promise<UserSession | null> {
 
     if (!sessionCookie?.value) return null;
 
+    const token = sessionCookie.value;
+    const now = Date.now();
+
+    // Serve a recent verification without re-hitting the IdP.
+    const cached = sessionCache.get(token);
+    if (cached && cached.expiresAt > now) return cached.session;
+
     const res = await fetch(`${IDP_URL}/api/verify-token`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Cookie: `${SESSION_COOKIE}=${sessionCookie.value}`,
+        Cookie: `${SESSION_COOKIE}=${token}`,
       },
       body: JSON.stringify({
-        token: sessionCookie.value,
+        token,
         clientId: AUTH_CLIENT_ID,
         clientSecret: AUTH_CLIENT_SECRET,
       }),
@@ -99,7 +123,17 @@ export async function getSession(): Promise<UserSession | null> {
 
     if (!res.ok || result.error || !result.data?.valid) return null;
 
-    return result.data.user as UserSession;
+    const session = result.data.user as UserSession;
+
+    // Cache the success; prune stale entries opportunistically so the map stays bounded.
+    if (sessionCache.size > 500) {
+      for (const [key, val] of sessionCache) {
+        if (val.expiresAt <= now) sessionCache.delete(key);
+      }
+    }
+    sessionCache.set(token, { session, expiresAt: now + SESSION_CACHE_TTL_MS });
+
+    return session;
   } catch (error) {
     console.error('Error verifying 3pm-auth session:', error);
     return null;

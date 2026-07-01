@@ -75,14 +75,18 @@ export async function resolveWorkOrderParts(
 /**
  * Consume (>0) or return (<0) `consumed` units across a part's stock locations.
  * Draws down locations in order; insufficient stock pushes the primary negative
- * so the recorded total always reflects reality. Returns a new array.
+ * so the recorded total always reflects reality. A part with no named location
+ * still records against an "Unassigned" bucket (locationId: null) — so consuming
+ * a location-less part is never a silent no-op. Returns a new array.
  */
 function adjustStockLocations(
-  stockLocations: Array<{ locationId: ObjectId; quantity: number }>,
+  stockLocations: Array<{ locationId: ObjectId | null; quantity: number }>,
   consumed: number,
-): Array<{ locationId: ObjectId; quantity: number }> {
+): Array<{ locationId: ObjectId | null; quantity: number }> {
   const locs = (stockLocations || []).map((s) => ({ locationId: s.locationId, quantity: s.quantity }));
-  if (consumed === 0 || locs.length === 0) return locs;
+  if (consumed === 0) return locs;
+  // No location on file → track the movement against an Unassigned bucket.
+  if (locs.length === 0) locs.push({ locationId: null, quantity: 0 });
 
   if (consumed > 0) {
     let remaining = consumed;
@@ -136,7 +140,7 @@ export async function applyInventoryDelta(
       const doc = docById.get(id);
       if (!doc) return null;
       const newLocs = adjustStockLocations(
-        (doc.stockLocations as Array<{ locationId: ObjectId; quantity: number }>) || [],
+        (doc.stockLocations as Array<{ locationId: ObjectId | null; quantity: number }>) || [],
         consumed,
       );
       return {

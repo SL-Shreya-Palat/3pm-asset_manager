@@ -8,11 +8,18 @@ import {
   Trash2,
   Eye,
   ShoppingCart,
+  PackageCheck,
+  Send,
+  Check,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { SearchInput } from '@/components/ui/search-input';
 import { PageHeader } from '@/components/ui/page-header';
 import { FilterTabs } from '@/components/ui/filter-tabs';
@@ -41,6 +48,54 @@ import {
   STATUS_BADGE_VARIANT,
   STATUS_DISPLAY_NAME,
 } from './types';
+
+type POActionKind = 'transition' | 'receive' | 'reject';
+interface POAction {
+  targetStatus: string;
+  label: string;
+  kind: POActionKind;
+}
+
+/** Next actions for a PO given its status. Receiving and rejection open dedicated
+ *  dialogs; everything else is a plain status transition. */
+function getStatusActions(status: string): POAction[] {
+  switch (status) {
+    case 'draft':
+      return [{ targetStatus: 'pending_approval', label: 'Submit for Approval', kind: 'transition' }];
+    case 'pending_approval':
+      return [
+        { targetStatus: 'approved', label: 'Approve', kind: 'transition' },
+        { targetStatus: 'rejected', label: 'Reject', kind: 'reject' },
+      ];
+    case 'rejected':
+      return [{ targetStatus: 'pending_approval', label: 'Resubmit', kind: 'transition' }];
+    case 'approved':
+      return [
+        { targetStatus: 'purchased', label: 'Mark as Purchased', kind: 'transition' },
+        { targetStatus: 'closed', label: 'Close', kind: 'transition' },
+      ];
+    case 'purchased':
+      return [{ targetStatus: 'received', label: 'Receive Items', kind: 'receive' }];
+    case 'received_partial':
+      return [
+        { targetStatus: 'received', label: 'Receive Items', kind: 'receive' },
+        { targetStatus: 'closed', label: 'Close', kind: 'transition' },
+      ];
+    case 'received':
+      return [{ targetStatus: 'closed', label: 'Close', kind: 'transition' }];
+    default:
+      return [];
+  }
+}
+
+/** A line prepared for the receive dialog. */
+interface ReceiveLine {
+  index: number;
+  partId: string;
+  ordered: number;
+  received: number;
+  receiveNow: string;
+}
 
 export function PurchaseOrdersPage() {
   const [orders, setOrders] = useState<PurchaseOrderRow[]>([]);
@@ -77,6 +132,23 @@ export function PurchaseOrdersPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState<PurchaseOrderRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Status transitions (submit / approve / purchase / close)
+  const [transitioning, setTransitioning] = useState(false);
+  const [actionError, setActionError] = useState('');
+
+  // Reject dialog
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectOrder, setRejectOrder] = useState<PurchaseOrderRow | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejecting, setRejecting] = useState(false);
+
+  // Receive dialog
+  const [receiveOpen, setReceiveOpen] = useState(false);
+  const [receiveOrder, setReceiveOrder] = useState<PurchaseOrderRow | null>(null);
+  const [receiveLines, setReceiveLines] = useState<ReceiveLine[]>([]);
+  const [receiving, setReceiving] = useState(false);
+  const [receiveError, setReceiveError] = useState('');
 
   // Fetch lookup data
   const fetchLookups = useCallback(async () => {
@@ -143,7 +215,7 @@ export function PurchaseOrdersPage() {
   };
 
   // View dialog
-  const handleOpenView = (order: PurchaseOrderRow) => { setViewOrder(order); setViewDialogOpen(true); };
+  const handleOpenView = (order: PurchaseOrderRow) => { setViewOrder(order); setActionError(''); setViewDialogOpen(true); };
 
   // Delete
   const handleOpenDelete = (order: PurchaseOrderRow) => { setDeletingOrder(order); setDeleteDialogOpen(true); };
@@ -155,6 +227,108 @@ export function PurchaseOrdersPage() {
       setDeleteDialogOpen(false); setDeletingOrder(null);
       fetchOrders(pagination.page);
     } catch { /* silent */ } finally { setDeleting(false); }
+  };
+
+  // ── Status actions ──
+  const handleAction = (order: PurchaseOrderRow, action: POAction) => {
+    if (action.kind === 'receive') return handleOpenReceive(order);
+    if (action.kind === 'reject') { setRejectOrder(order); setRejectReason(''); setRejectOpen(true); return; }
+    handleTransition(order, action.targetStatus);
+  };
+
+  const handleTransition = async (order: PurchaseOrderRow, status: string, note?: string): Promise<boolean> => {
+    setTransitioning(true);
+    setActionError('');
+    try {
+      const res = await axios.put(
+        `/api/purchase-orders/${order.id}/status`,
+        { status, note },
+        { withCredentials: true },
+      );
+      if (res.data?.data) setViewOrder(res.data.data as PurchaseOrderRow);
+      fetchOrders(pagination.page);
+      return true;
+    } catch (err) {
+      setActionError(
+        axios.isAxiosError(err) && err.response?.data?.error
+          ? String(err.response.data.error)
+          : 'Action failed',
+      );
+      return false;
+    } finally { setTransitioning(false); }
+  };
+
+  const handleSubmitReject = async () => {
+    if (!rejectOrder || !rejectReason.trim()) return;
+    setRejecting(true);
+    try {
+      const ok = await handleTransition(rejectOrder, 'rejected', rejectReason.trim());
+      if (ok) { setRejectOpen(false); setRejectOrder(null); setRejectReason(''); }
+    } finally { setRejecting(false); }
+  };
+
+  // ── Receiving ──
+  const handleOpenReceive = (order: PurchaseOrderRow) => {
+    setReceiveError('');
+    setReceiveOrder(order);
+    setReceiveLines(
+      order.lineItems.map((li, index) => {
+        const received = li.receivedQuantity ?? 0;
+        const outstanding = Math.max(0, li.quantity - received);
+        return {
+          index,
+          partId: li.partId,
+          ordered: li.quantity,
+          received,
+          receiveNow: String(outstanding), // default to everything still outstanding
+        };
+      }),
+    );
+    setReceiveOpen(true);
+  };
+
+  const updateReceiveLine = (index: number, value: string) => {
+    setReceiveLines((prev) => prev.map((l) => (l.index === index ? { ...l, receiveNow: value } : l)));
+  };
+
+  const handleSubmitReceive = async () => {
+    if (!receiveOrder) return;
+    setReceiveError('');
+
+    // Build receipts from lines with a positive, in-range quantity.
+    const receipts: Array<{ index: number; quantity: number }> = [];
+    for (const l of receiveLines) {
+      const outstanding = Math.max(0, l.ordered - l.received);
+      const qty = Math.floor(Number(l.receiveNow));
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      if (qty > outstanding) {
+        setReceiveError(`Cannot receive more than the ${outstanding} outstanding for ${partMap[l.partId] || 'a part'}.`);
+        return;
+      }
+      receipts.push({ index: l.index, quantity: qty });
+    }
+    if (receipts.length === 0) {
+      setReceiveError('Enter at least one quantity to receive.');
+      return;
+    }
+
+    setReceiving(true);
+    try {
+      const res = await axios.post(
+        `/api/purchase-orders/${receiveOrder.id}/receive`,
+        { receipts },
+        { withCredentials: true },
+      );
+      if (res.data?.data) setViewOrder(res.data.data as PurchaseOrderRow);
+      setReceiveOpen(false); setReceiveOrder(null);
+      fetchOrders(pagination.page);
+    } catch (err) {
+      setReceiveError(
+        axios.isAxiosError(err) && err.response?.data?.error
+          ? String(err.response.data.error)
+          : 'Failed to receive items',
+      );
+    } finally { setReceiving(false); }
   };
 
   // Column definitions
@@ -241,6 +415,9 @@ export function PurchaseOrdersPage() {
       render: (order) => (
         <RowActions>
           <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(order)} />
+          {['purchased', 'received_partial'].includes(order.status) && (
+            <RowActionButton label="Receive" tone="primary" icon={<PackageCheck />} onClick={() => handleOpenReceive(order)} />
+          )}
           {['draft', 'rejected'].includes(order.status) && (
             <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(order)} />
           )}
@@ -347,12 +524,37 @@ export function PurchaseOrdersPage() {
               />
             )}
           </div>
-          <DialogFooter>
+          {actionError && (
+            <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3">
+              <p className="text-sm text-destructive">{actionError}</p>
+            </div>
+          )}
+          <DialogFooter className="flex-wrap gap-2">
             {viewOrder && ['draft', 'rejected'].includes(viewOrder.status) && (
               <Button variant="outline" onClick={() => { setViewDialogOpen(false); if (viewOrder) handleOpenEdit(viewOrder); }}>
                 <Pencil className="h-4 w-4 mr-1" /> Edit
               </Button>
             )}
+            {viewOrder && getStatusActions(viewOrder.status).map((action) => {
+              const isPrimary = action.kind === 'receive' || action.targetStatus === 'approved' || action.targetStatus === 'pending_approval' || action.targetStatus === 'purchased';
+              const icon =
+                action.kind === 'receive' ? <PackageCheck className="h-4 w-4 mr-1" />
+                : action.kind === 'reject' ? <X className="h-4 w-4 mr-1" />
+                : action.targetStatus === 'approved' ? <Check className="h-4 w-4 mr-1" />
+                : action.targetStatus === 'purchased' ? <ShoppingCart className="h-4 w-4 mr-1" />
+                : action.targetStatus === 'closed' ? null
+                : <Send className="h-4 w-4 mr-1" />;
+              return (
+                <Button
+                  key={action.targetStatus}
+                  variant={isPrimary ? 'default' : 'outline'}
+                  disabled={transitioning}
+                  onClick={() => viewOrder && handleAction(viewOrder, action)}
+                >
+                  {icon}{action.label}
+                </Button>
+              );
+            })}
             <Button variant="outline" onClick={() => setViewDialogOpen(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
@@ -371,6 +573,94 @@ export function PurchaseOrdersPage() {
             <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
               {deleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Receive Items Dialog */}
+      <Dialog open={receiveOpen} onOpenChange={(o) => { if (!o) { setReceiveOpen(false); setReceiveOrder(null); } }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Receive Items — {receiveOrder?.poNumber}</DialogTitle>
+            <DialogDescription>
+              Enter how many of each item arrived. Received quantities are added to stock at the delivery location
+              {receiveOrder ? ` (${locationMap[receiveOrder.deliveryLocationId] || 'delivery location'})` : ''}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto py-2">
+            <div className="grid grid-cols-[1fr_auto_auto_auto] gap-3 px-3 py-1 text-xs font-medium text-muted-foreground">
+              <span>Part</span>
+              <span className="w-16 text-right">Ordered</span>
+              <span className="w-16 text-right">Received</span>
+              <span className="w-24 text-right">Receive now</span>
+            </div>
+            <div className="space-y-2">
+              {receiveLines.map((l) => {
+                const outstanding = Math.max(0, l.ordered - l.received);
+                const done = outstanding === 0;
+                return (
+                  <div key={l.index} className="grid grid-cols-[1fr_auto_auto_auto] gap-3 items-center rounded-md border border-border px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-sm text-foreground truncate">{partMap[l.partId] || l.partId}</p>
+                      {done && <span className="text-xs text-green-700 dark:text-green-400">Fully received</span>}
+                    </div>
+                    <span className="w-16 text-right text-sm text-muted-foreground tabular-nums">{l.ordered}</span>
+                    <span className="w-16 text-right text-sm text-muted-foreground tabular-nums">{l.received}</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={outstanding}
+                      value={done ? '' : l.receiveNow}
+                      disabled={done}
+                      onChange={(e) => updateReceiveLine(l.index, e.target.value)}
+                      className="w-24 h-8 text-right"
+                      placeholder={done ? '—' : '0'}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            {receiveError && (
+              <div className="mt-3 rounded-md bg-destructive/10 border border-destructive/20 p-3">
+                <p className="text-sm text-destructive">{receiveError}</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setReceiveOpen(false); setReceiveOrder(null); }} disabled={receiving}>Cancel</Button>
+            <Button onClick={handleSubmitReceive} disabled={receiving}>
+              <PackageCheck className="h-4 w-4 mr-1" />
+              {receiving ? 'Receiving...' : 'Receive Items'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Dialog */}
+      <Dialog open={rejectOpen} onOpenChange={(o) => { if (!o) { setRejectOpen(false); setRejectOrder(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject Purchase Order</DialogTitle>
+            <DialogDescription>
+              Provide a reason for rejecting {rejectOrder?.poNumber}. It&apos;s recorded in the status history.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Label htmlFor="rejectReason">Reason <span className="text-destructive">*</span></Label>
+            <Textarea
+              id="rejectReason"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Why is this PO being rejected?"
+              rows={3}
+              className="mt-1.5"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setRejectOpen(false); setRejectOrder(null); }} disabled={rejecting}>Cancel</Button>
+            <Button variant="destructive" onClick={handleSubmitReject} disabled={rejecting || !rejectReason.trim()}>
+              {rejecting ? 'Rejecting...' : 'Reject PO'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -428,6 +718,17 @@ function ViewPOContent({
                 <div className="flex-1">
                   <span className="text-sm text-foreground">{partMap[li.partId] || li.partId}</span>
                   <span className="text-xs text-muted-foreground ml-2">x{li.quantity}</span>
+                  {(li.receivedQuantity ?? 0) > 0 && (
+                    <span
+                      className={`text-xs ml-2 ${
+                        (li.receivedQuantity ?? 0) >= li.quantity
+                          ? 'text-green-700 dark:text-green-400'
+                          : 'text-yellow-700 dark:text-yellow-500'
+                      }`}
+                    >
+                      · received {li.receivedQuantity}/{li.quantity}
+                    </span>
+                  )}
                 </div>
                 <div className="text-right">
                   <span className="text-sm text-muted-foreground">${li.unitCost.toFixed(2)} ea</span>

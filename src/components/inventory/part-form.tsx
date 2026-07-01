@@ -136,7 +136,7 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
         (part.vendors || []).map((v) => ({ vendorId: v.vendorId, unitCost: String(v.unitCost) })),
       );
       setLocationLines(
-        (part.stockLocations || []).map((s) => ({ locationId: s.locationId, quantity: String(s.quantity) })),
+        (part.stockLocations || []).map((s) => ({ locationId: s.locationId ?? '', quantity: String(s.quantity) })),
       );
       if (part.photoUrl) {
         setPhotoPreview(part.photoUrl);
@@ -322,20 +322,7 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
                 {fieldErrors.partNumber && <p className="text-sm text-destructive mt-1">{fieldErrors.partNumber}</p>}
               </div>
 
-              {/* UPC */}
-              <div>
-                <Label htmlFor="upc">UPC</Label>
-                <Input
-                  id="upc"
-                  value={upc}
-                  onChange={(e) => { setUpc(e.target.value); clearFieldError('upc'); }}
-                  placeholder="e.g. 012345678901"
-                  maxLength={12}
-                  className={`mt-1.5 ${fieldErrors.upc ? 'border-destructive' : ''}`}
-                />
-                <p className="text-xs text-muted-foreground mt-1">Twelve digit unique number associated with the bar code</p>
-                {fieldErrors.upc && <p className="text-sm text-destructive mt-1">{fieldErrors.upc}</p>}
-              </div>
+              {/* UPC — hidden for now (existing values are preserved on save) */}
 
               {/* Manufacturer */}
               <div>

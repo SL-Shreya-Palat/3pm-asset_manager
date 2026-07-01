@@ -69,6 +69,7 @@ function extractEligibleFields(pages: any[]): EligibleField[] {
         selectedDefectValues: [],
         severity: 'non_critical',
         outOfService: false,
+        ignored: false,
       });
     }
   }
@@ -88,6 +89,7 @@ function serialize(doc: DefectSettingsDocument): DefectSettingsResponse {
     defectAnswers: doc.defectAnswers,
     severityByField: doc.severityByField,
     outOfServiceByField: doc.outOfServiceByField,
+    ignoredByField: doc.ignoredByField,
     updatedAt: doc.updatedAt.toISOString(),
     updatedBy: doc.updatedBy.toString(),
   };
@@ -154,6 +156,7 @@ export async function getDefectSettings(
       field.selectedDefectValues = saved.defectAnswers[field.fieldKey] || [];
       field.severity = saved.severityByField?.[field.fieldKey] || 'non_critical';
       field.outOfService = saved.outOfServiceByField?.[field.fieldKey] || false;
+      field.ignored = saved.ignoredByField?.[field.fieldKey] || false;
     }
   }
 
@@ -216,10 +219,18 @@ export async function upsertDefectSettings(
   const eligible = extractEligibleFields(pages);
   const validKeys = new Set(eligible.map((f) => f.fieldKey));
 
-  // Drop any fieldKey no longer present in the schema
+  // Ignored fields do nothing — record them and exclude them from every rule below.
+  const cleanedIgnored: Record<string, boolean> = {};
+  if (input.ignoredByField) {
+    for (const [key, on] of Object.entries(input.ignoredByField)) {
+      if (on && validKeys.has(key)) cleanedIgnored[key] = true;
+    }
+  }
+
+  // Drop any fieldKey no longer present in the schema (or ignored).
   const cleanedAnswers: Record<string, string[]> = {};
   for (const [key, vals] of Object.entries(input.defectAnswers)) {
-    if (validKeys.has(key) && vals.length > 0) {
+    if (validKeys.has(key) && !cleanedIgnored[key] && vals.length > 0) {
       cleanedAnswers[key] = vals;
     }
   }
@@ -227,7 +238,7 @@ export async function upsertDefectSettings(
   const cleanedSeverity: Record<string, SeverityValue> = {};
   if (input.severityByField) {
     for (const [key, sev] of Object.entries(input.severityByField)) {
-      if (validKeys.has(key)) {
+      if (validKeys.has(key) && !cleanedIgnored[key]) {
         cleanedSeverity[key] = sev;
       }
     }
@@ -255,6 +266,7 @@ export async function upsertDefectSettings(
         defectAnswers: cleanedAnswers,
         severityByField: Object.keys(cleanedSeverity).length > 0 ? cleanedSeverity : undefined,
         outOfServiceByField: Object.keys(cleanedOutOfService).length > 0 ? cleanedOutOfService : undefined,
+        ignoredByField: Object.keys(cleanedIgnored).length > 0 ? cleanedIgnored : undefined,
         updatedAt: now,
         updatedBy: userOid,
       } satisfies Partial<DefectSettingsDocument>,

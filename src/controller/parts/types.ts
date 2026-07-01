@@ -9,9 +9,10 @@ export interface PartVendor {
   unitCost: number;
 }
 
-/** Per-location stock. */
+/** Per-location stock. A null locationId is the "Unassigned" bucket (stock not
+ *  tied to a named location — e.g. auto-recorded work-order consumption). */
 export interface StockLocation {
-  locationId: ObjectId;
+  locationId: ObjectId | null;
   quantity: number;
 }
 

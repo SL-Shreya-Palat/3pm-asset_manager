@@ -8,6 +8,7 @@
  *
  *   • Service due / overdue  → tenant managers + the asset's assigned driver
  *   • Work order overdue     → tenant managers + the assigned mechanic
+ *   • Part low / out of stock → tenant managers (parts at/below their reorder point)
  *
  * (Asset compliance expiry is intentionally NOT here — this app's asset model has no
  *  rego / WOF / CoF expiry fields yet; add those fields first, then a branch here.)
@@ -20,6 +21,7 @@ import {
   getDriversCollection,
   getTenantMembersCollection,
   getWorkOrdersCollection,
+  getPartsCollection,
 } from '@/lib/mongodb';
 import { getAssetServiceStatus } from '@/controller/service-programs/due-status';
 import { notifyTenantManagersOnce, notifyUsersOnce } from '@/controller/notifications';
@@ -127,11 +129,49 @@ async function scanWorkOrdersOverdue(tenantId: string): Promise<number> {
   return count;
 }
 
+/** Parts at or below their reorder point for one tenant. Managers get one alert
+ *  per part per dedupe window until the part is restocked above its reorder point. */
+async function scanLowStock(tenantId: string): Promise<number> {
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const partsCol = await getPartsCollection();
+  // Only parts with a meaningful reorder point can go "low".
+  const parts = await partsCol
+    .find(
+      { tenantId: tenantOid, isArchived: { $ne: true }, reorderPoint: { $gt: 0 } },
+      { projection: { name: 1, partNumber: 1, reorderPoint: 1, stockLocations: 1 } },
+    )
+    .toArray();
+
+  let count = 0;
+  for (const p of parts) {
+    const reorder = p.reorderPoint as number;
+    const total = ((p.stockLocations as Array<{ quantity: number }> | undefined) || [])
+      .reduce((sum, l) => sum + (l.quantity || 0), 0);
+    if (total > reorder) continue; // healthy stock
+
+    const outOfStock = total <= 0;
+    const partName = (p.name as string) || 'A part';
+    const suffix = p.partNumber ? ` (${p.partNumber as string})` : '';
+    const payload = {
+      type: outOfStock ? ('part_out_of_stock' as const) : ('part_low_stock' as const),
+      title: `${outOfStock ? 'Out of stock' : 'Low stock'}: ${partName}`,
+      body: `${partName}${suffix} — ${total} in stock (reorder point ${reorder}).`,
+      link: '/maintenance/inventory',
+      entityType: 'part',
+      entityId: (p._id as ObjectId).toString(),
+    };
+    await notifyTenantManagersOnce(tenantId, payload);
+    count++;
+  }
+  return count;
+}
+
 /** Scan every active tenant for time-based alerts. Safe to run repeatedly (deduped). */
 export async function runNotificationScan(): Promise<{
   tenants: number;
   serviceAlerts: number;
   workOrderAlerts: number;
+  lowStockAlerts: number;
 }> {
   const tenantsCol = await getTenantsCollection();
   const tenants = await tenantsCol
@@ -140,17 +180,19 @@ export async function runNotificationScan(): Promise<{
 
   let serviceAlerts = 0;
   let workOrderAlerts = 0;
+  let lowStockAlerts = 0;
 
   for (const t of tenants) {
     const tenantId = (t._id as ObjectId).toString();
     try {
       serviceAlerts += await scanServiceDue(tenantId);
       workOrderAlerts += await scanWorkOrdersOverdue(tenantId);
+      lowStockAlerts += await scanLowStock(tenantId);
     } catch (err) {
       // One tenant's failure must not stop the rest.
       console.error(`[notifications] scan failed for tenant ${tenantId}:`, err);
     }
   }
 
-  return { tenants: tenants.length, serviceAlerts, workOrderAlerts };
+  return { tenants: tenants.length, serviceAlerts, workOrderAlerts, lowStockAlerts };
 }

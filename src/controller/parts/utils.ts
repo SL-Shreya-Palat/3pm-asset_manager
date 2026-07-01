@@ -90,7 +90,7 @@ export function validateCreatePartInput(input: CreatePartInput): ValidationResul
 /** Serialize a part document for API response. */
 export function serializePart(doc: Record<string, unknown>): Record<string, unknown> {
   const vendors = doc.vendors as Array<{ vendorId: { toString(): string }; unitCost: number }> | undefined;
-  const stockLocations = doc.stockLocations as Array<{ locationId: { toString(): string }; quantity: number }> | undefined;
+  const stockLocations = doc.stockLocations as Array<{ locationId: { toString(): string } | null; quantity: number }> | undefined;
 
   return {
     id: doc._id?.toString(),
@@ -108,7 +108,7 @@ export function serializePart(doc: Record<string, unknown>): Record<string, unkn
       ? vendors.map((v) => ({ vendorId: v.vendorId.toString(), unitCost: v.unitCost }))
       : [],
     stockLocations: stockLocations
-      ? stockLocations.map((s) => ({ locationId: s.locationId.toString(), quantity: s.quantity }))
+      ? stockLocations.map((s) => ({ locationId: s.locationId ? s.locationId.toString() : null, quantity: s.quantity }))
       : [],
     isActive: doc.isActive ?? true,
     isArchived: doc.isArchived ?? false,

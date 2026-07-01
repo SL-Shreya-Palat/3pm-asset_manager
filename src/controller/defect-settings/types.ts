@@ -24,6 +24,8 @@ export interface DefectSettingsDocument {
   severityByField?: Record<string, SeverityValue>;
   /** fieldKey → true when a flagged answer on this field takes the asset Out of Service. */
   outOfServiceByField?: Record<string, boolean>;
+  /** fieldKey → true when the field is explicitly ignored (does nothing on submit). */
+  ignoredByField?: Record<string, boolean>;
   updatedAt: Date;
   updatedBy: ObjectId;
 }
@@ -38,6 +40,7 @@ export interface DefectSettingsResponse {
   defectAnswers: Record<string, string[]>;
   severityByField?: Record<string, SeverityValue>;
   outOfServiceByField?: Record<string, boolean>;
+  ignoredByField?: Record<string, boolean>;
   updatedAt: string;
   updatedBy: string;
 }
@@ -59,6 +62,8 @@ export interface EligibleField {
   severity: SeverityValue;
   /** When true, a flagged answer here takes the asset Out of Service. */
   outOfService: boolean;
+  /** When true, the field is ignored — no chips/severity, does nothing on submit. */
+  ignored: boolean;
 }
 
 /**
@@ -68,4 +73,5 @@ export interface UpsertDefectSettingsInput {
   defectAnswers: Record<string, string[]>;
   severityByField?: Record<string, SeverityValue>;
   outOfServiceByField?: Record<string, boolean>;
+  ignoredByField?: Record<string, boolean>;
 }

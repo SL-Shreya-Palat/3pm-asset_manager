@@ -22,6 +22,8 @@ export interface POLineItem {
   quantity: number;
   unitCost: number;
   total: number;
+  /** How many units of this line have been received into stock so far (0 until received). */
+  receivedQuantity?: number;
 }
 
 /** Embedded document attachment. */
@@ -67,6 +69,8 @@ export interface PurchaseOrder {
   rejectedAt?: Date | null;
   rejectedBy?: ObjectId | null;
   rejectionReason?: string;
+  /** Set when the PO was first received and its quantities credited to stock (idempotency guard). */
+  stockReceivedAt?: Date | null;
   createdBy: ObjectId;
   updatedBy: ObjectId;
   createdAt: Date;
