@@ -18,10 +18,13 @@ import { ASSET_STATUS_CONFIG, type AssetStatus } from '@/constants/assets';
 import { InspectButton } from '@/components/inspections/inspect-button';
 import { AssetFuelTab } from '@/components/fuel/asset-fuel-tab';
 import { AssetServiceTab } from '@/components/assets/asset-service-tab';
+import { AssetMeterTab } from '@/components/assets/asset-meter-tab';
+import { useSyncSubmissions } from '@/hooks/use-sync-submissions';
 
 const ASSET_TABS = [
   { id: 'details', label: 'Details', icon: Info },
   { id: 'service', label: 'Service', icon: Wrench },
+  { id: 'meter', label: 'Meter', icon: Gauge },
   { id: 'fuel', label: 'Fuel', icon: Fuel },
 ] as const;
 
@@ -49,6 +52,10 @@ export default function AssetDetailPage() {
   useEffect(() => {
     if (params.id) fetchAsset();
   }, [params.id, fetchAsset]);
+
+  // Auto-pull new inspection submissions so a "not safe to operate" result flips
+  // this asset to Out of Service without the manual Sync button.
+  useSyncSubmissions(fetchAsset);
 
   const handleToggleStatus = async () => {
     if (!asset) return;
@@ -267,6 +274,10 @@ export default function AssetDetailPage() {
 
       {activeTab === 'service' && (
         <AssetServiceTab assetId={String(params.id)} />
+      )}
+
+      {activeTab === 'meter' && (
+        <AssetMeterTab assetId={String(params.id)} />
       )}
 
       {activeTab === 'fuel' && (

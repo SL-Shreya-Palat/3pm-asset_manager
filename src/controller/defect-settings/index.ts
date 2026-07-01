@@ -9,6 +9,7 @@ import {
   getPrestartFormDefectSettingsCollection,
   getFormsCollection,
 } from '@/lib/mongodb';
+import { fetchLiveFormSchema } from '@/lib/form-builder-integration';
 import type {
   DefectSettingsDocument,
   DefectSettingsResponse,
@@ -34,10 +35,10 @@ function extractEligibleFields(pages: any[]): EligibleField[] {
   const result: EligibleField[] = [];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function walk(items: any[]) {
+  function walk(items: any[], pageTitle: string) {
     for (const field of items) {
       if (field.type === 'fieldgroup' && Array.isArray(field.items)) {
-        walk(field.items);
+        walk(field.items, pageTitle);
         continue;
       }
 
@@ -63,15 +64,17 @@ function extractEligibleFields(pages: any[]): EligibleField[] {
         fieldKey: field.fieldKey,
         label: field.label,
         type: field.type as EligibleFieldType,
+        page: pageTitle,
         options,
         selectedDefectValues: [],
         severity: 'non_critical',
+        outOfService: false,
       });
     }
   }
 
   for (const page of pages) {
-    if (Array.isArray(page.items)) walk(page.items);
+    if (Array.isArray(page.items)) walk(page.items, (page.title as string) || 'Other');
   }
 
   return result;
@@ -84,6 +87,7 @@ function serialize(doc: DefectSettingsDocument): DefectSettingsResponse {
     formVersion: doc.formVersion,
     defectAnswers: doc.defectAnswers,
     severityByField: doc.severityByField,
+    outOfServiceByField: doc.outOfServiceByField,
     updatedAt: doc.updatedAt.toISOString(),
     updatedBy: doc.updatedBy.toString(),
   };
@@ -95,32 +99,61 @@ function serialize(doc: DefectSettingsDocument): DefectSettingsResponse {
  * Returns eligible fields from the live published schema, merged with any
  * previously saved defect-answer ticks.
  */
-export async function getDefectSettings(tenantId: string, formId: string) {
+export async function getDefectSettings(
+  tenantId: string,
+  formId: string,
+  user?: { email?: string | null; name?: string | null },
+) {
   const formsCol = await getFormsCollection();
   const settingsCol = await getPrestartFormDefectSettingsCollection();
 
   const tenantOid = ObjectId.createFromHexString(tenantId);
   const formOid = ObjectId.createFromHexString(formId);
 
-  // Load form with published schema
   const form = await formsCol.findOne({ formId: formOid, tenantId: tenantOid });
   if (!form) return { data: null, error: 'Form not found' };
 
-  const pages = form.schema?.pages;
+  // Prefer the LIVE schema from the builder — the local mirror can be stale if the
+  // form was edited after seeding (only the form.updated webhook refreshes it).
+  // Persist what we fetch so submission processing reads the same current fields.
+  // Falls back to the local mirror on any failure.
+  let pages = (form.schema?.pages as unknown[]) ?? [];
+  let formVersion = (form.schema?.versionNumber as number) || 1;
+  let source: 'live' | 'local' = 'local';
+
+  if (user?.email) {
+    const live = await fetchLiveFormSchema(user.email, user.name || user.email, formId);
+    if (live && Array.isArray(live.pages) && live.pages.length > 0) {
+      pages = live.pages;
+      formVersion = live.versionNumber ?? formVersion;
+      source = 'live';
+      await formsCol.updateOne(
+        { _id: form._id },
+        {
+          $set: {
+            'schema.pages': live.pages,
+            'schema.versionNumber': formVersion,
+            ...(live.publishedAt ? { 'schema.publishedAt': new Date(live.publishedAt) } : {}),
+            updatedAt: new Date(),
+          },
+        },
+      );
+    }
+  }
+
   if (!Array.isArray(pages) || pages.length === 0) {
     return { data: null, error: 'Form has no published schema' };
   }
 
   const eligible = extractEligibleFields(pages);
 
-  // Load saved settings
-  const saved = await settingsCol.findOne({ tenantId: tenantOid, formId: formOid }) as DefectSettingsDocument | null;
-
   // Merge saved ticks into eligible fields
+  const saved = await settingsCol.findOne({ tenantId: tenantOid, formId: formOid }) as DefectSettingsDocument | null;
   if (saved) {
     for (const field of eligible) {
       field.selectedDefectValues = saved.defectAnswers[field.fieldKey] || [];
       field.severity = saved.severityByField?.[field.fieldKey] || 'non_critical';
+      field.outOfService = saved.outOfServiceByField?.[field.fieldKey] || false;
     }
   }
 
@@ -128,9 +161,10 @@ export async function getDefectSettings(tenantId: string, formId: string) {
     data: {
       formId,
       formTitle: form.formTitle as string,
-      formVersion: (form.schema?.versionNumber as number) || 1,
+      formVersion,
       fields: eligible,
       savedSettings: saved ? serialize(saved) : null,
+      source,
     },
     error: null,
   };
@@ -199,6 +233,17 @@ export async function upsertDefectSettings(
     }
   }
 
+  // Only keep out-of-service flags for fields that are still valid AND actually
+  // have flagged answers (an out-of-service flag with no bad answer is a no-op).
+  const cleanedOutOfService: Record<string, boolean> = {};
+  if (input.outOfServiceByField) {
+    for (const [key, on] of Object.entries(input.outOfServiceByField)) {
+      if (on && validKeys.has(key) && (cleanedAnswers[key]?.length ?? 0) > 0) {
+        cleanedOutOfService[key] = true;
+      }
+    }
+  }
+
   const formVersion = (form.schema?.versionNumber as number) || 1;
   const now = new Date();
 
@@ -209,6 +254,7 @@ export async function upsertDefectSettings(
         formVersion,
         defectAnswers: cleanedAnswers,
         severityByField: Object.keys(cleanedSeverity).length > 0 ? cleanedSeverity : undefined,
+        outOfServiceByField: Object.keys(cleanedOutOfService).length > 0 ? cleanedOutOfService : undefined,
         updatedAt: now,
         updatedBy: userOid,
       } satisfies Partial<DefectSettingsDocument>,

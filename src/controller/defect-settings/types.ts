@@ -22,6 +22,8 @@ export interface DefectSettingsDocument {
   defectAnswers: Record<string, string[]>;
   /** Optional severity override per field. Defaults to "non_critical". */
   severityByField?: Record<string, SeverityValue>;
+  /** fieldKey → true when a flagged answer on this field takes the asset Out of Service. */
+  outOfServiceByField?: Record<string, boolean>;
   updatedAt: Date;
   updatedBy: ObjectId;
 }
@@ -35,6 +37,7 @@ export interface DefectSettingsResponse {
   formVersion: number;
   defectAnswers: Record<string, string[]>;
   severityByField?: Record<string, SeverityValue>;
+  outOfServiceByField?: Record<string, boolean>;
   updatedAt: string;
   updatedBy: string;
 }
@@ -46,12 +49,16 @@ export interface EligibleField {
   fieldKey: string;
   label: string;
   type: EligibleFieldType;
+  /** Title of the form page this field belongs to (for grouping in the UI). */
+  page: string;
   /** Available option values (for dropdown/radio/multiselect). */
   options: { id: string; title: string; value: string }[];
   /** Currently ticked "bad" values from saved settings. */
   selectedDefectValues: string[];
   /** Severity override for this field. */
   severity: SeverityValue;
+  /** When true, a flagged answer here takes the asset Out of Service. */
+  outOfService: boolean;
 }
 
 /**
@@ -60,4 +67,5 @@ export interface EligibleField {
 export interface UpsertDefectSettingsInput {
   defectAnswers: Record<string, string[]>;
   severityByField?: Record<string, SeverityValue>;
+  outOfServiceByField?: Record<string, boolean>;
 }

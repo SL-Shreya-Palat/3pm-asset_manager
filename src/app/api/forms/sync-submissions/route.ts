@@ -130,23 +130,17 @@ export async function POST(req: NextRequest) {
         // Skip already processed
         if (existingExternalIds.has(externalId)) continue;
 
-        const fbFormId = fbSub.formId?.toString();
-        if (!fbFormId) continue;
-
-        // Get the record to find which form this belongs to
-        // form-builder stores formId on records, submissions link to records via recordId
-        let formIdForLookup = fbFormId;
-
-        // The submission might have formId directly or via its record
-        if (!formMap.has(formIdForLookup) && fbSub.recordId) {
-          // Try to find the form via the record
+        // Resolve the form id. Submissions store `recordId` (not `formId`) — the
+        // form id lives on the linked record — so resolve via the record first,
+        // falling back to a direct formId if one is present.
+        let formIdForLookup = fbSub.formId?.toString();
+        if (!formIdForLookup && fbSub.recordId) {
           const record = await fbDb
             .collection('records')
             .findOne({ _id: new ObjectId(fbSub.recordId.toString()) });
-          if (record?.formId) {
-            formIdForLookup = record.formId.toString();
-          }
+          if (record?.formId) formIdForLookup = record.formId.toString();
         }
+        if (!formIdForLookup) continue;
 
         // Look up the local form
         const localForm = formMap.get(formIdForLookup);
@@ -187,6 +181,7 @@ export async function POST(req: NextRequest) {
         {
           data: {
             message: `Sync complete. ${syncedCount} new submission(s) processed.`,
+            totalFound: fbSubmissions.length,
             synced: syncedCount,
             defectsCreated: defectsCreatedCount,
             errors: errors.length > 0 ? errors : undefined,

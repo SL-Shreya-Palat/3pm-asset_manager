@@ -3,10 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-import { ArrowLeft, Save, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Save, ShieldAlert, Power } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -29,9 +28,11 @@ interface EligibleField {
   fieldKey: string;
   label: string;
   type: string;
+  page: string;
   options: FieldOption[];
   selectedDefectValues: string[];
   severity: 'critical' | 'non_critical';
+  outOfService: boolean;
 }
 
 interface DefectSettingsData {
@@ -62,6 +63,7 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
   // Track user edits: fieldKey → set of ticked defect values
   const [defectAnswers, setDefectAnswers] = useState<Record<string, Set<string>>>({});
   const [severityByField, setSeverityByField] = useState<Record<string, 'critical' | 'non_critical'>>({});
+  const [outOfServiceByField, setOutOfServiceByField] = useState<Record<string, boolean>>({});
 
   // ── Load ─────────────────────────────────────────────────────────────────
 
@@ -87,12 +89,15 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
       // Initialize state from saved ticks
       const answers: Record<string, Set<string>> = {};
       const severities: Record<string, 'critical' | 'non_critical'> = {};
+      const oos: Record<string, boolean> = {};
       for (const f of data.fields) {
         answers[f.fieldKey] = new Set(f.selectedDefectValues);
         severities[f.fieldKey] = f.severity;
+        oos[f.fieldKey] = f.outOfService;
       }
       setDefectAnswers(answers);
       setSeverityByField(severities);
+      setOutOfServiceByField(oos);
     } catch (err) {
       const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Failed to load settings';
       setError(msg || 'Failed to load settings');
@@ -127,6 +132,11 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
     setSuccess('');
   }
 
+  function toggleOutOfService(fieldKey: string) {
+    setOutOfServiceByField((prev) => ({ ...prev, [fieldKey]: !prev[fieldKey] }));
+    setSuccess('');
+  }
+
   // ── Save ─────────────────────────────────────────────────────────────────
 
   async function handleSave() {
@@ -148,6 +158,7 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
         {
           defectAnswers: answersPayload,
           severityByField,
+          outOfServiceByField,
         },
         { withCredentials: true },
       );
@@ -173,8 +184,19 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
 
   const totalTicked = Object.values(defectAnswers).reduce((sum, s) => sum + s.size, 0);
 
+  // Group eligible fields by their form page (fields arrive in page order).
+  const groups: { page: string; fields: EligibleField[] }[] = [];
+  for (const f of fields) {
+    let g = groups.find((x) => x.page === f.page);
+    if (!g) {
+      g = { page: f.page || 'Other', fields: [] };
+      groups.push(g);
+    }
+    g.fields.push(f);
+  }
+
   return (
-    <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
+    <div className="mx-auto max-w-5xl space-y-6 px-4 py-6">
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
@@ -212,6 +234,20 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
         </div>
       )}
 
+      {/* How it works */}
+      {fields.length > 0 && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm dark:border-blue-900 dark:bg-blue-950/40">
+          <p className="font-medium text-blue-900 dark:text-blue-200">How defects are created</p>
+          <p className="mt-0.5 text-blue-800/90 dark:text-blue-300/90">
+            For each question below, tick the answer(s) that mean a fault. When someone submits
+            this form and picks a ticked answer, a defect is raised automatically for that asset.
+            Turn on <span className="font-medium">Out of service</span> for a question (e.g. &ldquo;Safe to
+            operate&rdquo;) to also take the asset off the road when it fails. Only choice questions
+            (dropdown, radio, multi-select, checkbox, toggle) can trigger defects.
+          </p>
+        </div>
+      )}
+
       {/* No eligible fields */}
       {fields.length === 0 && (
         <div className="rounded-md border border-dashed px-6 py-10 text-center text-muted-foreground">
@@ -221,71 +257,99 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
         </div>
       )}
 
-      {/* Field blocks */}
-      <div className="space-y-4">
-        {fields.map((field) => {
-          const ticked = defectAnswers[field.fieldKey] || new Set<string>();
-          const hasTicks = ticked.size > 0;
+      {/* Field blocks — grouped by form page, compact one-row layout */}
+      <div className="space-y-6">
+        {groups.map((group) => {
+          const groupTicked = group.fields.filter(
+            (f) => (defectAnswers[f.fieldKey]?.size ?? 0) > 0,
+          ).length;
 
           return (
-            <div
-              key={field.fieldKey}
-              className={`rounded-lg border p-4 transition-colors ${
-                hasTicks ? 'border-orange-200 bg-orange-50/50' : ''
-              }`}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-sm font-medium">{field.label}</h3>
-                  <p className="text-xs text-muted-foreground capitalize">
-                    {field.type === 'toggle' || field.type === 'checkbox'
-                      ? `${field.type} — tick when defect`
-                      : field.type}
-                  </p>
-                </div>
+            <section key={group.page} className="space-y-1.5">
+              <div className="flex items-baseline justify-between gap-2 border-b pb-1.5">
+                <h2 className="text-sm font-semibold text-foreground">{group.page}</h2>
+                <span className="text-xs text-muted-foreground">
+                  {groupTicked > 0 ? `${groupTicked} of ` : ''}
+                  {group.fields.length} question{group.fields.length !== 1 ? 's' : ''}
+                  {groupTicked > 0 ? ' flagged' : ''}
+                </span>
+              </div>
 
-                {/* Severity selector — only show when at least one tick */}
-                {hasTicks && (
-                  <Select
-                    value={severityByField[field.fieldKey] || 'non_critical'}
-                    onValueChange={(v) =>
-                      updateSeverity(field.fieldKey, v as 'critical' | 'non_critical')
-                    }
+              {group.fields.map((field) => {
+                const ticked = defectAnswers[field.fieldKey] || new Set<string>();
+                const hasTicks = ticked.size > 0;
+                const oos = outOfServiceByField[field.fieldKey] || false;
+
+                return (
+                  <div
+                    key={field.fieldKey}
+                    className={`flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border px-3 py-2 transition-colors ${
+                      hasTicks ? 'border-orange-300 bg-orange-50/60' : 'bg-card'
+                    }`}
                   >
-                    <SelectTrigger className="h-8 w-[140px] text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="critical">Critical</SelectItem>
-                      <SelectItem value="non_critical">Non-Critical</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
+                    <span className="min-w-[140px] flex-1 text-sm font-medium text-foreground">
+                      {field.label}
+                    </span>
 
-              {/* Options as checkboxes */}
-              <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
-                {field.options.map((opt) => {
-                  const checked = ticked.has(opt.value);
-                  return (
-                    <label
-                      key={opt.id}
-                      className="flex cursor-pointer items-center gap-2 text-sm"
-                    >
-                      <Checkbox
-                        checked={checked}
-                        onCheckedChange={() =>
-                          toggleDefectValue(field.fieldKey, opt.value)
-                        }
-                      />
-                      <span className={checked ? 'font-medium text-orange-700' : ''}>
-                        {opt.title}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
+                    <div className="flex flex-wrap items-center justify-end gap-1.5">
+                      {field.options.map((opt) => {
+                        const checked = ticked.has(opt.value);
+                        return (
+                          <label
+                            key={opt.id}
+                            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors ${
+                              checked
+                                ? 'border-orange-300 bg-orange-100/70 font-medium text-orange-800'
+                                : 'border-border hover:bg-muted/50'
+                            }`}
+                          >
+                            <Checkbox
+                              className="h-3.5 w-3.5"
+                              checked={checked}
+                              onCheckedChange={() => toggleDefectValue(field.fieldKey, opt.value)}
+                            />
+                            {opt.title}
+                          </label>
+                        );
+                      })}
+
+                      {/* Severity + Out-of-Service — inline once an answer is flagged */}
+                      {hasTicks && (
+                        <Select
+                          value={severityByField[field.fieldKey] || 'non_critical'}
+                          onValueChange={(v) =>
+                            updateSeverity(field.fieldKey, v as 'critical' | 'non_critical')
+                          }
+                        >
+                          <SelectTrigger className="h-7 w-[118px] text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="critical">Critical</SelectItem>
+                            <SelectItem value="non_critical">Non-Critical</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                      {hasTicks && (
+                        <button
+                          type="button"
+                          onClick={() => toggleOutOfService(field.fieldKey)}
+                          title="Take the asset Out of Service when this answer is submitted"
+                          className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors ${
+                            oos
+                              ? 'border-red-300 bg-red-100 font-medium text-red-700'
+                              : 'border-border text-muted-foreground hover:bg-muted/50'
+                          }`}
+                        >
+                          <Power className="h-3.5 w-3.5" />
+                          Out of service
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </section>
           );
         })}
       </div>

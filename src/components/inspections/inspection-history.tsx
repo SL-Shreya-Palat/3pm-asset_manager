@@ -19,6 +19,7 @@ import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import type { DataTablePagination } from '@/components/ui/data-table.types';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
+import { useSyncSubmissions } from '@/hooks/use-sync-submissions';
 import {
   Dialog,
   DialogContent,
@@ -97,6 +98,10 @@ export function InspectionHistory() {
     const t = setTimeout(() => fetchRows(1), 0);
     return () => clearTimeout(t);
   }, [fetchRows]);
+
+  // Auto-pull new submissions from the builder so this list stays current
+  // without the manual Sync button.
+  useSyncSubmissions(() => fetchRows(pagination.page));
 
   const columns: DataTableColumn<Row>[] = [
     { key: 'inspectionNumber', header: 'Inspection', pinned: true, render: (r) => <span className="font-medium">{r.inspectionNumber || '—'}</span> },

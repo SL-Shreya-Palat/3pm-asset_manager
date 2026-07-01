@@ -166,6 +166,7 @@ export async function processInspectionSubmission(
         response,
         maps.typeByFieldKey,
         maps.labelByFieldKey,
+        maps.optionsByFieldKey,
       )
     : { result: 'pass', defects: [] };
 
@@ -233,6 +234,12 @@ export async function processInspectionSubmission(
     const operatorNotes = response.faults_comments
       ? `\n\nOperator notes: ${response.faults_comments}`
       : '';
+    // Who inspected the asset — from the launch, falling back to the submitter info.
+    const inspectorName =
+      operatorName ||
+      (submitterInfo && typeof submitterInfo === 'object'
+        ? ((submitterInfo.name as string) || (submitterInfo.email as string) || null)
+        : null);
 
     const defectDocs = evaluation.defects.map((defect, i) => {
       const answerStr = Array.isArray(defect.answer) ? defect.answer.join(', ') : defect.answer;
@@ -244,8 +251,9 @@ export async function processInspectionSubmission(
         comment: `Auto-generated from pre-start inspection "${formTitle}". Field "${defect.label}" answered "${answerStr}".${operatorNotes}`,
         assetId: asset.id,
         assetName: asset.name ?? '',
-        driverId: null,
-        driverName: null,
+        // Operator = whoever performed the inspection (shown as "Operator" in the UI).
+        driverId: operatorId,
+        driverName: inspectorName,
         priority: defect.severity === 'critical' ? 'high' : 'medium',
         severity: defect.severity,
         status: 'new',
@@ -266,13 +274,39 @@ export async function processInspectionSubmission(
     const res = await (await getDefectsCollection()).insertMany(defectDocs);
     for (const id of Object.values(res.insertedIds)) defectIds.push(id.toString());
 
+    // Ground the asset when a defect is raised on a field mapped as "Out of
+    // Service" in Defect Settings (e.g. "Safe to operate → Off"). The mapping is
+    // per-field, so admins choose exactly which questions take the asset off the
+    // road. Completing a work order returns it to service (see completeWorkOrder).
+    const oosMap = (settings?.outOfServiceByField || {}) as Record<string, boolean>;
+    const grounded = evaluation.defects.some((d) => oosMap[d.fieldKey]);
+    if (grounded && asset.id) {
+      await (await getAssetsCollection()).updateOne(
+        { _id: asset.id, tenantId: tenantOid },
+        { $set: { status: 'out_of_service', updatedAt: now } },
+      );
+    }
+
     // Notify the tenant's managers that new defects need review (best-effort).
     const assetLabel = asset.name || asset.unitNumber || 'An asset';
     await notifyTenantManagers(tenantId, {
       type: 'defect_created',
       title: `${defectIds.length} new defect${defectIds.length > 1 ? 's' : ''} reported`,
-      body: `${assetLabel} failed inspection "${formTitle}" — ${defectIds.length} defect${defectIds.length > 1 ? 's' : ''} need review.`,
+      body: `${assetLabel} failed inspection "${formTitle}" — ${defectIds.length} defect${defectIds.length > 1 ? 's' : ''} need review.${grounded ? ' Asset marked Out of Service.' : ''}`,
       link: '/maintenance/defects',
+      entityType: 'inspectionSubmission',
+      entityId: submissionId.toString(),
+    });
+  }
+
+  // Notify managers when an inspection is submitted with NO defects (the defect
+  // case above already notifies). Best-effort — never blocks the submission.
+  if (defectIds.length === 0) {
+    await notifyTenantManagers(tenantId, {
+      type: 'inspection_submitted',
+      title: `Inspection completed: ${formTitle}`,
+      body: `${asset.name || 'An asset'} passed inspection "${formTitle}".`,
+      link: '/inspections',
       entityType: 'inspectionSubmission',
       entityId: submissionId.toString(),
     });

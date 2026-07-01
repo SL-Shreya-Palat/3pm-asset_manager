@@ -38,6 +38,7 @@ import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
+import { useSyncSubmissions } from '@/hooks/use-sync-submissions';
 import { DefectForm } from './defect-form';
 import { WorkOrderForm } from '@/components/work-orders/work-order-form';
 import type { DefectRow, Pagination } from './types';
@@ -153,6 +154,10 @@ export function DefectsPage() {
 
   useEffect(() => { fetchDefects(1); }, [fetchDefects]);
 
+  // Auto-pull new inspection submissions so freshly-failed items appear as defects
+  // without the manual Sync button.
+  useSyncSubmissions(() => fetchDefects(pagination.page));
+
   // Panel handlers
   const handleOpenCreate = () => { setEditingDefect(null); setPanelMode('create'); setPanelOpen(true); };
   const handleOpenEdit = (defect: DefectRow) => { setEditingDefect(defect); setPanelMode('edit'); setPanelOpen(true); };
@@ -234,8 +239,8 @@ export function DefectsPage() {
     },
     {
       key: 'driverName',
-      header: 'Driver',
-      label: 'Driver',
+      header: 'Operator',
+      label: 'Operator',
       render: (defect) => (
         <span className="text-muted-foreground">{defect.driverName || '—'}</span>
       ),
@@ -583,13 +588,13 @@ function ViewDefectContent({ defect }: { defect: DefectRow }) {
         </div>
       </div>
 
-      {/* Asset & Driver */}
+      {/* Asset & Operator */}
       <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Asset & Driver</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-3">Asset & Operator</h3>
         <Separator className="mb-4" />
         <div className="space-y-4">
           <ViewField label="Asset" value={defect.assetName} />
-          <ViewField label="Driver" value={defect.driverName || undefined} />
+          <ViewField label="Operator" value={defect.driverName || undefined} />
         </div>
       </div>
 

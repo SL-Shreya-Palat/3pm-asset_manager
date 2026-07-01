@@ -25,7 +25,10 @@ export async function GET(
       return NextResponse.json({ data: null, error: 'Invalid formId' }, { status: 400 });
     }
 
-    const result = await getDefectSettings(user.currentTenantId, formId);
+    const result = await getDefectSettings(user.currentTenantId, formId, {
+      email: user.email,
+      name: user.name,
+    });
 
     if (result.error) {
       return NextResponse.json({ data: null, error: result.error }, { status: 404 });

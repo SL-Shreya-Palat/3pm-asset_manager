@@ -42,6 +42,7 @@ const navItems: NavItem[] = [
     children: [
       { label: 'Inspection History', href: '/inspections/history' },
       { label: 'Forms', href: '/inspections/forms' },
+      { label: 'Defect Settings', href: '/inspections/defect-settings' },
       { label: 'Exception Report', href: '/inspections/exception-report' },
     ],
   },

@@ -8,6 +8,11 @@
  * stays "dumb" and all defect logic lives here.
  */
 
+export interface FieldOption {
+  value: string;
+  title: string;
+}
+
 export interface FormFieldMaps {
   /** field.id → fieldKey */
   idToFieldKey: Map<string, string>;
@@ -15,6 +20,8 @@ export interface FormFieldMaps {
   labelByFieldKey: Map<string, string>;
   /** fieldKey → field type (e.g. radio, multiselect, text) */
   typeByFieldKey: Map<string, string>;
+  /** fieldKey → its choice options (for value↔title tolerant matching) */
+  optionsByFieldKey: Map<string, FieldOption[]>;
 }
 
 interface SchemaField {
@@ -23,6 +30,7 @@ interface SchemaField {
   label?: string;
   type?: string;
   items?: SchemaField[];
+  options?: { value?: string; title?: string }[];
 }
 
 interface FormSchema {
@@ -34,10 +42,11 @@ export function buildFormFieldMaps(schema: unknown): FormFieldMaps {
   const idToFieldKey = new Map<string, string>();
   const labelByFieldKey = new Map<string, string>();
   const typeByFieldKey = new Map<string, string>();
+  const optionsByFieldKey = new Map<string, FieldOption[]>();
 
   const pages = (schema as FormSchema | undefined)?.pages;
   if (!Array.isArray(pages)) {
-    return { idToFieldKey, labelByFieldKey, typeByFieldKey };
+    return { idToFieldKey, labelByFieldKey, typeByFieldKey, optionsByFieldKey };
   }
 
   const walk = (items: SchemaField[]) => {
@@ -51,6 +60,12 @@ export function buildFormFieldMaps(schema: unknown): FormFieldMaps {
         if (field.id) idToFieldKey.set(field.id, field.fieldKey);
         labelByFieldKey.set(field.fieldKey, field.label || field.fieldKey);
         if (field.type) typeByFieldKey.set(field.fieldKey, field.type);
+        if (Array.isArray(field.options)) {
+          optionsByFieldKey.set(
+            field.fieldKey,
+            field.options.map((o) => ({ value: String(o.value ?? ''), title: String(o.title ?? '') })),
+          );
+        }
       }
     }
   };
@@ -59,7 +74,7 @@ export function buildFormFieldMaps(schema: unknown): FormFieldMaps {
     if (Array.isArray(page.items)) walk(page.items);
   }
 
-  return { idToFieldKey, labelByFieldKey, typeByFieldKey };
+  return { idToFieldKey, labelByFieldKey, typeByFieldKey, optionsByFieldKey };
 }
 
 /**

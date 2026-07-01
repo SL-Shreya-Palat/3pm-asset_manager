@@ -80,6 +80,66 @@ export async function createFormBuilderMember(params: {
   }
 }
 
+export interface LiveFormSchema {
+  pages: unknown[];
+  versionNumber?: number;
+  publishedAt?: string | null;
+}
+
+/**
+ * Fetch a form's LIVE schema directly from form-builder (bypasses the local
+ * mirror, which can be stale if the form was edited after seeding). Prefers the
+ * published schema (what operators actually submit); falls back to the current/
+ * draft schema. Returns null on any failure so callers can fall back to local.
+ */
+export async function fetchLiveFormSchema(
+  userEmail: string,
+  userName: string,
+  formId: string,
+): Promise<LiveFormSchema | null> {
+  try {
+    // Mint a session; create the builder member on first use (404 = unknown user).
+    let session = await createFormBuilderSession(userEmail);
+    if (!session.ok && session.status === 404) {
+      const parts = (userName || userEmail).split(' ');
+      await createFormBuilderMember({
+        email: userEmail,
+        firstName: parts[0] || userEmail.split('@')[0],
+        lastName: parts.slice(1).join(' ') || '-',
+        ownerEmail: userEmail,
+        role: 'owner',
+      });
+      session = await createFormBuilderSession(userEmail);
+    }
+    if (!session.ok || !session.data) return null;
+
+    const url = `${NEXT_PUBLIC_FORM_BUILDER_URL}/api/embed/forms/${formId}?sessionId=${session.data.sessionId}`;
+    const res = await fetch(url, { method: 'GET', headers: { 'Content-Type': 'application/json' } });
+    if (!res.ok) return null;
+
+    const json = await res.json();
+    const data = json.data ?? json;
+    const published = data?.publishedSchema;
+    const current = data?.currentSchema;
+    const chosen =
+      published && Array.isArray(published.pages)
+        ? published
+        : current && Array.isArray(current.pages)
+          ? current
+          : null;
+    if (!chosen) return null;
+
+    return {
+      pages: chosen.pages,
+      versionNumber: chosen.versionNumber,
+      publishedAt: chosen.publishedAt ?? null,
+    };
+  } catch (error) {
+    console.error('[fetchLiveFormSchema] Error:', error);
+    return null;
+  }
+}
+
 /**
  * Call form-builder's POST /api/embed/sessions.
  * Passes appId + appSecret (application layer), embedToken (organization layer),

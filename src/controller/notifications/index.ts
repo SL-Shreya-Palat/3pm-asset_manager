@@ -13,8 +13,18 @@ import {
   getTenantMembersCollection,
   getTenantsCollection,
 } from '@/lib/mongodb';
+import { publishNotification } from '@/lib/notificationHub';
 
-export type NotificationType = 'defect_created' | 'work_order_assigned' | 'work_order_completed';
+export type NotificationType =
+  | 'defect_created'
+  | 'work_order_assigned'
+  | 'work_order_completed'
+  | 'work_order_created'
+  | 'work_order_status_changed'
+  | 'work_order_overdue'
+  | 'inspection_submitted'
+  | 'service_due'
+  | 'service_overdue';
 
 export interface NotificationPayload {
   type: NotificationType;
@@ -52,7 +62,28 @@ export async function createNotifications(
   }));
 
   const col = await getNotificationsCollection();
-  await col.insertMany(docs);
+  const result = await col.insertMany(docs);
+
+  // Real-time delivery: push each new notification to any live SSE connection for
+  // its recipient. Best-effort — a hub failure must never break notification writes.
+  try {
+    const tenantId = tenantOid.toString();
+    docs.forEach((doc, i) => {
+      const insertedId = result.insertedIds[i];
+      if (!insertedId) return;
+      publishNotification(tenantId, doc.recipientId.toString(), {
+        id: insertedId.toString(),
+        type: doc.type,
+        title: doc.title,
+        body: doc.body,
+        link: doc.link,
+        isRead: false,
+        createdAt: doc.createdAt.toISOString(),
+      });
+    });
+  } catch (err) {
+    console.error('[notifications] real-time publish failed:', err);
+  }
 }
 
 /** Resolve the tenant's "managers" — active Owner/Admin members + the owner. */
@@ -113,6 +144,67 @@ export async function notifyUser(
     await createNotifications(tenantOid, [recipient], payload);
   } catch (err) {
     console.error('[notifications] notifyUser failed:', err);
+  }
+}
+
+// ── Deduped variants (for the periodic scan — avoid re-notifying daily) ──────────
+// Default window ~20h so a once-a-day scan fires at most one alert per recipient per
+// (type, entity) until it's resolved.
+const DEFAULT_DEDUPE_MS = 20 * 60 * 60 * 1000;
+
+/** createNotifications, but skip recipients who already got the same (type, entityId) within windowMs. */
+async function createNotificationsOnce(
+  tenantOid: ObjectId,
+  recipientIds: ObjectId[],
+  payload: NotificationPayload,
+  windowMs: number = DEFAULT_DEDUPE_MS,
+): Promise<void> {
+  const unique = [...new Map(recipientIds.map((id) => [id.toString(), id])).values()];
+  if (unique.length === 0) return;
+
+  const col = await getNotificationsCollection();
+  const filter: Record<string, unknown> = {
+    tenantId: tenantOid,
+    recipientId: { $in: unique },
+    type: payload.type,
+    createdAt: { $gte: new Date(Date.now() - windowMs) },
+  };
+  if (payload.entityId) filter.entityId = new ObjectId(payload.entityId);
+
+  const existing = await col.find(filter, { projection: { recipientId: 1 } }).toArray();
+  const seen = new Set(existing.map((e) => (e.recipientId as ObjectId).toString()));
+  const fresh = unique.filter((id) => !seen.has(id.toString()));
+  await createNotifications(tenantOid, fresh, payload);
+}
+
+/** Deduped notify to tenant managers (for the scan). Best-effort. */
+export async function notifyTenantManagersOnce(
+  tenantId: string,
+  payload: NotificationPayload,
+  windowMs?: number,
+): Promise<void> {
+  try {
+    const tenantOid = ObjectId.createFromHexString(tenantId);
+    const recipients = await resolveTenantManagerIds(tenantOid);
+    await createNotificationsOnce(tenantOid, recipients, payload, windowMs);
+  } catch (err) {
+    console.error('[notifications] notifyTenantManagersOnce failed:', err);
+  }
+}
+
+/** Deduped notify to specific users (for the scan). Best-effort. */
+export async function notifyUsersOnce(
+  tenantId: string,
+  userIds: (string | ObjectId)[],
+  payload: NotificationPayload,
+  windowMs?: number,
+): Promise<void> {
+  try {
+    const tenantOid = ObjectId.createFromHexString(tenantId);
+    const recipients = userIds.map((u) => (typeof u === 'string' ? ObjectId.createFromHexString(u) : u));
+    await createNotificationsOnce(tenantOid, recipients, payload, windowMs);
+  } catch (err) {
+    console.error('[notifications] notifyUsersOnce failed:', err);
   }
 }
 

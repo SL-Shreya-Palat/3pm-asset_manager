@@ -4,7 +4,7 @@
  * Header notification bell — polls /api/notifications, shows an unread badge,
  * and clears unread when the dropdown opens. Clicking an item opens its link.
  */
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { Bell, AlertTriangle, Wrench, CheckCircle2 } from 'lucide-react';
@@ -48,6 +48,11 @@ export function NotificationBell() {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
+  // Track `open` in a ref so the SSE handler can read it without re-subscribing.
+  const openRef = useRef(open);
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
 
   const load = useCallback(async () => {
     try {
@@ -68,6 +73,29 @@ export function NotificationBell() {
     const t = setInterval(tick, 30000);
     return () => { active = false; clearInterval(t); };
   }, [load]);
+
+  // Real-time updates via SSE. Instant delivery; the 30s poll above stays as a
+  // fallback (covers reconnects / multi-instance deploys). EventSource auto-reconnects.
+  useEffect(() => {
+    let es: EventSource | null = null;
+    try {
+      es = new EventSource('/api/notifications/stream', { withCredentials: true });
+      es.addEventListener('notification', (e) => {
+        try {
+          const n = JSON.parse((e as MessageEvent).data) as NotificationItem;
+          setItems((prev) =>
+            prev.some((p) => p.id === n.id) ? prev : [n, ...prev].slice(0, 50),
+          );
+          if (!openRef.current) setUnread((u) => u + 1);
+        } catch {
+          // Ignore malformed events.
+        }
+      });
+    } catch {
+      // EventSource unsupported — the poll fallback keeps the bell working.
+    }
+    return () => es?.close();
+  }, []);
 
   const handleOpenChange = async (next: boolean) => {
     setOpen(next);

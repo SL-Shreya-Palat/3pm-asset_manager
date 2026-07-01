@@ -294,15 +294,15 @@ export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) 
             </div>
           </div>
 
-          {/* ── Driver ── */}
+          {/* ── Operator ── */}
           <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Driver</h3>
+            <h3 className="text-sm font-semibold text-foreground mb-3">Operator</h3>
             <Separator className="mb-4" />
             <div>
-              <Label>Driver</Label>
+              <Label>Operator</Label>
               <Select value={driverId} onValueChange={setDriverId}>
                 <SelectTrigger className="mt-1.5">
-                  <SelectValue placeholder="Select driver (optional)" />
+                  <SelectValue placeholder="Select operator (optional)" />
                 </SelectTrigger>
                 <SelectContent>
                   {drivers.length === 0 ? (

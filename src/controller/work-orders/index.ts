@@ -4,7 +4,7 @@ import {
   getWorkOrderStatusesCollection,
   getAssetsCollection,
   getVendorsCollection,
-  getUsersCollection,
+  getTenantMembersCollection,
   getDefectsCollection,
 } from '@/lib/mongodb';
 import type { CreateWorkOrderInput, UpdateWorkOrderInput, WOPart } from './types';
@@ -130,13 +130,16 @@ export async function createWorkOrder(
     }
   } else if (input.assigneeType === 'mechanic' && input.assigneeId) {
     assigneeId = ObjectId.createFromHexString(input.assigneeId);
-    const usersCol = await getUsersCollection();
-    const user = await usersCol.findOne({ _id: assigneeId });
-    if (user) {
-      assigneeName = (user.name as string) || `${(user.firstName as string) || ''} ${(user.lastName as string) || ''}`.trim();
+    // Mechanics come from the tenant members list (/api/users), so resolve the
+    // name from tenantMembers — NOT the users collection (different id space).
+    const membersCol = await getTenantMembersCollection();
+    const member = await membersCol.findOne({ _id: assigneeId, tenantId: tenantOid });
+    if (member) {
+      assigneeName = (member.name as string)
+        || `${(member.firstName as string) || ''} ${(member.lastName as string) || ''}`.trim();
       assigneeContact = assigneeName;
-      assigneeEmail = (user.email as string) || undefined;
-      assigneePhone = (user.phoneNumber as string) || undefined;
+      assigneeEmail = (member.email as string) || undefined;
+      assigneePhone = (member.phoneNumber as string) || undefined;
     }
   } else if (input.assigneeType === 'third_party') {
     assigneeName = input.thirdPartyName?.trim() || '';
@@ -234,6 +237,16 @@ export async function createWorkOrder(
     });
   }
 
+  // Notify managers that a new work order was created (best-effort).
+  await notifyTenantManagers(tenantId, {
+    type: 'work_order_created',
+    title: `Work order ${workOrderNumber} created`,
+    body: `${assetName || 'Asset'}${statusLabel ? ` — ${statusLabel}` : ''}${input.dueDate ? `, due ${new Date(input.dueDate).toLocaleDateString()}` : ''}`,
+    link: '/maintenance/work-orders',
+    entityType: 'workOrder',
+    entityId: result.insertedId.toString(),
+  });
+
   return {
     data: serializeWorkOrder({ ...doc, _id: result.insertedId }),
     error: null,
@@ -297,15 +310,18 @@ export async function updateWorkOrder(
       $set.thirdPartyName = undefined;
       $set.thirdPartyEmail = undefined;
     } else if (input.assigneeType === 'mechanic' && input.assigneeId) {
-      $set.assigneeId = ObjectId.createFromHexString(input.assigneeId);
-      const usersCol = await getUsersCollection();
-      const user = await usersCol.findOne({ _id: ObjectId.createFromHexString(input.assigneeId) });
-      if (user) {
-        const name = (user.name as string) || `${(user.firstName as string) || ''} ${(user.lastName as string) || ''}`.trim();
+      const mechOid = ObjectId.createFromHexString(input.assigneeId);
+      $set.assigneeId = mechOid;
+      // Resolve the mechanic from tenantMembers (same source as /api/users).
+      const membersCol = await getTenantMembersCollection();
+      const member = await membersCol.findOne({ _id: mechOid, tenantId: tenantOid });
+      if (member) {
+        const name = (member.name as string)
+          || `${(member.firstName as string) || ''} ${(member.lastName as string) || ''}`.trim();
         $set.assigneeName = name;
         $set.assigneeContact = name;
-        $set.assigneeEmail = (user.email as string) || undefined;
-        $set.assigneePhone = (user.phoneNumber as string) || undefined;
+        $set.assigneeEmail = (member.email as string) || undefined;
+        $set.assigneePhone = (member.phoneNumber as string) || undefined;
       }
       $set.thirdPartyName = undefined;
       $set.thirdPartyEmail = undefined;
@@ -464,6 +480,21 @@ export async function transitionWorkOrderStatus(
       $push: { statusHistory: historyEntry },
     } as Record<string, unknown>,
   );
+
+  // Notify the assignee + managers of the status change (best-effort). Covers
+  // on-hold / reopened / any transition — driven by the tenant's custom statuses.
+  const statusPayload = {
+    type: 'work_order_status_changed' as const,
+    title: `Work order ${(existing.workOrderNumber as string) || ''} → ${newStatus.label}`,
+    body: `${(existing.assetName as string) || 'Asset'} status changed to "${newStatus.label as string}".`,
+    link: '/maintenance/work-orders',
+    entityType: 'workOrder',
+    entityId: woOid.toString(),
+  };
+  if (existing.assigneeType === 'mechanic' && existing.assigneeId) {
+    await notifyUser(tenantId, existing.assigneeId as ObjectId, statusPayload);
+  }
+  await notifyTenantManagers(tenantId, statusPayload);
 
   const updated = await col.findOne({ _id: woOid });
   return { data: updated ? serializeWorkOrder(updated as Record<string, unknown>) : null, error: null };

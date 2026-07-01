@@ -278,7 +278,6 @@ function buildLightVehicleForm() {
 function buildHeavyVehicleForm() {
   const headerFields = [
     textField('Unit Number', { required: true, placeholder: 'e.g. HV-010' }),
-    textField('Driver', { required: true, placeholder: 'Full name' }),
     datetimeField('Date & Time', { required: true }),
     numberField('Odometer (km)', { required: true, placeholder: '0', min: 0, fieldKey: 'odometer_km' }),
     numberField('Engine Hours', { placeholder: '0', min: 0 }),
@@ -351,7 +350,7 @@ function buildHeavyVehicleForm() {
     textareaField('Faults / comments', { placeholder: 'Describe any faults or issues observed...', fieldKey: 'faults_comments' }),
     imageField('Photos', { multiple: true }),
     toggleField('Safe to operate', { required: true, fieldKey: 'safe_to_operate' }),
-    signatureField('Driver signature', { required: true, fieldKey: 'signature' }),
+    signatureField('Operator signature', { required: true, fieldKey: 'signature' }),
   ];
 
   return {
