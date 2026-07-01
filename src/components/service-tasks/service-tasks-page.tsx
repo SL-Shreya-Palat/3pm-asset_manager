@@ -217,15 +217,6 @@ export function ServiceTasksPage() {
           </Button>
         </PageHeader>
 
-        {/* Search */}
-        <div className="px-6 pb-4">
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            placeholder="Search service tasks..."
-          />
-        </div>
-
         {/* Toolbar + Table */}
         <div className="flex-1 overflow-auto px-6 pb-6">
           <DataTableToolbar
@@ -234,6 +225,9 @@ export function ServiceTasksPage() {
             onHiddenColumnKeysChange={setHiddenColumnKeys}
             density={density}
             onDensityChange={setDensity}
+            searchNode={
+              <SearchInput value={search} onChange={setSearch} placeholder="Search service tasks..." className="max-w-sm w-full" />
+            }
           />
           <DataTable<ServiceTaskRow>
             columns={taskColumns}

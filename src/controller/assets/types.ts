@@ -99,6 +99,7 @@ export interface CreateAssetInput {
   photoUrls?: string[];
   formIds?: string[];
   serviceProgramIds?: string[];
+  driverAccessIds?: string[];
 }
 
 /** Input for updating an asset. */
@@ -152,6 +153,7 @@ export interface AssetResponse {
   photoUrls: string[];
   formIds: string[];
   serviceProgramIds: string[];
+  driverAccessIds: string[];
   isActive: boolean;
   isArchived: boolean;
   createdAt: string;

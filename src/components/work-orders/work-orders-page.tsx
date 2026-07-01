@@ -310,10 +310,6 @@ export function WorkOrdersPage() {
           />
         </div>
 
-        <div className="px-6 pb-4">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search work orders..." />
-        </div>
-
         <div className="flex-1 overflow-auto px-6 pb-6">
           <DataTableToolbar
             columns={woColumns}
@@ -321,6 +317,9 @@ export function WorkOrdersPage() {
             onHiddenColumnKeysChange={setHiddenColumnKeys}
             density={density}
             onDensityChange={setDensity}
+            searchNode={
+              <SearchInput value={search} onChange={setSearch} placeholder="Search work orders..." className="max-w-sm w-full" />
+            }
           />
           <DataTable<WorkOrderRow>
             columns={woColumns}

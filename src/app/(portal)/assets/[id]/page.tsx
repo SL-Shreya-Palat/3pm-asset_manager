@@ -6,13 +6,30 @@ import axios from 'axios';
 import {
   ArrowLeft, Pencil, Power, Fuel, Info, Wrench,
   Truck, Gauge, Clock, DollarSign, Fingerprint, StickyNote, CalendarClock,
+  Users, ClipboardList, KeyRound, MoreHorizontal,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
 import { StatCard } from '@/components/ui/stat-card';
 import { DetailCard, DetailField } from '@/components/ui/detail-field';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { ASSET_STATUS_CONFIG, type AssetStatus } from '@/constants/assets';
 import { InspectButton } from '@/components/inspections/inspect-button';
@@ -37,6 +54,27 @@ export default function AssetDetailPage() {
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
   const [activeTab, setActiveTab] = useState<AssetTabId>('details');
+
+  // Change Team dialog
+  const [changeTeamOpen, setChangeTeamOpen] = useState(false);
+  const [teamsList, setTeamsList] = useState<{ id: string; name: string }[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [savingTeam, setSavingTeam] = useState(false);
+
+  // Assign Forms dialog
+  const [assignFormsOpen, setAssignFormsOpen] = useState(false);
+  const [formsList, setFormsList] = useState<{ id: string; title: string }[]>([]);
+  const [formsLoading, setFormsLoading] = useState(false);
+  const [selectedFormIds, setSelectedFormIds] = useState<Set<string>>(new Set());
+  const [savingForms, setSavingForms] = useState(false);
+
+  // Driver Access dialog
+  const [driverAccessOpen, setDriverAccessOpen] = useState(false);
+  const [driversList, setDriversList] = useState<{ id: string; firstName: string; lastName: string }[]>([]);
+  const [driversLoading, setDriversLoading] = useState(false);
+  const [selectedDriverIds, setSelectedDriverIds] = useState<Set<string>>(new Set());
+  const [savingDrivers, setSavingDrivers] = useState(false);
 
   const fetchAsset = useCallback(async () => {
     try {
@@ -70,6 +108,93 @@ export default function AssetDetailPage() {
     } finally {
       setToggling(false);
     }
+  };
+
+  // ── Change Team handlers ──
+  const fetchTeams = useCallback(async () => {
+    setTeamsLoading(true);
+    try {
+      const res = await axios.get('/api/teams?limit=100', { withCredentials: true });
+      setTeamsList(res.data.data?.items || []);
+    } catch { setTeamsList([]); }
+    finally { setTeamsLoading(false); }
+  }, []);
+
+  const handleOpenChangeTeam = () => {
+    const teamIds = Array.isArray(asset?.teamIds) ? (asset.teamIds as string[]) : [];
+    setSelectedTeamId(teamIds[0] || null);
+    setChangeTeamOpen(true);
+    fetchTeams();
+  };
+
+  const handleSaveTeam = async () => {
+    setSavingTeam(true);
+    try {
+      await axios.put(`/api/assets/${params.id}`, { teamIds: selectedTeamId ? [selectedTeamId] : [] }, { withCredentials: true });
+      setChangeTeamOpen(false);
+      await fetchAsset();
+    } catch { /* silent */ }
+    finally { setSavingTeam(false); }
+  };
+
+  // ── Assign Forms handlers ──
+  const fetchForms = useCallback(async () => {
+    setFormsLoading(true);
+    try {
+      const res = await axios.get('/api/forms?includeSchema=false', { withCredentials: true });
+      setFormsList(res.data.data?.items || []);
+    } catch { setFormsList([]); }
+    finally { setFormsLoading(false); }
+  }, []);
+
+  const handleOpenAssignForms = () => {
+    setSelectedFormIds(new Set(Array.isArray(asset?.formIds) ? (asset.formIds as string[]) : []));
+    setAssignFormsOpen(true);
+    fetchForms();
+    // Refresh from server in background
+    axios.get(`/api/assets/${params.id}`, { withCredentials: true })
+      .then((res) => setSelectedFormIds(new Set(res.data.data?.formIds || [])))
+      .catch(() => {});
+  };
+
+  const handleSaveForms = async () => {
+    setSavingForms(true);
+    try {
+      await axios.put(`/api/assets/${params.id}`, { formIds: Array.from(selectedFormIds) }, { withCredentials: true });
+      setAssignFormsOpen(false);
+      await fetchAsset();
+    } catch { /* silent */ }
+    finally { setSavingForms(false); }
+  };
+
+  // ── Driver Access handlers ──
+  const fetchDrivers = useCallback(async () => {
+    setDriversLoading(true);
+    try {
+      const res = await axios.get('/api/drivers?limit=100', { withCredentials: true });
+      setDriversList(res.data.data?.items || []);
+    } catch { setDriversList([]); }
+    finally { setDriversLoading(false); }
+  }, []);
+
+  const handleOpenDriverAccess = () => {
+    setSelectedDriverIds(new Set(Array.isArray(asset?.driverAccessIds) ? (asset.driverAccessIds as string[]) : []));
+    setDriverAccessOpen(true);
+    fetchDrivers();
+    // Refresh from server in background
+    axios.get(`/api/assets/${params.id}`, { withCredentials: true })
+      .then((res) => setSelectedDriverIds(new Set(res.data.data?.driverAccessIds || [])))
+      .catch(() => {});
+  };
+
+  const handleSaveDriverAccess = async () => {
+    setSavingDrivers(true);
+    try {
+      await axios.put(`/api/assets/${params.id}`, { driverAccessIds: Array.from(selectedDriverIds) }, { withCredentials: true });
+      setDriverAccessOpen(false);
+      await fetchAsset();
+    } catch { /* silent */ }
+    finally { setSavingDrivers(false); }
   };
 
   if (loading) {
@@ -197,6 +322,27 @@ export default function AssetDetailPage() {
               <Pencil className="h-4 w-4" />
               Edit
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleOpenChangeTeam}>
+                  <Users className="h-4 w-4" />
+                  Change Team
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleOpenAssignForms}>
+                  <ClipboardList className="h-4 w-4" />
+                  Assign Forms
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleOpenDriverAccess}>
+                  <KeyRound className="h-4 w-4" />
+                  Driver Access
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
@@ -238,7 +384,6 @@ export default function AssetDetailPage() {
 
           {/* Identification */}
           <DetailCard icon={Fingerprint} title="Identification">
-            <DetailField label="Asset #" value={assetNum} />
             <DetailField label="VIN" value={String(asset.vin || '')} />
             <DetailField label="License Plate" value={String(asset.licensePlate || '')} />
             <DetailField label="Asset Type" value={assetTypeName} />
@@ -283,6 +428,161 @@ export default function AssetDetailPage() {
       {activeTab === 'fuel' && (
         <AssetFuelTab assetId={String(params.id)} />
       )}
+
+      {/* Change Team Dialog */}
+      <Dialog open={changeTeamOpen} onOpenChange={setChangeTeamOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Change Team</DialogTitle>
+            <DialogDescription>Select a team for &quot;{assetName}&quot;.</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-80 overflow-y-auto rounded-lg border">
+            {teamsLoading ? (
+              <div className="flex justify-center py-8"><Spinner size="sm" /></div>
+            ) : teamsList.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">No teams available</p>
+            ) : (
+              <div className="flex flex-col">
+                {teamsList.map((team) => (
+                  <button
+                    key={team.id}
+                    type="button"
+                    onClick={() => setSelectedTeamId(team.id === selectedTeamId ? null : team.id)}
+                    className={cn(
+                      'flex items-center gap-3 px-4 py-3 text-sm text-left border-b last:border-0 transition-colors',
+                      selectedTeamId === team.id ? 'bg-primary/5' : 'hover:bg-muted/50',
+                    )}
+                  >
+                    <span className={cn(
+                      'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border',
+                      selectedTeamId === team.id ? 'border-primary' : 'border-muted-foreground/40',
+                    )}>
+                      {selectedTeamId === team.id && <span className="h-2 w-2 rounded-full bg-primary" />}
+                    </span>
+                    <span className="font-medium text-foreground">{team.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setChangeTeamOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveTeam} disabled={savingTeam}>
+              {savingTeam ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Forms Dialog */}
+      <Dialog open={assignFormsOpen} onOpenChange={setAssignFormsOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Assign Forms</DialogTitle>
+            <DialogDescription>Select forms for &quot;{assetName}&quot;.</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-80 overflow-y-auto rounded-lg border">
+            {formsLoading ? (
+              <div className="flex justify-center py-8"><Spinner size="sm" /></div>
+            ) : formsList.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">No forms available</p>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (formsList.every((f) => selectedFormIds.has(f.id))) {
+                      setSelectedFormIds(new Set());
+                    } else {
+                      setSelectedFormIds(new Set(formsList.map((f) => f.id)));
+                    }
+                  }}
+                  className="flex items-center gap-3 px-4 py-3 text-sm w-full text-left border-b hover:bg-muted/50 transition-colors font-medium text-primary"
+                >
+                  {formsList.every((f) => selectedFormIds.has(f.id)) ? 'Deselect All' : 'Select All'}
+                </button>
+                {formsList.map((form) => (
+                  <label
+                    key={form.id}
+                    className="flex items-center gap-3 px-4 py-3 text-sm border-b last:border-0 cursor-pointer hover:bg-muted/50 transition-colors"
+                  >
+                    <Checkbox
+                      checked={selectedFormIds.has(form.id)}
+                      onCheckedChange={(checked) => {
+                        const next = new Set(selectedFormIds);
+                        if (checked) next.add(form.id); else next.delete(form.id);
+                        setSelectedFormIds(next);
+                      }}
+                    />
+                    <span className="text-foreground">{form.title}</span>
+                  </label>
+                ))}
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignFormsOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveForms} disabled={savingForms}>
+              {savingForms ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Driver Access Dialog */}
+      <Dialog open={driverAccessOpen} onOpenChange={setDriverAccessOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Driver Access</DialogTitle>
+            <DialogDescription>Select drivers who can access &quot;{assetName}&quot;.</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-80 overflow-y-auto rounded-lg border">
+            {driversLoading ? (
+              <div className="flex justify-center py-8"><Spinner size="sm" /></div>
+            ) : driversList.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">No drivers available</p>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (driversList.every((d) => selectedDriverIds.has(d.id))) {
+                      setSelectedDriverIds(new Set());
+                    } else {
+                      setSelectedDriverIds(new Set(driversList.map((d) => d.id)));
+                    }
+                  }}
+                  className="flex items-center gap-3 px-4 py-3 text-sm w-full text-left border-b hover:bg-muted/50 transition-colors font-medium text-primary"
+                >
+                  {driversList.every((d) => selectedDriverIds.has(d.id)) ? 'Deselect All' : 'Select All'}
+                </button>
+                {driversList.map((driver) => (
+                  <label
+                    key={driver.id}
+                    className="flex items-center gap-3 px-4 py-3 text-sm border-b last:border-0 cursor-pointer hover:bg-muted/50 transition-colors"
+                  >
+                    <Checkbox
+                      checked={selectedDriverIds.has(driver.id)}
+                      onCheckedChange={(checked) => {
+                        const next = new Set(selectedDriverIds);
+                        if (checked) next.add(driver.id); else next.delete(driver.id);
+                        setSelectedDriverIds(next);
+                      }}
+                    />
+                    <span className="text-foreground">{driver.firstName} {driver.lastName}</span>
+                  </label>
+                ))}
+              </>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDriverAccessOpen(false)}>Cancel</Button>
+            <Button onClick={handleSaveDriverAccess} disabled={savingDrivers}>
+              {savingDrivers ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

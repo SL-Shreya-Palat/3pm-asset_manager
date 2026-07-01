@@ -276,15 +276,6 @@ export function VendorsPage() {
           </Button>
         </PageHeader>
 
-        {/* Search */}
-        <div className="px-6 pb-4">
-          <SearchInput
-            value={search}
-            onChange={setSearch}
-            placeholder="Search vendors..."
-          />
-        </div>
-
         {/* Toolbar + Table */}
         <div className="flex-1 overflow-auto px-6 pb-6">
           <DataTableToolbar
@@ -297,6 +288,9 @@ export function VendorsPage() {
             filters={filters}
             onFilterChange={setFilter}
             onFiltersClear={clearFilters}
+            searchNode={
+              <SearchInput value={search} onChange={setSearch} placeholder="Search vendors..." className="max-w-sm w-full" />
+            }
           />
           <DataTable<VendorRow>
             columns={vendorColumns}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import {
   Plus,
@@ -8,6 +8,7 @@ import {
   Trash2,
   Eye,
   Package,
+  Barcode,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
@@ -28,6 +29,7 @@ import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
+import { GenerateBarcodeDialog } from '@/components/assets/generate-barcode-dialog';
 import { PartForm } from './part-form';
 import type { PartRow, LookupOption, Pagination } from './types';
 
@@ -66,6 +68,15 @@ export function InventoryPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingPart, setDeletingPart] = useState<PartRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Row selection & barcode dialog
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [barcodeDialogOpen, setBarcodeDialogOpen] = useState(false);
+
+  const selectedParts = useMemo(
+    () => parts.filter((p) => selectedKeys.has(p.id)),
+    [parts, selectedKeys],
+  );
 
   // Fetch lookup data
   const fetchLookups = useCallback(async () => {
@@ -250,10 +261,6 @@ export function InventoryPage() {
           </Button>
         </PageHeader>
 
-        <div className="px-6 pb-4">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search parts..." />
-        </div>
-
         <div className="flex-1 overflow-auto px-6 pb-6">
           <DataTableToolbar
             columns={partColumns}
@@ -261,6 +268,25 @@ export function InventoryPage() {
             onHiddenColumnKeysChange={setHiddenColumnKeys}
             density={density}
             onDensityChange={setDensity}
+            actions={
+              selectedKeys.size > 0 ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => setBarcodeDialogOpen(true)}
+                >
+                  <Barcode className="h-4 w-4" />
+                  Generate barcode
+                  <Badge variant="default" className="ml-1 h-5 min-w-5 px-1.5 text-xs rounded-full">
+                    {selectedKeys.size}
+                  </Badge>
+                </Button>
+              ) : null
+            }
+            searchNode={
+              <SearchInput value={search} onChange={setSearch} placeholder="Search parts..." className="max-w-sm w-full" />
+            }
           />
           <DataTable<PartRow>
             columns={partColumns}
@@ -274,6 +300,9 @@ export function InventoryPage() {
             rowKey={(p) => p.id}
             density={density}
             hiddenColumnKeys={hiddenColumnKeys}
+            selectable
+            selectedKeys={selectedKeys}
+            onSelectedKeysChange={setSelectedKeys}
             emptyMessage={
               debouncedSearch
                 ? 'No parts match your search.'
@@ -346,6 +375,13 @@ export function InventoryPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Generate Barcode Dialog */}
+      <GenerateBarcodeDialog
+        open={barcodeDialogOpen}
+        onOpenChange={setBarcodeDialogOpen}
+        items={selectedParts.map((p) => ({ id: p.id, name: p.name, code: p.partNumber }))}
+      />
     </div>
   );
 }

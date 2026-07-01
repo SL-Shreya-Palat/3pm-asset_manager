@@ -272,10 +272,6 @@ export function PurchaseOrdersPage() {
           />
         </div>
 
-        <div className="px-6 pb-4">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search purchase orders..." />
-        </div>
-
         <div className="flex-1 overflow-auto px-6 pb-6">
           <DataTableToolbar
             columns={poColumns}
@@ -283,6 +279,9 @@ export function PurchaseOrdersPage() {
             onHiddenColumnKeysChange={setHiddenColumnKeys}
             density={density}
             onDensityChange={setDensity}
+            searchNode={
+              <SearchInput value={search} onChange={setSearch} placeholder="Search purchase orders..." className="max-w-sm w-full" />
+            }
           />
           <DataTable<PurchaseOrderRow>
             columns={poColumns}

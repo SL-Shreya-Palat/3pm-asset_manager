@@ -6,15 +6,20 @@ import axios from 'axios';
 import {
   Plus,
   MoreHorizontal,
+  Pencil,
   Users,
   ClipboardList,
   ClipboardCheck,
   KeyRound,
   Power,
   Trash2,
+  Barcode,
 } from 'lucide-react';
 import { InspectFormPickerDialog } from '@/components/inspections/inspect-button';
+import { VinLookupDialog } from './vin-lookup-dialog';
+import { GenerateBarcodeDialog } from './generate-barcode-dialog';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/ui/page-header';
 import {
@@ -36,6 +41,7 @@ import { DataTable, type DataTableColumn, type DataTableFilterDef } from '@/comp
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
+import { StatCard } from '@/components/ui/stat-card';
 import {
   Tooltip,
   TooltipContent,
@@ -67,6 +73,7 @@ export function AssetTable() {
   const [search, setSearch, debouncedSearch] = useDebouncedSearch(300);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [inspectAssetId, setInspectAssetId] = useState<string | null>(null);
+  const [vinDialogOpen, setVinDialogOpen] = useState(false);
 
   // Table features: filters, column visibility, density
   const {
@@ -74,6 +81,22 @@ export function AssetTable() {
     density, setDensity,
     filters, setFilter, clearFilters,
   } = useDataTable();
+
+  // Derive dynamic filter options from loaded assets
+  const assetTypeOptions = useMemo(() => {
+    const unique = [...new Set(assets.map((a) => a.assetTypeName).filter(Boolean))] as string[];
+    return unique.sort().map((v) => ({ label: v, value: v }));
+  }, [assets]);
+
+  const teamOptions = useMemo(() => {
+    const unique = [...new Set(assets.flatMap((a) => a.teamNames ?? []).filter(Boolean))];
+    return unique.sort().map((v) => ({ label: v, value: v }));
+  }, [assets]);
+
+  const yearOptions = useMemo(() => {
+    const unique = [...new Set(assets.map((a) => a.year).filter(Boolean))] as number[];
+    return unique.sort((a, b) => b - a).map((v) => ({ label: String(v), value: String(v) }));
+  }, [assets]);
 
   const assetFilterDefs: DataTableFilterDef[] = useMemo(() => [
     {
@@ -85,18 +108,44 @@ export function AssetTable() {
         { label: 'Out of Service', value: 'out_of_service' },
       ],
     },
+    ...(assetTypeOptions.length > 0
+      ? [{
+          columnKey: 'assetTypeName',
+          label: 'Asset Type',
+          type: 'select' as const,
+          options: assetTypeOptions,
+        }]
+      : []),
+    ...(teamOptions.length > 0
+      ? [{
+          columnKey: 'teamNames',
+          label: 'Team',
+          type: 'select' as const,
+          options: teamOptions,
+        }]
+      : []),
+    ...(yearOptions.length > 0
+      ? [{
+          columnKey: 'year',
+          label: 'Year',
+          type: 'select' as const,
+          options: yearOptions,
+        }]
+      : []),
     {
-      columnKey: 'subscriptionType',
-      label: 'Subscription Type',
+      columnKey: 'fuelType',
+      label: 'Fuel Type',
       type: 'select',
       options: [
-        { label: 'Owned', value: 'owned' },
-        { label: 'Leased', value: 'leased' },
-        { label: 'Rented', value: 'rented' },
-        { label: 'Financed', value: 'financed' },
+        { label: 'Diesel', value: 'diesel' },
+        { label: 'Petrol', value: 'petrol' },
+        { label: 'Electric', value: 'electric' },
+        { label: 'LPG', value: 'lpg' },
+        { label: 'CNG', value: 'cng' },
+        { label: 'Other', value: 'other' },
       ],
     },
-  ], []);
+  ], [assetTypeOptions, teamOptions, yearOptions]);
 
   const filteredAssets = useMemo(
     () => applyTableFilters(assets, filters, assetFilterDefs),
@@ -110,6 +159,31 @@ export function AssetTable() {
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [savingTeam, setSavingTeam] = useState(false);
+
+  // Assign Forms dialog state
+  const [assignFormsOpen, setAssignFormsOpen] = useState(false);
+  const [assignFormsAsset, setAssignFormsAsset] = useState<AssetRow | null>(null);
+  const [formsList, setFormsList] = useState<{ id: string; title: string }[]>([]);
+  const [formsLoading, setFormsLoading] = useState(false);
+  const [selectedFormIds, setSelectedFormIds] = useState<Set<string>>(new Set());
+  const [savingForms, setSavingForms] = useState(false);
+
+  // Driver Access dialog state
+  const [driverAccessOpen, setDriverAccessOpen] = useState(false);
+  const [driverAccessAsset, setDriverAccessAsset] = useState<AssetRow | null>(null);
+  const [driversList, setDriversList] = useState<{ id: string; firstName: string; lastName: string }[]>([]);
+  const [driversLoading, setDriversLoading] = useState(false);
+  const [selectedDriverIds, setSelectedDriverIds] = useState<Set<string>>(new Set());
+  const [savingDrivers, setSavingDrivers] = useState(false);
+
+  // Row selection & barcode dialog
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [barcodeDialogOpen, setBarcodeDialogOpen] = useState(false);
+
+  const selectedAssets = useMemo(
+    () => assets.filter((a) => selectedKeys.has(a.id)),
+    [assets, selectedKeys],
+  );
 
   const fetchAssets = useCallback(async (page: number) => {
     try {
@@ -187,6 +261,92 @@ export function AssetTable() {
     }
   };
 
+  // ── Assign Forms handlers ──
+  const fetchForms = useCallback(async () => {
+    try {
+      setFormsLoading(true);
+      const res = await axios.get('/api/forms?includeSchema=false', { withCredentials: true });
+      setFormsList(res.data.data?.items || []);
+    } catch {
+      setFormsList([]);
+    } finally {
+      setFormsLoading(false);
+    }
+  }, []);
+
+  const handleOpenAssignForms = (asset: AssetRow) => {
+    setAssignFormsAsset(asset);
+    setSelectedFormIds(new Set(asset.formIds || []));
+    setAssignFormsOpen(true);
+    fetchForms();
+    // Refresh from server in background
+    axios.get(`/api/assets/${asset.id}`, { withCredentials: true })
+      .then((res) => setSelectedFormIds(new Set(res.data.data?.formIds || [])))
+      .catch(() => {});
+  };
+
+  const handleSaveForms = async () => {
+    if (!assignFormsAsset) return;
+    setSavingForms(true);
+    try {
+      await axios.put(
+        `/api/assets/${assignFormsAsset.id}`,
+        { formIds: Array.from(selectedFormIds) },
+        { withCredentials: true },
+      );
+      setAssignFormsOpen(false);
+      setAssignFormsAsset(null);
+      fetchAssets(pagination.page);
+    } catch (err) {
+      console.error('Failed to assign forms:', err);
+    } finally {
+      setSavingForms(false);
+    }
+  };
+
+  // ── Driver Access handlers ──
+  const fetchDrivers = useCallback(async () => {
+    try {
+      setDriversLoading(true);
+      const res = await axios.get('/api/drivers?limit=100', { withCredentials: true });
+      setDriversList(res.data.data?.items || []);
+    } catch {
+      setDriversList([]);
+    } finally {
+      setDriversLoading(false);
+    }
+  }, []);
+
+  const handleOpenDriverAccess = (asset: AssetRow) => {
+    setDriverAccessAsset(asset);
+    setSelectedDriverIds(new Set(asset.driverAccessIds || []));
+    setDriverAccessOpen(true);
+    fetchDrivers();
+    // Refresh from server in background
+    axios.get(`/api/assets/${asset.id}`, { withCredentials: true })
+      .then((res) => setSelectedDriverIds(new Set(res.data.data?.driverAccessIds || [])))
+      .catch(() => {});
+  };
+
+  const handleSaveDriverAccess = async () => {
+    if (!driverAccessAsset) return;
+    setSavingDrivers(true);
+    try {
+      await axios.put(
+        `/api/assets/${driverAccessAsset.id}`,
+        { driverAccessIds: Array.from(selectedDriverIds) },
+        { withCredentials: true },
+      );
+      setDriverAccessOpen(false);
+      setDriverAccessAsset(null);
+      fetchAssets(pagination.page);
+    } catch (err) {
+      console.error('Failed to update driver access:', err);
+    } finally {
+      setSavingDrivers(false);
+    }
+  };
+
   const handleToggleStatus = async (id: string, currentStatus: string) => {
     const normalized = currentStatus === 'active' || currentStatus === 'in_service' ? 'in_service' : 'out_of_service';
     const newStatus = normalized === 'in_service' ? 'out_of_service' : 'in_service';
@@ -220,15 +380,6 @@ export function AssetTable() {
       pinned: true,
       render: (asset) => (
         <span className="font-medium text-foreground">{asset.name}</span>
-      ),
-    },
-    {
-      key: 'assetNumber',
-      header: 'Asset #',
-      label: 'Asset Number',
-      pinned: true,
-      render: (asset) => (
-        <span className="text-muted-foreground">{asset.assetNumber || '—'}</span>
       ),
     },
     {
@@ -346,14 +497,6 @@ export function AssetTable() {
       ),
     },
     {
-      key: 'subscriptionType',
-      header: 'Subscription',
-      label: 'Subscription Type',
-      render: (asset) => (
-        <span className="text-muted-foreground capitalize">{asset.subscriptionType || '—'}</span>
-      ),
-    },
-    {
       key: 'lastServiceDate',
       header: 'Last Service',
       label: 'Last Service Date',
@@ -427,6 +570,15 @@ export function AssetTable() {
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation();
+                router.push(`/assets/${asset.id}/edit`);
+              }}
+            >
+              <Pencil className="h-4 w-4" />
+              Edit
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation();
                 setInspectAssetId(asset.id);
               }}
             >
@@ -445,6 +597,7 @@ export function AssetTable() {
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation();
+                handleOpenAssignForms(asset);
               }}
             >
               <ClipboardList className="h-4 w-4" />
@@ -453,6 +606,7 @@ export function AssetTable() {
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation();
+                handleOpenDriverAccess(asset);
               }}
             >
               <KeyRound className="h-4 w-4" />
@@ -492,13 +646,22 @@ export function AssetTable() {
         assetId={inspectAssetId ?? ''}
         onOpenChange={(o) => { if (!o) setInspectAssetId(null); }}
       />
+      <VinLookupDialog
+        open={vinDialogOpen}
+        onOpenChange={setVinDialogOpen}
+      />
+      <GenerateBarcodeDialog
+        open={barcodeDialogOpen}
+        onOpenChange={setBarcodeDialogOpen}
+        items={selectedAssets.map((a) => ({ id: a.id, name: a.name, code: a.assetNumber }))}
+      />
       {/* Header */}
       <PageHeader
         title="Assets"
         description="Manage your fleet vehicles and equipment"
         className="px-0 pt-0 pb-4"
       >
-        <Button onClick={() => router.push('/assets/new')}>
+        <Button onClick={() => setVinDialogOpen(true)}>
           <Plus className="h-4 w-4" />
           Add Asset
         </Button>
@@ -507,38 +670,51 @@ export function AssetTable() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
         {STAT_CARDS.map((card) => (
-          <div
+          <StatCard
             key={card.key}
-            className="rounded-lg border bg-card px-3 py-2 shadow-sm"
-          >
-            <p className="text-xs text-muted-foreground">{card.label}</p>
-            <p className="text-lg font-semibold text-foreground">
-              {card.key === 'total' ? pagination.total : 0}
-            </p>
-          </div>
+            label={card.label}
+            value={card.key === 'total' ? pagination.total : 0}
+            loading={loading}
+          />
         ))}
       </div>
 
       {/* Toolbar + Search */}
-      <div className="flex items-center gap-2 mb-3">
-        <DataTableToolbar
-          columns={assetColumns}
-          hiddenColumnKeys={hiddenColumnKeys}
-          onHiddenColumnKeysChange={setHiddenColumnKeys}
-          density={density}
-          onDensityChange={setDensity}
-          filterDefs={assetFilterDefs}
-          filters={filters}
-          onFilterChange={setFilter}
-          onFiltersClear={clearFilters}
-        />
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search assets..."
-          className="max-w-sm w-full ml-auto"
-        />
-      </div>
+      <DataTableToolbar
+        columns={assetColumns}
+        hiddenColumnKeys={hiddenColumnKeys}
+        onHiddenColumnKeysChange={setHiddenColumnKeys}
+        density={density}
+        onDensityChange={setDensity}
+        filterDefs={assetFilterDefs}
+        filters={filters}
+        onFilterChange={setFilter}
+        onFiltersClear={clearFilters}
+        actions={
+          selectedKeys.size > 0 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setBarcodeDialogOpen(true)}
+            >
+              <Barcode className="h-4 w-4" />
+              Generate barcode
+              <Badge variant="default" className="ml-1 h-5 min-w-5 px-1.5 text-xs rounded-full">
+                {selectedKeys.size}
+              </Badge>
+            </Button>
+          ) : null
+        }
+        searchNode={
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Search assets..."
+            className="max-w-sm w-full"
+          />
+        }
+      />
 
       {/* Table */}
       <DataTable<AssetRow>
@@ -553,6 +729,9 @@ export function AssetTable() {
         rowKey={(a) => a.id}
         density={density}
         hiddenColumnKeys={hiddenColumnKeys}
+        selectable
+        selectedKeys={selectedKeys}
+        onSelectedKeysChange={setSelectedKeys}
         emptyMessage={
           debouncedSearch
             ? 'No assets match your search'
@@ -643,6 +822,176 @@ export function AssetTable() {
             </Button>
             <Button onClick={handleSaveTeam} disabled={savingTeam}>
               {savingTeam ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign Forms Dialog */}
+      <Dialog open={assignFormsOpen} onOpenChange={setAssignFormsOpen}>
+        <DialogContent className="sm:max-w-110">
+          <DialogHeader>
+            <DialogTitle>Assign Forms</DialogTitle>
+            <DialogDescription>
+              Select forms to assign to &quot;{assignFormsAsset?.name}&quot;.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-80 overflow-y-auto rounded-lg border">
+            {formsLoading ? (
+              <div className="flex justify-center py-8">
+                <Spinner size="sm" />
+              </div>
+            ) : formsList.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No forms available
+              </p>
+            ) : (
+              <div className="flex flex-col">
+                {/* Select All */}
+                {(() => {
+                  const allSelected = formsList.length > 0 && formsList.every((f) => selectedFormIds.has(f.id));
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (allSelected) {
+                          setSelectedFormIds(new Set());
+                        } else {
+                          setSelectedFormIds(new Set(formsList.map((f) => f.id)));
+                        }
+                      }}
+                      className={cn(
+                        'flex items-center gap-3 px-4 py-3 text-sm text-left border-b transition-colors',
+                        allSelected ? 'bg-primary/5' : 'hover:bg-muted/50',
+                      )}
+                    >
+                      <Checkbox checked={allSelected} tabIndex={-1} className="pointer-events-none" />
+                      <span className="font-medium text-foreground">Select All</span>
+                    </button>
+                  );
+                })()}
+                {formsList.map((form) => {
+                  const isSelected = selectedFormIds.has(form.id);
+                  return (
+                    <button
+                      key={form.id}
+                      type="button"
+                      onClick={() => {
+                        const next = new Set(selectedFormIds);
+                        if (isSelected) {
+                          next.delete(form.id);
+                        } else {
+                          next.add(form.id);
+                        }
+                        setSelectedFormIds(next);
+                      }}
+                      className={cn(
+                        'flex items-center gap-3 px-4 py-3 text-sm text-left border-b last:border-0 transition-colors',
+                        isSelected ? 'bg-primary/5' : 'hover:bg-muted/50',
+                      )}
+                    >
+                      <Checkbox checked={isSelected} tabIndex={-1} className="pointer-events-none" />
+                      <span className="font-medium text-foreground">{form.title}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignFormsOpen(false)} disabled={savingForms}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveForms} disabled={savingForms}>
+              {savingForms ? 'Saving...' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Driver Access Dialog */}
+      <Dialog open={driverAccessOpen} onOpenChange={setDriverAccessOpen}>
+        <DialogContent className="sm:max-w-110">
+          <DialogHeader>
+            <DialogTitle>Driver Access</DialogTitle>
+            <DialogDescription>
+              Select drivers who can access &quot;{driverAccessAsset?.name}&quot;.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-80 overflow-y-auto rounded-lg border">
+            {driversLoading ? (
+              <div className="flex justify-center py-8">
+                <Spinner size="sm" />
+              </div>
+            ) : driversList.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                No drivers available
+              </p>
+            ) : (
+              <div className="flex flex-col">
+                {/* Select All */}
+                {(() => {
+                  const allSelected = driversList.length > 0 && driversList.every((d) => selectedDriverIds.has(d.id));
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (allSelected) {
+                          setSelectedDriverIds(new Set());
+                        } else {
+                          setSelectedDriverIds(new Set(driversList.map((d) => d.id)));
+                        }
+                      }}
+                      className={cn(
+                        'flex items-center gap-3 px-4 py-3 text-sm text-left border-b transition-colors',
+                        allSelected ? 'bg-primary/5' : 'hover:bg-muted/50',
+                      )}
+                    >
+                      <Checkbox checked={allSelected} tabIndex={-1} className="pointer-events-none" />
+                      <span className="font-medium text-foreground">Select All</span>
+                    </button>
+                  );
+                })()}
+                {driversList.map((driver) => {
+                  const isSelected = selectedDriverIds.has(driver.id);
+                  return (
+                    <button
+                      key={driver.id}
+                      type="button"
+                      onClick={() => {
+                        const next = new Set(selectedDriverIds);
+                        if (isSelected) {
+                          next.delete(driver.id);
+                        } else {
+                          next.add(driver.id);
+                        }
+                        setSelectedDriverIds(next);
+                      }}
+                      className={cn(
+                        'flex items-center gap-3 px-4 py-3 text-sm text-left border-b last:border-0 transition-colors',
+                        isSelected ? 'bg-primary/5' : 'hover:bg-muted/50',
+                      )}
+                    >
+                      <Checkbox checked={isSelected} tabIndex={-1} className="pointer-events-none" />
+                      <span className="font-medium text-foreground">
+                        {driver.firstName} {driver.lastName}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDriverAccessOpen(false)} disabled={savingDrivers}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveDriverAccess} disabled={savingDrivers}>
+              {savingDrivers ? 'Saving...' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>

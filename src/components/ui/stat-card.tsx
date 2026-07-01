@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface StatCardProps {
   label: string;
@@ -10,12 +11,14 @@ interface StatCardProps {
   accent?: string;
   /** Optional sub-text below the value. */
   hint?: string;
+  /** Show skeleton loading state. */
+  loading?: boolean;
   className?: string;
 }
 
 /** Compact metric tile: label + big value with an optional icon chip. The shared
  *  building block for dashboard and analytics summary rows. */
-export function StatCard({ label, value, icon, accent, hint, className }: StatCardProps) {
+export function StatCard({ label, value, icon, accent, hint, loading, className }: StatCardProps) {
   return (
     <div
       className={cn(
@@ -33,8 +36,12 @@ export function StatCard({ label, value, icon, accent, hint, className }: StatCa
           </span>
         )}
       </div>
-      <p className={cn('mt-2 text-2xl font-semibold', accent ?? 'text-foreground')}>{value}</p>
-      {hint && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
+      {loading ? (
+        <Skeleton className="mt-2 h-8 w-20" />
+      ) : (
+        <p className={cn('mt-2 text-2xl font-semibold', accent ?? 'text-foreground')}>{value}</p>
+      )}
+      {hint && !loading && <p className="mt-1 text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }

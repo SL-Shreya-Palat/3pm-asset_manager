@@ -125,10 +125,6 @@ export function InspectionHistory() {
         />
       </div>
 
-      <div className="px-6 pb-4">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search by number, asset, form…" />
-      </div>
-
       <div className="flex-1 overflow-auto px-6 pb-6">
         <DataTableToolbar
           columns={columns}
@@ -136,6 +132,9 @@ export function InspectionHistory() {
           onHiddenColumnKeysChange={setHiddenColumnKeys}
           density={density}
           onDensityChange={setDensity}
+          searchNode={
+            <SearchInput value={search} onChange={setSearch} placeholder="Search by number, asset, form…" className="max-w-sm w-full" />
+          }
         />
         <DataTable<Row>
           columns={columns}

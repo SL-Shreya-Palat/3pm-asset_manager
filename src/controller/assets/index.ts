@@ -179,7 +179,7 @@ export async function createAsset(tenantId: string, userId: string, input: Creat
     formIds: (input.formIds || []).map((id) => ObjectId.createFromHexString(id)),
     serviceProgramIds: (input.serviceProgramIds || []).map((id) => ObjectId.createFromHexString(id)),
     assetGroupIds: [],
-    driverAccessIds: [],
+    driverAccessIds: (input.driverAccessIds || []).map((id) => ObjectId.createFromHexString(id)),
 
     // Base fields
     createdBy: userOid,
@@ -251,6 +251,7 @@ export async function updateAsset(
   if (input.photoUrls !== undefined) $set.photoUrls = input.photoUrls;
   if (input.formIds !== undefined) $set.formIds = input.formIds.map((id) => ObjectId.createFromHexString(id));
   if (input.serviceProgramIds !== undefined) $set.serviceProgramIds = input.serviceProgramIds.map((id) => ObjectId.createFromHexString(id));
+  if (input.driverAccessIds !== undefined) $set.driverAccessIds = input.driverAccessIds.map((id) => ObjectId.createFromHexString(id));
 
   await collection.updateOne({ _id: assetOid, tenantId: tenantOid }, { $set });
   const updated = await collection.findOne({ _id: assetOid });
