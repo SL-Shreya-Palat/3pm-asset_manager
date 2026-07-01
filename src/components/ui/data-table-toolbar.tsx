@@ -65,7 +65,7 @@ export function DataTableToolbar<T>({
   const hasFilters = filterDefs && filterDefs.length > 0;
 
   return (
-    <div className="flex items-center gap-2 mb-3">
+    <div className="flex items-center gap-2 pt-1 mb-3">
       {/* Extra actions */}
       {actions}
 
@@ -81,15 +81,13 @@ export function DataTableToolbar<T>({
       )}
 
       {/* Table controls group */}
-      <div className="inline-flex items-center rounded-lg border border-border bg-muted/40 p-0.5 gap-0.5">
+      <div className="inline-flex items-center gap-2">
         {/* Column Selection */}
         <ColumnsControl
           columns={columns}
           hiddenColumnKeys={hiddenColumnKeys}
           onHiddenColumnKeysChange={onHiddenColumnKeysChange}
         />
-
-        <Separator orientation="vertical" className="h-5" />
 
         {/* Density */}
         <DensityControl density={density} onDensityChange={onDensityChange} />
@@ -230,29 +228,25 @@ function ColumnsControl<T>({
 
   return (
     <Popover>
-      <PopoverTrigger asChild>
-        <Tooltip>
-          <TooltipTrigger asChild>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
             <button
               type="button"
-              className={cn(
-                'inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-                'text-muted-foreground hover:text-foreground hover:bg-background/80',
-                hiddenColumnKeys.size > 0 && 'text-primary hover:text-primary',
-              )}
+              className="inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
             >
               <Columns3 className="h-3.5 w-3.5" />
               <span>Columns</span>
               {hiddenColumnKeys.size > 0 && (
-                <span className="text-[10px] font-semibold text-primary">
+                <span className="text-[10px] font-semibold opacity-80">
                   {visibleCount}/{toggleableColumns.length}
                 </span>
               )}
             </button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">Toggle column visibility</TooltipContent>
-        </Tooltip>
-      </PopoverTrigger>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">Toggle column visibility</TooltipContent>
+      </Tooltip>
       <PopoverContent align="start" className="w-56 p-0">
         <div className="p-2.5 border-b">
           <div className="relative">
@@ -336,10 +330,7 @@ function DensityControl({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className={cn(
-                'inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-                'text-muted-foreground hover:text-foreground hover:bg-background/80',
-              )}
+              className="inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90"
             >
               <currentOption.icon className="h-3.5 w-3.5" />
               <span>Density</span>
