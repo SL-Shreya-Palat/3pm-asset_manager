@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import {
   Plus,
@@ -8,13 +8,14 @@ import {
   Trash2,
   Eye,
   AlertTriangle,
-  X,
   Wrench,
+  ClipboardCheck,
+  PenLine,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/ui/search-input';
-import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
+import { DataTable, type DataTableColumn, type DataTableFilterDef } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import { PageHeader } from '@/components/ui/page-header';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
@@ -36,6 +37,7 @@ import {
 } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
 import { useSyncSubmissions } from '@/hooks/use-sync-submissions';
@@ -46,8 +48,7 @@ import {
   DEFECT_STATUS_TABS,
   STATUS_BADGE_VARIANT,
   STATUS_DISPLAY_NAME,
-  PRIORITY_BADGE_VARIANT,
-  PRIORITY_DISPLAY_NAME,
+  SEVERITY_BADGE_CLASSES,
   SEVERITY_DISPLAY_NAME,
 } from './types';
 
@@ -61,13 +62,9 @@ export function DefectsPage() {
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [activeTab, setActiveTab] = useState('all');
 
-  // Filters
-  const [filterTeamId, setFilterTeamId] = useState('');
-  const [filterPriority, setFilterPriority] = useState('');
-  const [filterSeverity, setFilterSeverity] = useState('');
+  // Teams for filter
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
 
-  // Fetch teams for filter dropdown
   useEffect(() => {
     (async () => {
       try {
@@ -81,10 +78,33 @@ export function DefectsPage() {
     })();
   }, []);
 
+  // Filter definitions for toolbar Filters tab
+  const defectFilterDefs: DataTableFilterDef[] = useMemo(() => [
+    ...(teams.length > 0
+      ? [{
+          columnKey: 'teamId',
+          label: 'Team',
+          type: 'select' as const,
+          options: teams.map((t) => ({ label: t.name, value: t.id })),
+        }]
+      : []),
+    {
+      columnKey: 'priority',
+      label: 'Severity',
+      type: 'select',
+      options: [
+        { label: 'High', value: 'high' },
+        { label: 'Medium', value: 'medium' },
+        { label: 'Low', value: 'low' },
+      ],
+    },
+  ], [teams]);
+
   // Table features
   const {
     hiddenColumnKeys, setHiddenColumnKeys,
     density, setDensity,
+    filters, setFilter, clearFilters,
   } = useDataTable();
 
   // Panel state
@@ -136,9 +156,12 @@ export function DefectsPage() {
       params.set('limit', String(rowsPerPage));
       if (debouncedSearch) params.set('search', debouncedSearch);
       if (activeTab !== 'all') params.set('status', activeTab);
-      if (filterPriority) params.set('priority', filterPriority);
-      if (filterSeverity) params.set('severity', filterSeverity);
-      if (filterTeamId) params.set('teamId', filterTeamId);
+
+      const selectedPriorities = (filters.priority as string[]) ?? [];
+      if (selectedPriorities.length > 0) params.set('priority', selectedPriorities[0]);
+
+      const selectedTeams = (filters.teamId as string[]) ?? [];
+      if (selectedTeams.length > 0) params.set('teamId', selectedTeams[0]);
 
       const res = await axios.get(`/api/defects?${params.toString()}`, { withCredentials: true });
       const data = res.data.data;
@@ -150,7 +173,7 @@ export function DefectsPage() {
     } finally {
       setLoading(false);
     }
-  }, [rowsPerPage, debouncedSearch, activeTab, filterPriority, filterSeverity, filterTeamId]);
+  }, [rowsPerPage, debouncedSearch, activeTab, filters]);
 
   useEffect(() => { fetchDefects(1); }, [fetchDefects]);
 
@@ -201,20 +224,41 @@ export function DefectsPage() {
       header: 'Defect #',
       label: 'Defect number',
       pinned: true,
-      render: (defect) => (
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive">
-            <AlertTriangle className="h-4 w-4" />
-          </div>
-          <span className="font-medium text-foreground font-mono text-sm">{defect.defectNumber}</span>
-        </div>
-      ),
+      sortable: true,
+      render: (defect) => {
+        const isInspection = defect.source === 'prestart_inspection';
+        return (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-3">
+                  <div className={cn(
+                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
+                    isInspection
+                      ? 'bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400'
+                      : 'bg-destructive/10 text-destructive',
+                  )}>
+                    {isInspection
+                      ? <ClipboardCheck className="h-4 w-4" />
+                      : <PenLine className="h-4 w-4" />}
+                  </div>
+                  <span className="font-medium text-foreground font-mono text-sm">{defect.defectNumber}</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                {isInspection ? 'From Pre-Start Inspection' : 'Manually Created'}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      },
     },
     {
       key: 'status',
       header: 'Status',
       label: 'Status',
       pinned: true,
+      sortable: true,
       render: (defect) => (
         <Badge variant={STATUS_BADGE_VARIANT[defect.status] || 'secondary'}>
           {STATUS_DISPLAY_NAME[defect.status] || defect.status}
@@ -223,45 +267,54 @@ export function DefectsPage() {
     },
     {
       key: 'name',
-      header: 'Name',
-      label: 'Name',
-      render: (defect) => (
-        <span className="text-foreground">{defect.name}</span>
-      ),
+      header: 'Defect Name',
+      label: 'Defect Name',
+      sortable: true,
+      render: (defect) => {
+        const isInspection = defect.source === 'prestart_inspection';
+        return (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-foreground">{defect.name}</span>
+              </TooltipTrigger>
+              <TooltipContent>
+                Source: {isInspection ? 'Pre-Start Inspection' : 'Manual'}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      },
     },
     {
       key: 'assetName',
       header: 'Asset',
       label: 'Asset',
+      sortable: true,
       render: (defect) => (
         <span className="text-foreground">{defect.assetName || '—'}</span>
       ),
     },
     {
       key: 'driverName',
-      header: 'Operator',
-      label: 'Operator',
+      header: 'Driver',
+      label: 'Driver',
+      sortable: true,
       render: (defect) => (
         <span className="text-muted-foreground">{defect.driverName || '—'}</span>
       ),
     },
     {
       key: 'priority',
-      header: 'Priority',
-      label: 'Priority',
-      render: (defect) => (
-        <Badge variant={PRIORITY_BADGE_VARIANT[defect.priority] || 'secondary'}>
-          {PRIORITY_DISPLAY_NAME[defect.priority] || defect.priority}
-        </Badge>
-      ),
-    },
-    {
-      key: 'severity',
       header: 'Severity',
       label: 'Severity',
+      sortable: true,
       render: (defect) => (
-        <span className="text-muted-foreground">
-          {SEVERITY_DISPLAY_NAME[defect.severity] || defect.severity}
+        <span className={cn(
+          'inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium',
+          SEVERITY_BADGE_CLASSES[defect.priority] || 'bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300',
+        )}>
+          {SEVERITY_DISPLAY_NAME[defect.priority] || defect.priority}
         </span>
       ),
     },
@@ -269,6 +322,8 @@ export function DefectsPage() {
       key: 'date',
       header: 'Date',
       label: 'Date',
+      sortable: true,
+      sortValue: (defect) => defect.date ? new Date(defect.date).getTime() : null,
       render: (defect) => (
         <span className="text-muted-foreground text-xs">
           {defect.date ? new Date(defect.date).toLocaleDateString() : '—'}
@@ -320,89 +375,6 @@ export function DefectsPage() {
           />
         </div>
 
-        {/* Filters row */}
-        <div className="px-6 pb-4 flex items-center gap-3 flex-wrap">
-          {/* Team filter */}
-          <div className="relative">
-            <Select value={filterTeamId} onValueChange={setFilterTeamId}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="All Teams" />
-              </SelectTrigger>
-              <SelectContent>
-                {teams.map((team) => (
-                  <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {filterTeamId && (
-              <button
-                type="button"
-                onClick={() => setFilterTeamId('')}
-                className="absolute right-8 top-1/2 -translate-y-1/2 p-0.5 rounded-sm hover:bg-muted"
-              >
-                <X className="h-3 w-3 text-muted-foreground" />
-              </button>
-            )}
-          </div>
-
-          {/* Priority filter */}
-          <div className="relative">
-            <Select value={filterPriority} onValueChange={setFilterPriority}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="All Priorities" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
-              </SelectContent>
-            </Select>
-            {filterPriority && (
-              <button
-                type="button"
-                onClick={() => setFilterPriority('')}
-                className="absolute right-8 top-1/2 -translate-y-1/2 p-0.5 rounded-sm hover:bg-muted"
-              >
-                <X className="h-3 w-3 text-muted-foreground" />
-              </button>
-            )}
-          </div>
-
-          {/* Defect Type (Severity) filter */}
-          <div className="relative">
-            <Select value={filterSeverity} onValueChange={setFilterSeverity}>
-              <SelectTrigger className="w-[170px]">
-                <SelectValue placeholder="All Defect Types" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="critical">Critical</SelectItem>
-                <SelectItem value="non_critical">Non-Critical</SelectItem>
-              </SelectContent>
-            </Select>
-            {filterSeverity && (
-              <button
-                type="button"
-                onClick={() => setFilterSeverity('')}
-                className="absolute right-8 top-1/2 -translate-y-1/2 p-0.5 rounded-sm hover:bg-muted"
-              >
-                <X className="h-3 w-3 text-muted-foreground" />
-              </button>
-            )}
-          </div>
-
-          {/* Clear all filters */}
-          {(filterTeamId || filterPriority || filterSeverity) && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => { setFilterTeamId(''); setFilterPriority(''); setFilterSeverity(''); }}
-              className="text-muted-foreground"
-            >
-              Clear filters
-            </Button>
-          )}
-        </div>
-
         <div className="flex-1 overflow-auto px-6 pb-6">
           <DataTableToolbar
             columns={defectColumns}
@@ -410,6 +382,10 @@ export function DefectsPage() {
             onHiddenColumnKeysChange={setHiddenColumnKeys}
             density={density}
             onDensityChange={setDensity}
+            filterDefs={defectFilterDefs}
+            filters={filters}
+            onFilterChange={setFilter}
+            onFiltersClear={clearFilters}
             actions={
               <Select
                 value=""
@@ -437,7 +413,7 @@ export function DefectsPage() {
               </Select>
             }
             searchNode={
-              <SearchInput value={search} onChange={setSearch} placeholder="Search defects..." className="max-w-sm w-full" />
+              <SearchInput value={search} onChange={setSearch} placeholder="Search defects..." />
             }
           />
           <DataTable<DefectRow>
@@ -587,13 +563,13 @@ function ViewDefectContent({ defect }: { defect: DefectRow }) {
         </div>
       </div>
 
-      {/* Asset & Operator */}
+      {/* Asset & Driver */}
       <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Asset & Operator</h3>
+        <h3 className="text-sm font-semibold text-foreground mb-3">Asset & Driver</h3>
         <Separator className="mb-4" />
         <div className="space-y-4">
           <ViewField label="Asset" value={defect.assetName} />
-          <ViewField label="Operator" value={defect.driverName || undefined} />
+          <ViewField label="Driver" value={defect.driverName || undefined} />
         </div>
       </div>
 
@@ -601,14 +577,14 @@ function ViewDefectContent({ defect }: { defect: DefectRow }) {
       <div>
         <h3 className="text-sm font-semibold text-foreground mb-3">Classification</h3>
         <Separator className="mb-4" />
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">Priority</p>
-            <Badge variant={PRIORITY_BADGE_VARIANT[defect.priority] || 'secondary'} className="mt-0.5">
-              {PRIORITY_DISPLAY_NAME[defect.priority] || defect.priority}
-            </Badge>
-          </div>
-          <ViewField label="Severity" value={SEVERITY_DISPLAY_NAME[defect.severity] || defect.severity} />
+        <div>
+          <p className="text-sm font-medium text-muted-foreground">Severity</p>
+          <span className={cn(
+            'mt-0.5 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium',
+            SEVERITY_BADGE_CLASSES[defect.priority] || 'bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300',
+          )}>
+            {SEVERITY_DISPLAY_NAME[defect.priority] || defect.priority}
+          </span>
         </div>
       </div>
 

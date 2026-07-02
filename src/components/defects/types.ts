@@ -22,6 +22,7 @@ export interface DefectRow {
   status: string;
   workOrderId: string | null;
   workOrderNumber: string | null;
+  source: string;
   attachments: DefectAttachmentRow[];
   createdAt: string;
   updatedAt: string;
@@ -62,19 +63,15 @@ export const STATUS_DISPLAY_NAME: Record<string, string> = {
   no_correction_needed: 'No Correction Needed',
 };
 
-export const PRIORITY_BADGE_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning'> = {
-  high: 'destructive',
-  medium: 'warning',
-  low: 'secondary',
-};
-
-export const PRIORITY_DISPLAY_NAME: Record<string, string> = {
-  high: 'High',
-  medium: 'Medium',
-  low: 'Low',
+/** Severity badge — styled as subtle colored pills matching row-action tones. */
+export const SEVERITY_BADGE_CLASSES: Record<string, string> = {
+  high: 'bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-400',
+  medium: 'bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400',
+  low: 'bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300',
 };
 
 export const SEVERITY_DISPLAY_NAME: Record<string, string> = {
-  critical: 'Critical',
-  non_critical: 'Non-Critical',
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
 };

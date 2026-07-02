@@ -299,7 +299,7 @@ export async function createDefect(
     driverId,
     driverName,
     priority: input.priority,
-    severity: input.severity,
+    severity: input.severity || (input.priority === 'high' ? 'critical' : 'non_critical'),
     status: input.status || 'new',
     attachments: (input.attachments || []).map((a) => ({
       url: a.url,
@@ -352,8 +352,10 @@ export async function updateDefect(
   if (input.name !== undefined) $set.name = input.name.trim();
   if (input.date !== undefined) $set.date = new Date(input.date);
   if (input.comment !== undefined) $set.comment = input.comment.trim();
-  if (input.priority !== undefined) $set.priority = input.priority;
-  if (input.severity !== undefined) $set.severity = input.severity;
+  if (input.priority !== undefined) {
+    $set.priority = input.priority;
+    $set.severity = input.priority === 'high' ? 'critical' : 'non_critical';
+  }
   if (input.status !== undefined) $set.status = input.status;
 
   // Re-resolve asset name if changed

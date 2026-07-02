@@ -260,6 +260,8 @@ export function FuelPage() {
       header: 'Date',
       label: 'Date',
       pinned: true,
+      sortable: true,
+      sortValue: (txn) => txn.date ? new Date(txn.date).getTime() : null,
       render: (txn) => (
         <span className="font-medium text-foreground">{formatDate(txn.date)}</span>
       ),
@@ -269,6 +271,7 @@ export function FuelPage() {
       header: 'Asset',
       label: 'Asset',
       pinned: true,
+      sortable: true,
       render: (txn) => (
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -282,6 +285,7 @@ export function FuelPage() {
       key: 'driverName',
       header: 'Driver',
       label: 'Driver',
+      sortable: true,
       render: (txn) => (
         <span className="text-muted-foreground">{txn.driverName || '—'}</span>
       ),
@@ -290,6 +294,7 @@ export function FuelPage() {
       key: 'fuelType',
       header: 'Fuel Type',
       label: 'Fuel Type',
+      sortable: true,
       render: (txn) => (
         <Badge variant="secondary" className="capitalize text-xs">
           {txn.fuelType}
@@ -301,6 +306,7 @@ export function FuelPage() {
       header: 'Volume (gal)',
       label: 'Volume',
       align: 'right',
+      sortable: true,
       render: (txn) => (
         <span className="text-muted-foreground">{formatNumber(txn.volume)}</span>
       ),
@@ -310,6 +316,7 @@ export function FuelPage() {
       header: 'Total Cost',
       label: 'Total Cost',
       align: 'right',
+      sortable: true,
       render: (txn) => (
         <span className="font-medium text-foreground">{formatCurrency(txn.totalCost)}</span>
       ),
@@ -440,7 +447,6 @@ export function FuelPage() {
                 value={search}
                 onChange={setSearch}
                 placeholder="Search by asset, driver, station..."
-                className="max-w-sm w-full"
               />
             }
           />

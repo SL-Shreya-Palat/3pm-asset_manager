@@ -37,6 +37,8 @@ export interface Asset {
   lastServiceDate?: Date;
   lastServiceMileage?: number;
   lastServiceEngineHours?: number;
+  hubometer?: number;
+  regoWof?: Date;
 
   // Associations
   formIds: ObjectId[];
@@ -92,6 +94,8 @@ export interface CreateAssetInput {
   lastServiceDate?: string;
   lastServiceMileage?: number;
   lastServiceEngineHours?: number;
+  hubometer?: number;
+  regoWof?: string;
 
   type?: string;
   fuelType?: string;
@@ -147,6 +151,8 @@ export interface AssetResponse {
   lastServiceDate?: string;
   lastServiceMileage?: number;
   lastServiceEngineHours?: number;
+  hubometer?: number;
+  regoWof?: string;
   type?: string;
   fuelType?: string;
   primaryMeter?: string;

@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 import { CalendarClock, AlertTriangle, Clock, CheckCircle2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { CountBadge } from '@/components/ui/count-badge';
+import { PageHeader } from '@/components/ui/page-header';
 import { SearchInput } from '@/components/ui/search-input';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
@@ -288,14 +290,7 @@ export function ServiceSchedulePage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 pt-6 pb-4">
-        <h1 className="text-2xl font-semibold text-foreground">
-          Service Schedule
-          <span className="text-muted-foreground font-normal ml-2">
-            ({pagination.total})
-          </span>
-        </h1>
-      </div>
+      <PageHeader title="Asset Service Schedule" count={pagination.total} />
 
       {/* Status Tabs */}
       <div className="px-6 pb-3">
@@ -325,13 +320,12 @@ export function ServiceSchedulePage() {
                   />
                 )}
                 {tab.label}
-                <span
-                  className={`text-xs ${
-                    isActive ? 'text-primary-foreground/70' : 'text-muted-foreground'
-                  }`}
-                >
-                  ({count})
-                </span>
+                <CountBadge
+                  count={count}
+                  variant={isActive ? 'primary' : 'slate'}
+                  size="sm"
+                  className={isActive ? 'bg-primary-foreground/20 text-primary-foreground' : ''}
+                />
               </button>
             );
           })}
@@ -347,7 +341,7 @@ export function ServiceSchedulePage() {
           density={density}
           onDensityChange={setDensity}
           searchNode={
-            <SearchInput value={search} onChange={setSearch} placeholder="Search by asset name, program title..." className="max-w-sm w-full" />
+            <SearchInput value={search} onChange={setSearch} placeholder="Search by asset name, program title..." />
           }
         />
         <DataTable<ServiceScheduleRow>

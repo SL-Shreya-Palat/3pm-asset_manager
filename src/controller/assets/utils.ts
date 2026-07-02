@@ -164,6 +164,8 @@ export function serializeAsset(doc: Record<string, unknown>): Record<string, unk
     lastServiceDate: doc.lastServiceDate ? (doc.lastServiceDate as Date).toISOString() : null,
     lastServiceMileage: doc.lastServiceMileage ?? null,
     lastServiceEngineHours: doc.lastServiceEngineHours ?? null,
+    hubometer: doc.hubometer ?? null,
+    regoWof: doc.regoWof ? (doc.regoWof as Date).toISOString() : null,
     type: doc.type || '',
     fuelType: doc.fuelType || '',
     primaryMeter: doc.primaryMeter || 'odometer',

@@ -18,7 +18,7 @@ export interface PartRow {
   upc?: string;
   description?: string;
   photoUrl?: string;
-  manufacturerId?: string;
+
   measurementUnitId?: string;
   categoryId?: string;
   reorderPoint?: number;

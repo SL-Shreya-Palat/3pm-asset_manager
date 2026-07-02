@@ -100,6 +100,8 @@ export function UsersPage() {
       key: 'name',
       header: 'Name',
       pinned: true,
+      sortable: true,
+      sortValue: (user) => `${user.firstName} ${user.lastName}`,
       render: (user) => (
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -114,6 +116,7 @@ export function UsersPage() {
     {
       key: 'email',
       header: 'Email',
+      sortable: true,
       render: (user) => (
         <span className="text-muted-foreground">{user.email || '—'}</span>
       ),
@@ -121,6 +124,8 @@ export function UsersPage() {
     {
       key: 'role',
       header: 'Role',
+      sortable: true,
+      sortValue: (user) => user.roleName || null,
       render: (user) => (
         <span className="text-muted-foreground">{user.roleName || '—'}</span>
       ),

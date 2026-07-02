@@ -46,7 +46,6 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
   const [partNumber, setPartNumber] = useState('');
   const [upc, setUpc] = useState('');
   const [description, setDescription] = useState('');
-  const [manufacturerId, setManufacturerId] = useState('');
   const [reorderPoint, setReorderPoint] = useState('');
   const [maximumQuantity, setMaximumQuantity] = useState('');
   const [measurementUnitId, setMeasurementUnitId] = useState('');
@@ -63,7 +62,6 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
   const [locationLines, setLocationLines] = useState<LocationLineState[]>([]);
 
   // Lookup data from settings
-  const [manufacturers, setManufacturers] = useState<LookupOption[]>([]);
   const [measurementUnits, setMeasurementUnits] = useState<LookupOption[]>([]);
   const [categories, setCategories] = useState<LookupOption[]>([]);
   const [locations, setLocations] = useState<LookupOption[]>([]);
@@ -72,14 +70,12 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
   // Fetch lookup data
   const fetchLookups = useCallback(async () => {
     try {
-      const [mfRes, muRes, catRes, locRes, venRes] = await Promise.all([
-        axios.get('/api/inventory-settings/part-manufacturers', { withCredentials: true }),
+      const [muRes, catRes, locRes, venRes] = await Promise.all([
         axios.get('/api/inventory-settings/measurement-units', { withCredentials: true }),
         axios.get('/api/inventory-settings/part-categories', { withCredentials: true }),
         axios.get('/api/inventory-settings/part-locations', { withCredentials: true }),
         axios.get('/api/vendors?limit=100', { withCredentials: true }),
       ]);
-      setManufacturers((mfRes.data.data || []).map((i: Record<string, unknown>) => ({ id: i.id as string, name: i.name as string })));
       setMeasurementUnits((muRes.data.data || []).map((i: Record<string, unknown>) => ({
         id: i.id as string,
         name: i.name as string,
@@ -127,7 +123,6 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
       setPartNumber(part.partNumber || '');
       setUpc(part.upc || '');
       setDescription(part.description || '');
-      setManufacturerId(part.manufacturerId || '');
       setReorderPoint(part.reorderPoint != null ? String(part.reorderPoint) : '');
       setMaximumQuantity(part.maximumQuantity != null ? String(part.maximumQuantity) : '');
       setMeasurementUnitId(part.measurementUnitId || '');
@@ -209,7 +204,6 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
       upc: upc.trim() || undefined,
       description: description.trim() || undefined,
       photoUrl: photoUrl || undefined,
-      manufacturerId: manufacturerId || undefined,
       measurementUnitId: measurementUnitId || undefined,
       categoryId: categoryId || undefined,
       reorderPoint: reorderPoint ? parseFloat(reorderPoint) : undefined,
@@ -323,35 +317,6 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
               </div>
 
               {/* UPC — hidden for now (existing values are preserved on save) */}
-
-              {/* Manufacturer */}
-              <div>
-                <Label>Manufacturer</Label>
-                <Select value={manufacturerId} onValueChange={setManufacturerId}>
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder="Select manufacturer" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {manufacturers.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">No data yet</div>
-                    ) : (
-                      manufacturers.map((m) => (
-                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Can&apos;t find the manufacturer? You can add it in{' '}
-                  <button
-                    type="button"
-                    onClick={() => router.push('/settings?section=part-manufacturers')}
-                    className="text-primary hover:underline font-medium"
-                  >
-                    Settings &gt; Admin Settings &gt; Inventory
-                  </button>
-                </p>
-              </div>
 
               {/* Description */}
               <div>

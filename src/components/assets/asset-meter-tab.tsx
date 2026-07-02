@@ -11,6 +11,7 @@ import { Gauge, Clock, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { DateField } from '@/components/ui/date-field';
 import { Skeleton } from '@/components/ui/skeleton';
 import { StatCard } from '@/components/ui/stat-card';
 import {
@@ -185,8 +186,7 @@ function AddReadingDialog({
             </div>
           </div>
           <div>
-            <Label htmlFor="mrDate">Reading date</Label>
-            <Input id="mrDate" type="date" value={readingAt} onChange={(e) => setReadingAt(e.target.value)} className="mt-1.5" />
+            <DateField id="mrDate" label="Reading date" value={readingAt} onChange={setReadingAt} placeholder="Select date" />
           </div>
           <div>
             <Label htmlFor="mrNotes">Notes</Label>

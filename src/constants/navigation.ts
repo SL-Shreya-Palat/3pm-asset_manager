@@ -49,7 +49,7 @@ export const navItems: NavItem[] = [
     children: [
       { label: 'Service Tasks', href: '/maintenance/service-tasks', requiredModule: 'service_tasks' },
       { label: 'Service Programs', href: '/maintenance/service-programs', requiredModule: 'service_programs' },
-      { label: 'Service Schedule', href: '/maintenance/service-schedule', requiredModule: 'service_programs' },
+      { label: 'Asset Service Schedule', href: '/maintenance/service-schedule', requiredModule: 'service_programs' },
       { label: 'Work Orders', href: '/maintenance/work-orders', requiredModule: 'work_order' },
       { label: 'Defects', href: '/maintenance/defects', requiredModule: 'defects' },
       { label: 'Purchase Orders', href: '/maintenance/purchase-orders', adminOnly: true },
@@ -67,7 +67,6 @@ export const navItems: NavItem[] = [
       { label: 'Users', href: '/people/users', adminOnly: true },
       { label: 'Teams', href: '/people/teams', requiredModule: 'teams' },
       { label: 'Drivers', href: '/people/drivers', requiredModule: 'drivers' },
-      { label: 'Driver Wellness', href: '/people/driver-wellness', requiredModule: 'driver_wellness' },
       { label: 'Roles', href: '/people/roles', adminOnly: true },
     ],
   },

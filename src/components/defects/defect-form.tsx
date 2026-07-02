@@ -6,16 +6,10 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { DateField } from '@/components/ui/date-field';
 import { Textarea } from '@/components/ui/textarea';
-import { Separator } from '@/components/ui/separator';
 import { AttachmentUploader, type UploadedFile } from '@/components/ui/attachment-uploader';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import type { DefectRow, LookupOption } from './types';
 
 interface DefectFormProps {
@@ -37,7 +31,6 @@ export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) 
   const [assetId, setAssetId] = useState('');
   const [driverId, setDriverId] = useState('');
   const [priority, setPriority] = useState('');
-  const [severity, setSeverity] = useState('');
   const [status, setStatus] = useState('new');
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
 
@@ -80,7 +73,6 @@ export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) 
       setAssetId(defect.assetId || '');
       setDriverId(defect.driverId || '');
       setPriority(defect.priority || '');
-      setSeverity(defect.severity || '');
       setStatus(defect.status || 'new');
       setAttachments(
         (defect.attachments || []).map((a) => ({
@@ -100,7 +92,6 @@ export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) 
     }
   };
 
-
   const handleSubmit = async () => {
     setError('');
     setFieldErrors({});
@@ -110,8 +101,7 @@ export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) 
     if (!date) errors.date = 'Date is required';
     if (!comment.trim()) errors.comment = 'Comment is required';
     if (!assetId) errors.assetId = 'Asset is required';
-    if (!priority) errors.priority = 'Priority is required';
-    if (!severity) errors.severity = 'Severity is required';
+    if (!priority) errors.priority = 'Severity is required';
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -125,7 +115,6 @@ export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) 
       assetId,
       driverId: driverId || undefined,
       priority,
-      severity,
       status,
       attachments: attachments.map((a) => ({
         url: a.url,
@@ -171,166 +160,118 @@ export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) 
 
       {/* Form body */}
       <div className="flex-1 overflow-y-auto">
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-4">
 
-          {/* ── Defect Name ── */}
+          {/* Defect Name */}
           <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Defect Details</h3>
-            <Separator className="mb-4" />
-            <div className="space-y-4">
-              <div>
-                <Label>Defect Name <span className="text-destructive">*</span></Label>
-                <Input
-                  value={name}
-                  onChange={(e) => { setName(e.target.value); clearFieldError('name'); }}
-                  placeholder="Enter defect name"
-                  className={`mt-1.5 ${fieldErrors.name ? 'border-destructive' : ''}`}
-                />
-                {fieldErrors.name && <p className="text-sm text-destructive mt-1">{fieldErrors.name}</p>}
-              </div>
-
-              {/* ── Date ── */}
-              <div>
-                <Label>Date <span className="text-destructive">*</span></Label>
-                <Input
-                  type="date"
-                  value={date}
-                  onChange={(e) => { setDate(e.target.value); clearFieldError('date'); }}
-                  className={`mt-1.5 ${fieldErrors.date ? 'border-destructive' : ''}`}
-                />
-                {fieldErrors.date && <p className="text-sm text-destructive mt-1">{fieldErrors.date}</p>}
-              </div>
-
-              {/* ── Comment ── */}
-              <div>
-                <Label>Comment <span className="text-destructive">*</span></Label>
-                <Textarea
-                  value={comment}
-                  onChange={(e) => { setComment(e.target.value); clearFieldError('comment'); }}
-                  placeholder="Describe the defect..."
-                  rows={3}
-                  maxLength={2000}
-                  className={`mt-1.5 ${fieldErrors.comment ? 'border-destructive' : ''}`}
-                />
-                {fieldErrors.comment && <p className="text-sm text-destructive mt-1">{fieldErrors.comment}</p>}
-              </div>
-            </div>
+            <Label>Defect Name <span className="text-destructive">*</span></Label>
+            <Input
+              value={name}
+              onChange={(e) => { setName(e.target.value); clearFieldError('name'); }}
+              placeholder="Enter defect name"
+              className={`mt-1.5 ${fieldErrors.name ? 'border-destructive' : ''}`}
+            />
+            {fieldErrors.name && <p className="text-sm text-destructive mt-1">{fieldErrors.name}</p>}
           </div>
 
-          {/* ── Asset ── */}
+          {/* Date */}
           <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Asset</h3>
-            <Separator className="mb-4" />
-            <div>
-              <Label>Asset <span className="text-destructive">*</span></Label>
-              <Select value={assetId} onValueChange={(val) => { setAssetId(val); clearFieldError('assetId'); }}>
-                <SelectTrigger className={`mt-1.5 ${fieldErrors.assetId ? 'border-destructive' : ''}`}>
-                  <SelectValue placeholder="Select asset" />
-                </SelectTrigger>
-                <SelectContent>
-                  {assets.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">No data yet</div>
-                  ) : (
-                    assets.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              {fieldErrors.assetId && <p className="text-sm text-destructive mt-1">{fieldErrors.assetId}</p>}
-            </div>
+            <DateField
+              label="Date"
+              required
+              value={date}
+              onChange={(v) => { setDate(v); clearFieldError('date'); }}
+              error={fieldErrors.date}
+              placeholder="Select date"
+            />
           </div>
 
-          {/* ── Operator ── */}
+          {/* Comment */}
           <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Operator</h3>
-            <Separator className="mb-4" />
-            <div>
-              <Label>Operator</Label>
-              <Select value={driverId} onValueChange={setDriverId}>
-                <SelectTrigger className="mt-1.5">
-                  <SelectValue placeholder="Select operator (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  {drivers.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">No data yet</div>
-                  ) : (
-                    drivers.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
+            <Label>Comment <span className="text-destructive">*</span></Label>
+            <Textarea
+              value={comment}
+              onChange={(e) => { setComment(e.target.value); clearFieldError('comment'); }}
+              placeholder="Describe the defect..."
+              rows={3}
+              maxLength={2000}
+              className={`mt-1.5 ${fieldErrors.comment ? 'border-destructive' : ''}`}
+            />
+            {fieldErrors.comment && <p className="text-sm text-destructive mt-1">{fieldErrors.comment}</p>}
           </div>
 
-          {/* ── Priority & Severity ── */}
-          <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Classification</h3>
-            <Separator className="mb-4" />
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Priority <span className="text-destructive">*</span></Label>
-                <Select value={priority} onValueChange={(val) => { setPriority(val); clearFieldError('priority'); }}>
-                  <SelectTrigger className={`mt-1.5 ${fieldErrors.priority ? 'border-destructive' : ''}`}>
-                    <SelectValue placeholder="Select priority" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="low">Low</SelectItem>
-                  </SelectContent>
-                </Select>
-                {fieldErrors.priority && <p className="text-sm text-destructive mt-1">{fieldErrors.priority}</p>}
-              </div>
-              <div>
-                <Label>Severity <span className="text-destructive">*</span></Label>
-                <Select value={severity} onValueChange={(val) => { setSeverity(val); clearFieldError('severity'); }}>
-                  <SelectTrigger className={`mt-1.5 ${fieldErrors.severity ? 'border-destructive' : ''}`}>
-                    <SelectValue placeholder="Select severity" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="critical">Critical</SelectItem>
-                    <SelectItem value="non_critical">Non-Critical</SelectItem>
-                  </SelectContent>
-                </Select>
-                {fieldErrors.severity && <p className="text-sm text-destructive mt-1">{fieldErrors.severity}</p>}
-              </div>
-            </div>
-          </div>
+          {/* Asset */}
+          <SearchableSelect
+            label="Asset"
+            required
+            options={assets.map((a) => ({ label: a.name, value: a.id }))}
+            value={assetId || null}
+            onValueChange={(val) => { setAssetId(val || ''); clearFieldError('assetId'); }}
+            placeholder="Select asset"
+            searchPlaceholder="Search assets..."
+            emptyMessage="No assets found"
+            error={fieldErrors.assetId}
+            isClearable
+          />
 
-          {/* ── Status (edit mode) ── */}
+          {/* Driver */}
+          <SearchableSelect
+            label="Driver"
+            options={drivers.map((d) => ({ label: d.name, value: d.id }))}
+            value={driverId || null}
+            onValueChange={(val) => setDriverId(val || '')}
+            placeholder="Select driver (optional)"
+            searchPlaceholder="Search drivers..."
+            emptyMessage="No drivers found"
+            isClearable
+          />
+
+          {/* Severity */}
+          <SearchableSelect
+            label="Severity"
+            required
+            options={[
+              { label: 'High', value: 'high' },
+              { label: 'Medium', value: 'medium' },
+              { label: 'Low', value: 'low' },
+            ]}
+            value={priority || null}
+            onValueChange={(val) => { setPriority(val || ''); clearFieldError('priority'); }}
+            placeholder="Select severity"
+            searchPlaceholder="Search..."
+            emptyMessage="No options found"
+            error={fieldErrors.priority}
+            isClearable={false}
+          />
+
+          {/* Status (edit mode only) */}
           {mode === 'edit' && (
-            <div>
-              <h3 className="text-sm font-semibold text-foreground mb-3">Status</h3>
-              <Separator className="mb-4" />
-              <div>
-                <Label>Status</Label>
-                <Select value={status} onValueChange={setStatus}>
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="new">New</SelectItem>
-                    <SelectItem value="in_progress">In Progress</SelectItem>
-                    <SelectItem value="corrected">Corrected</SelectItem>
-                    <SelectItem value="no_correction_needed">No Correction Needed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+            <SearchableSelect
+              label="Status"
+              options={[
+                { label: 'New', value: 'new' },
+                { label: 'In Progress', value: 'in_progress' },
+                { label: 'Corrected', value: 'corrected' },
+                { label: 'No Correction Needed', value: 'no_correction_needed' },
+              ]}
+              value={status}
+              onValueChange={(val) => { if (val) setStatus(val); }}
+              placeholder="Select status"
+              searchPlaceholder="Search..."
+              emptyMessage="No options found"
+              isClearable={false}
+            />
           )}
 
-          {/* ── Attachments ── */}
+          {/* Attachments */}
           <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Attachments</h3>
-            <Separator className="mb-4" />
+            <Label className="mb-1.5 block">Attachments</Label>
             <AttachmentUploader
+              variant="dropzone"
               files={attachments}
               onChange={setAttachments}
               accept=".doc,.docx,.pdf,.csv,.xls,.xlsx,.jpg,.jpeg,.png,.heic"
-              hint="Supported: DOC, PDF, CSV, XLS, JPG, HEIC or PNG — Max 50 MB per file"
-              emptyText="No attachments uploaded."
+              hint="DOC, PDF, CSV, XLS, JPG, HEIC or PNG (max. 50 MB)"
               onError={setError}
             />
           </div>

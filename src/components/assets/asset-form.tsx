@@ -7,6 +7,7 @@ import { Settings, SquarePen } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { DateField } from '@/components/ui/date-field';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -68,6 +69,8 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
   const [lastServiceMileage, setLastServiceMileage] = useState('');
   const [assetSubtype, setAssetSubtype] = useState('');
   const [lastServiceEngineHours, setLastServiceEngineHours] = useState('');
+  const [hubometer, setHubometer] = useState('');
+  const [regoWof, setRegoWof] = useState('');
 
   // Photo upload
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -145,6 +148,14 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
       setLastServiceEngineHours(
         initialData.lastServiceEngineHours != null
           ? String(initialData.lastServiceEngineHours)
+          : '',
+      );
+      setHubometer(
+        initialData.hubometer != null ? String(initialData.hubometer) : '',
+      );
+      setRegoWof(
+        initialData.regoWof
+          ? (initialData.regoWof as string).split('T')[0]
           : '',
       );
       // Set photo preview from existing data
@@ -361,6 +372,8 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
       lastServiceEngineHours: lastServiceEngineHours
         ? parseFloat(lastServiceEngineHours)
         : undefined,
+      hubometer: hubometer ? parseFloat(hubometer) : undefined,
+      regoWof: regoWof || undefined,
       formIds: Array.from(selectedFormIds),
       serviceProgramIds: Array.from(selectedServiceProgramIds),
     };
@@ -650,14 +663,7 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
                 </Select>
               </div>
               <div>
-                <Label htmlFor="lastServiceDate">Last Service Date</Label>
-                <Input
-                  id="lastServiceDate"
-                  type="date"
-                  value={lastServiceDate}
-                  onChange={(e) => setLastServiceDate(e.target.value)}
-                  className="mt-1.5"
-                />
+                <DateField id="lastServiceDate" label="Last Service Date" value={lastServiceDate} onChange={setLastServiceDate} placeholder="Select date" />
               </div>
               <div>
                 <Label htmlFor="assetSubtype">Asset Subtype</Label>
@@ -692,6 +698,21 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
                   min={0}
                   className="mt-1.5"
                 />
+              </div>
+              <div>
+                <Label htmlFor="hubometer">Hubometer</Label>
+                <Input
+                  id="hubometer"
+                  type="number"
+                  value={hubometer}
+                  onChange={(e) => setHubometer(e.target.value)}
+                  placeholder="Current hubometer reading"
+                  min={0}
+                  className="mt-1.5"
+                />
+              </div>
+              <div>
+                <DateField id="regoWof" label="Rego / WOF" value={regoWof} onChange={setRegoWof} placeholder="Select expiry date" />
               </div>
             </div>
           ),

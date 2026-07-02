@@ -37,7 +37,6 @@ const ROUTE_LABELS: Record<string, string> = {
   defects: "Defects",
   "purchase-orders": "Purchase Orders",
   inventory: "Inventory",
-  "driver-wellness": "Driver Wellness",
 };
 
 /** Singular form mapping for "Create New …" breadcrumbs. */

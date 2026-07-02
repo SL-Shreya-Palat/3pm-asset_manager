@@ -95,7 +95,7 @@ export function DataTableToolbar<T>({
       </div>
 
       {/* Search (right-aligned) */}
-      {searchNode && <div className="ml-auto">{searchNode}</div>}
+      {searchNode && <div className="ml-auto min-w-0 flex-1 max-w-lg">{searchNode}</div>}
     </div>
   );
 }

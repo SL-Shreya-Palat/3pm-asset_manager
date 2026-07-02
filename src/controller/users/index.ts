@@ -12,8 +12,8 @@ import {
   getTeamsCollection,
 } from '@/lib/mongodb';
 import { validateInviteUserInput, serializeTenantMember } from './utils';
-import { createInvitation } from '@/controller/invitations';
-import { sendInvitationEmail } from '@/lib/email';
+import { createInvitation3PM } from '@/controller/invitations';
+import { create3PMInvitation } from '@/lib/3pm-data-api';
 import type { InviteUserInput, UpdateTenantMemberInput } from './types';
 
 /** Build a role name lookup map for a tenant. */
@@ -175,40 +175,48 @@ export async function inviteUser(tenantId: string, invitedByUserId: string, inpu
   const roleMap = await getRoleMap(tenantOid);
   const roleName = roleMap.get(input.roleId);
 
-  // 3. Create invitation record + send email (non-blocking, don't fail the invite)
+  // 3. Create invitation via 3PM Data API (3pm-auth sends the email)
   try {
-    const { rawToken } = await createInvitation(tenantId, {
-      email: normalizedEmail,
-      firstName: input.firstName.trim(),
-      lastName: input.lastName.trim(),
-      roleId: input.roleId,
-      invitedByUserId,
-    });
-
-    // Build accept URL
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const acceptUrl = `${appUrl}/invite/accept?token=${rawToken}`;
-
-    // Resolve inviter name + tenant name for the email
-    const inviter = await usersCol.findOne({ _id: invitedByOid });
-    const inviterName = inviter
-      ? `${inviter.firstName || ''} ${inviter.lastName || ''}`.trim()
-      : 'A team member';
-
     const tenantsCol = await getTenantsCollection();
     const tenant = await tenantsCol.findOne({ _id: tenantOid });
-    const tenantName = (tenant?.name as string) || 'your organization';
+    const authTenantId = (tenant as { authTenantId?: ObjectId })?.authTenantId?.toString();
 
-    await sendInvitationEmail({
-      recipientEmail: normalizedEmail,
-      recipientName: input.firstName.trim(),
-      inviterName,
-      tenantName,
-      roleName: roleName || 'Member',
-      acceptUrl,
-    });
-  } catch (emailError) {
-    console.error('[inviteUser] Failed to send invitation email:', emailError);
+    if (!authTenantId) {
+      console.error('[inviteUser] Tenant has no authTenantId — cannot create 3PM invitation');
+    } else {
+      // Resolve inviter name for the email context
+      const inviter = await usersCol.findOne({ _id: invitedByOid });
+      const inviterName = inviter
+        ? `${inviter.firstName || ''} ${inviter.lastName || ''}`.trim()
+        : undefined;
+
+      // Create invitation on 3pm-auth — 3pm-auth sends the email
+      const threePMInvite = await create3PMInvitation({
+        tenantId: authTenantId,
+        email: normalizedEmail,
+        role: 'member',
+        recipientName: `${input.firstName.trim()} ${input.lastName.trim()}`.trim(),
+        inviterName,
+        roleLabel: roleName || 'Member',
+      });
+
+      // Store local mirror so the auth callback can complete it
+      await createInvitation3PM(
+        tenantOid,
+        normalizedEmail,
+        threePMInvite.id,
+        {
+          firstName: input.firstName.trim(),
+          lastName: input.lastName.trim(),
+          roleId: input.roleId,
+          mobileNumber: input.mobileNumber?.trim(),
+        },
+        invitedByOid,
+        threePMInvite.expiresAt,
+      );
+    }
+  } catch (inviteError) {
+    console.error('[inviteUser] Failed to create 3PM invitation:', inviteError);
   }
 
   return {

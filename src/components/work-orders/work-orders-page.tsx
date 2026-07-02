@@ -196,6 +196,7 @@ export function WorkOrdersPage() {
       header: 'WO #',
       label: 'WO number',
       pinned: true,
+      sortable: true,
       render: (order) => (
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -210,6 +211,7 @@ export function WorkOrdersPage() {
       header: 'Status',
       label: 'Status',
       pinned: true,
+      sortable: true,
       render: (order) =>
         order.isCompleted ? (
           <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
@@ -233,6 +235,7 @@ export function WorkOrdersPage() {
       key: 'assetName',
       header: 'Asset',
       label: 'Asset',
+      sortable: true,
       render: (order) => (
         <span className="text-foreground">{order.assetName || assetMap[order.assetId] || '—'}</span>
       ),
@@ -241,6 +244,7 @@ export function WorkOrdersPage() {
       key: 'assigneeName',
       header: 'Assignee',
       label: 'Assignee',
+      sortable: true,
       render: (order) => (
         <span className="text-foreground">{order.assigneeName || '—'}</span>
       ),
@@ -249,6 +253,8 @@ export function WorkOrdersPage() {
       key: 'dueDate',
       header: 'Due Date',
       label: 'Due date',
+      sortable: true,
+      sortValue: (order) => order.dueDate ? new Date(order.dueDate).getTime() : null,
       render: (order) => (
         <span className="text-muted-foreground text-xs">
           {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : '—'}
@@ -267,6 +273,8 @@ export function WorkOrdersPage() {
       key: 'createdAt',
       header: 'Created',
       label: 'Created',
+      sortable: true,
+      sortValue: (order) => new Date(order.createdAt).getTime(),
       render: (order) => (
         <span className="text-muted-foreground text-xs">
           {new Date(order.createdAt).toLocaleDateString()}
@@ -318,7 +326,7 @@ export function WorkOrdersPage() {
             density={density}
             onDensityChange={setDensity}
             searchNode={
-              <SearchInput value={search} onChange={setSearch} placeholder="Search work orders..." className="max-w-sm w-full" />
+              <SearchInput value={search} onChange={setSearch} placeholder="Search work orders..." />
             }
           />
           <DataTable<WorkOrderRow>

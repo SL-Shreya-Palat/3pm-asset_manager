@@ -205,7 +205,7 @@ export function RolesPage() {
           density={density}
           onDensityChange={setDensity}
           searchNode={
-            <SearchInput value={search} onChange={setSearch} placeholder="Search roles..." className="max-w-sm w-full" />
+            <SearchInput value={search} onChange={setSearch} placeholder="Search roles..." />
           }
         />
         <DataTable<RoleRow>

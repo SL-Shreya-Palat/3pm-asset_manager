@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ChevronDown, ChevronRight, Ruler, Tag, MapPin, Factory, Wrench, CircleDot } from 'lucide-react';
+import { ChevronDown, ChevronRight, Ruler, Tag, MapPin, Wrench, CircleDot, Box, Layers } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InventorySettingsList, type SettingsFieldConfig } from './inventory-settings-list';
 import { WorkOrderStatusesList } from './work-order-statuses-list';
@@ -24,6 +24,14 @@ interface SidebarItem {
 
 const ADMIN_SIDEBAR: SidebarItem[] = [
   {
+    key: 'assets',
+    label: 'Assets',
+    icon: Box,
+    children: [
+      { key: 'asset-types', label: 'Asset Types' },
+    ],
+  },
+  {
     key: 'inventory',
     label: 'Inventory',
     icon: Tag,
@@ -31,7 +39,6 @@ const ADMIN_SIDEBAR: SidebarItem[] = [
       { key: 'measurement-units', label: 'Measurement Units' },
       { key: 'part-categories', label: 'Part Categories' },
       { key: 'part-locations', label: 'Part Locations' },
-      { key: 'part-manufacturers', label: 'Part Manufacturers' },
     ],
   },
   {
@@ -67,12 +74,12 @@ const PART_LOCATION_FIELDS: SettingsFieldConfig[] = [
   },
 ];
 
-const PART_MANUFACTURER_FIELDS: SettingsFieldConfig[] = [
-  { key: 'name', label: 'Manufacturer name', type: 'text', required: true, placeholder: 'e.g. Bosch' },
+const ASSET_TYPE_FIELDS: SettingsFieldConfig[] = [
+  { key: 'name', label: 'Asset type name', type: 'text', required: true, placeholder: 'e.g. Vehicle' },
   { key: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional description' },
 ];
 
-const VALID_SIDEBAR_KEYS = new Set(['measurement-units', 'part-categories', 'part-locations', 'part-manufacturers', 'work-order-statuses']);
+const VALID_SIDEBAR_KEYS = new Set(['asset-types', 'measurement-units', 'part-categories', 'part-locations', 'work-order-statuses']);
 
 export function SettingsPage() {
   const searchParams = useSearchParams();
@@ -86,7 +93,9 @@ export function SettingsPage() {
     if (section && VALID_SIDEBAR_KEYS.has(section)) {
       setActiveSidebarKey(section);
       // Expand the parent group that contains this section
-      if (['measurement-units', 'part-categories', 'part-locations', 'part-manufacturers'].includes(section)) {
+      if (['asset-types'].includes(section)) {
+        setExpandedKeys((prev) => new Set([...prev, 'assets']));
+      } else if (['measurement-units', 'part-categories', 'part-locations'].includes(section)) {
         setExpandedKeys((prev) => new Set([...prev, 'inventory']));
       } else if (['work-order-statuses'].includes(section)) {
         setExpandedKeys((prev) => new Set([...prev, 'work-orders']));
@@ -105,6 +114,15 @@ export function SettingsPage() {
 
   const renderSettingsContent = () => {
     switch (activeSidebarKey) {
+      case 'asset-types':
+        return (
+          <InventorySettingsList
+            title="Asset Types"
+            apiEndpoint="/api/inventory-settings/asset-types"
+            fields={ASSET_TYPE_FIELDS}
+            createLabel="Add Asset Type"
+          />
+        );
       case 'measurement-units':
         return (
           <InventorySettingsList
@@ -133,15 +151,6 @@ export function SettingsPage() {
             createLabel="Add Location"
           />
         );
-      case 'part-manufacturers':
-        return (
-          <InventorySettingsList
-            title="Part Manufacturers"
-            apiEndpoint="/api/inventory-settings/part-manufacturers"
-            fields={PART_MANUFACTURER_FIELDS}
-            createLabel="Add Manufacturer"
-          />
-        );
       case 'work-order-statuses':
         return <WorkOrderStatusesList />;
       default:
@@ -151,10 +160,10 @@ export function SettingsPage() {
 
   const getIconForChild = (key: string) => {
     switch (key) {
+      case 'asset-types': return Layers;
       case 'measurement-units': return Ruler;
       case 'part-categories': return Tag;
       case 'part-locations': return MapPin;
-      case 'part-manufacturers': return Factory;
       case 'work-order-statuses': return CircleDot;
       default: return Tag;
     }

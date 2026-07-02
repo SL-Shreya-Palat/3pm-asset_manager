@@ -7,7 +7,6 @@ import { ObjectId } from 'mongodb';
 import {
   DEFECT_STATUSES,
   DEFECT_PRIORITIES,
-  DEFECT_SEVERITIES,
   type CreateDefectInput,
 } from './types';
 
@@ -48,10 +47,6 @@ export function validateCreateDefectInput(input: CreateDefectInput): ValidationR
 
   if (!isEnumMember(input.priority, DEFECT_PRIORITIES)) {
     errors.priority = `Priority must be one of: ${DEFECT_PRIORITIES.join(', ')}`;
-  }
-
-  if (!isEnumMember(input.severity, DEFECT_SEVERITIES)) {
-    errors.severity = `Severity must be one of: ${DEFECT_SEVERITIES.join(', ')}`;
   }
 
   if (input.status && !isEnumMember(input.status, DEFECT_STATUSES)) {
@@ -99,6 +94,7 @@ export function serializeDefect(
       : [],
     createdAt: doc.createdAt ? (doc.createdAt as Date).toISOString() : null,
     updatedAt: doc.updatedAt ? (doc.updatedAt as Date).toISOString() : null,
+    source: doc.source || 'manual',
     isArchived: doc.isArchived ?? false,
   };
 }

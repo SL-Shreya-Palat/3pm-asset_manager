@@ -28,6 +28,6 @@ export const CURRENCIES = [
 
 /** Status display config for badges. */
 export const ASSET_STATUS_CONFIG: Record<AssetStatus, { label: string; variant: 'success' | 'warning' | 'destructive' | 'secondary' | 'outline' }> = {
-  in_service: { label: 'In Service', variant: 'success' },
-  out_of_service: { label: 'Out of Service', variant: 'destructive' },
+  in_service: { label: 'Active', variant: 'success' },
+  out_of_service: { label: 'Under Maintenance', variant: 'warning' },
 };

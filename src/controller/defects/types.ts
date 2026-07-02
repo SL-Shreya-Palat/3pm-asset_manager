@@ -7,7 +7,7 @@ import { ObjectId } from 'mongodb';
 export const DEFECT_STATUSES = ['new', 'in_progress', 'corrected', 'no_correction_needed'] as const;
 export type DefectStatus = (typeof DEFECT_STATUSES)[number];
 
-/** Defect priority values. */
+/** Defect severity values used in the priority field. */
 export const DEFECT_PRIORITIES = ['high', 'medium', 'low'] as const;
 export type DefectPriority = (typeof DEFECT_PRIORITIES)[number];
 
@@ -68,7 +68,7 @@ export interface CreateDefectInput {
   assetId: string;
   driverId?: string;
   priority: string;
-  severity: string;
+  severity?: string;
   status?: string;
   attachments?: Array<{
     url: string;

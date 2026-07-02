@@ -140,15 +140,6 @@ export async function getDriversCollection(): Promise<Collection> {
 }
 
 // ---------------------------------------------------------------------------
-// Driver wellness checks collection
-// ---------------------------------------------------------------------------
-
-export async function getDriverWellnessChecksCollection(): Promise<Collection> {
-  const db = await getDb();
-  return db.collection('driverWellnessChecks');
-}
-
-// ---------------------------------------------------------------------------
 // Vendors collection
 // ---------------------------------------------------------------------------
 
@@ -193,11 +184,6 @@ export async function getPartCategoriesCollection(): Promise<Collection> {
 export async function getPartLocationsCollection(): Promise<Collection> {
   const db = await getDb();
   return db.collection('partLocations');
-}
-
-export async function getPartManufacturersCollection(): Promise<Collection> {
-  const db = await getDb();
-  return db.collection('partManufacturers');
 }
 
 // ---------------------------------------------------------------------------

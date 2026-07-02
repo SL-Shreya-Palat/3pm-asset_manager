@@ -23,7 +23,6 @@ export type ModuleKey =
   | 'work_order'
   | 'inventory'
   | 'drivers'
-  | 'driver_wellness'
   | 'fuel';
 
 export type Action =

@@ -171,6 +171,8 @@ export async function createAsset(tenantId: string, userId: string, input: Creat
     lastServiceDate: input.lastServiceDate ? new Date(input.lastServiceDate) : undefined,
     lastServiceMileage: input.lastServiceMileage ?? undefined,
     lastServiceEngineHours: input.lastServiceEngineHours ?? undefined,
+    hubometer: input.hubometer ?? undefined,
+    regoWof: input.regoWof ? new Date(input.regoWof) : undefined,
 
     type: input.type?.trim() || undefined,
     fuelType: input.fuelType || undefined,
@@ -245,6 +247,8 @@ export async function updateAsset(
   if (input.lastServiceDate !== undefined) $set.lastServiceDate = input.lastServiceDate ? new Date(input.lastServiceDate) : null;
   if (input.lastServiceMileage !== undefined) $set.lastServiceMileage = input.lastServiceMileage;
   if (input.lastServiceEngineHours !== undefined) $set.lastServiceEngineHours = input.lastServiceEngineHours;
+  if (input.hubometer !== undefined) $set.hubometer = input.hubometer;
+  if (input.regoWof !== undefined) $set.regoWof = input.regoWof ? new Date(input.regoWof) : null;
   if (input.type !== undefined) $set.type = input.type.trim();
   if (input.fuelType !== undefined) $set.fuelType = input.fuelType;
   if (input.primaryMeter !== undefined) $set.primaryMeter = input.primaryMeter;

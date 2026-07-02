@@ -6,6 +6,7 @@ import axios from 'axios';
 import { SquarePen } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { DateField } from '@/components/ui/date-field';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -356,14 +357,7 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
                 </Select>
               </div>
               <div>
-                <Label htmlFor="dateOfBirth">Date of Birth</Label>
-                <Input
-                  id="dateOfBirth"
-                  type="date"
-                  value={dateOfBirth}
-                  onChange={(e) => setDateOfBirth(e.target.value)}
-                  className="mt-1.5"
-                />
+                <DateField id="dateOfBirth" label="Date of Birth" value={dateOfBirth} onChange={setDateOfBirth} placeholder="Select date" />
               </div>
               <div className="col-span-2">
                 <Label htmlFor="mobileNumber">Mobile Number</Label>

@@ -138,6 +138,8 @@ export function DriversPage() {
       header: 'Driver',
       label: 'Driver Name',
       pinned: true,
+      sortable: true,
+      sortValue: (driver) => `${driver.firstName} ${driver.lastName}`,
       render: (driver) => (
         <div className="flex items-center gap-3">
           {driver.photoUrl ? (
@@ -159,6 +161,7 @@ export function DriversPage() {
       key: 'email',
       header: 'Email',
       label: 'Email',
+      sortable: true,
       render: (driver) => (
         <span className="text-muted-foreground">{driver.email || '—'}</span>
       ),
@@ -175,6 +178,8 @@ export function DriversPage() {
       key: 'teamId',
       header: 'Team',
       label: 'Team',
+      sortable: true,
+      sortValue: (driver) => getTeamName(driver.teamId),
       render: (driver) => (
         <span className="text-muted-foreground">{getTeamName(driver.teamId)}</span>
       ),
@@ -183,6 +188,7 @@ export function DriversPage() {
       key: 'licenseNumber',
       header: 'License #',
       label: 'License Number',
+      sortable: true,
       render: (driver) => (
         <span className="text-muted-foreground">{driver.licenseNumber || '—'}</span>
       ),
@@ -220,7 +226,7 @@ export function DriversPage() {
           density={density}
           onDensityChange={setDensity}
           searchNode={
-            <SearchInput value={search} onChange={setSearch} placeholder="Search drivers..." className="max-w-sm w-full" />
+            <SearchInput value={search} onChange={setSearch} placeholder="Search drivers..." />
           }
         />
         <DataTable<DriverRow>

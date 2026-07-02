@@ -104,8 +104,8 @@ export function AssetTable() {
       label: 'Status',
       type: 'select',
       options: [
-        { label: 'In Service', value: 'in_service' },
-        { label: 'Out of Service', value: 'out_of_service' },
+        { label: 'Active', value: 'in_service' },
+        { label: 'Under Maintenance', value: 'out_of_service' },
       ],
     },
     ...(assetTypeOptions.length > 0
@@ -378,6 +378,7 @@ export function AssetTable() {
       header: 'Name',
       label: 'Name',
       pinned: true,
+      sortable: true,
       render: (asset) => (
         <span className="font-medium text-foreground">{asset.name}</span>
       ),
@@ -386,12 +387,14 @@ export function AssetTable() {
       key: 'status',
       header: 'Status',
       label: 'Status',
+      sortable: true,
       render: (asset) => getStatusBadge(asset.status),
     },
     {
       key: 'assetTypeName',
       header: 'Asset Type',
       label: 'Asset Type',
+      sortable: true,
       render: (asset) => (
         <span className="text-muted-foreground">{asset.assetTypeName || '—'}</span>
       ),
@@ -400,6 +403,8 @@ export function AssetTable() {
       key: 'makeModel',
       header: 'Make / Model',
       label: 'Make / Model',
+      sortable: true,
+      sortValue: (asset) => [asset.make, asset.model].filter(Boolean).join(' ') || null,
       render: (asset) => (
         <span className="text-muted-foreground">
           {[asset.make, asset.model].filter(Boolean).join(' ') || '—'}
@@ -410,6 +415,7 @@ export function AssetTable() {
       key: 'year',
       header: 'Year',
       label: 'Year',
+      sortable: true,
       render: (asset) => (
         <span className="text-muted-foreground">{asset.year || '—'}</span>
       ),
@@ -418,6 +424,7 @@ export function AssetTable() {
       key: 'licensePlate',
       header: 'License',
       label: 'License',
+      sortable: true,
       render: (asset) => (
         <span className="text-muted-foreground">{asset.licensePlate || '—'}</span>
       ),
@@ -426,6 +433,7 @@ export function AssetTable() {
       key: 'currentOdometer',
       header: 'Mileage',
       label: 'Mileage',
+      sortable: true,
       render: (asset) => (
         <span className="text-muted-foreground">
           {asset.currentOdometer != null ? asset.currentOdometer.toLocaleString() : '—'}
@@ -470,6 +478,7 @@ export function AssetTable() {
       key: 'estimatedCost',
       header: 'Est. Cost',
       label: 'Estimated Cost',
+      sortable: true,
       render: (asset) => (
         <span className="text-muted-foreground">
           {asset.estimatedCost != null
@@ -482,6 +491,7 @@ export function AssetTable() {
       key: 'currentEngineHours',
       header: 'Engine Hrs',
       label: 'Engine Hours',
+      sortable: true,
       render: (asset) => (
         <span className="text-muted-foreground">
           {asset.currentEngineHours != null ? asset.currentEngineHours.toLocaleString() : '—'}
@@ -500,6 +510,8 @@ export function AssetTable() {
       key: 'lastServiceDate',
       header: 'Last Service',
       label: 'Last Service Date',
+      sortable: true,
+      sortValue: (asset) => asset.lastServiceDate ? new Date(asset.lastServiceDate).getTime() : null,
       render: (asset) => (
         <span className="text-muted-foreground">
           {asset.lastServiceDate
@@ -620,8 +632,8 @@ export function AssetTable() {
             >
               <Power className="h-4 w-4" />
               {normalizeStatus(asset.status) === 'in_service'
-                ? 'Mark as Out of Service'
-                : 'Mark as In Service'}
+                ? 'Mark as Under Maintenance'
+                : 'Mark as Active'}
             </DropdownMenuItem>
             <DropdownMenuItem
               className="text-destructive"
@@ -658,6 +670,7 @@ export function AssetTable() {
       {/* Header */}
       <PageHeader
         title="Assets"
+        count={pagination.total}
         description="Manage your fleet vehicles and equipment"
         className="px-0 pt-0 pb-4"
       >
@@ -711,7 +724,6 @@ export function AssetTable() {
             value={search}
             onChange={setSearch}
             placeholder="Search assets..."
-            className="max-w-sm w-full"
           />
         }
       />
