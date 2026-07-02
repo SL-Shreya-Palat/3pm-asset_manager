@@ -126,6 +126,68 @@ export async function resolveCurrentTenantFor3PM(
  */
 export async function getAuthenticatedUser(req?: NextRequest) {
   try {
+    // ── Widget Builder proxy auth (X-App-Secret) ─────────────────────
+    // Widget data requests are proxied by Widget Builder server-to-server
+    // (no user cookie). Tenant is resolved from X-Tenant-Id or from the
+    // X-WB-Organization-Id → embedTokens mapping; no fallback — an
+    // unresolvable tenant is rejected rather than leaking another tenant.
+    if (req) {
+      const appSecret = req.headers.get('x-app-secret');
+      const widgetBuilderAppSecret = process.env.WIDGET_BUILDER_APP_SECRET;
+
+      if (appSecret && widgetBuilderAppSecret && appSecret === widgetBuilderAppSecret) {
+        const tenantsCollection = await getTenantsCollection();
+        const usersCollection = await getUsersCollection();
+
+        const requestedTenantId = req.headers.get('x-tenant-id');
+        const wbOrganizationId = req.headers.get('x-wb-organization-id');
+
+        let tenant = null;
+
+        // 1. Direct tenant ID
+        if (requestedTenantId && ObjectId.isValid(requestedTenantId)) {
+          tenant = await tenantsCollection.findOne({
+            _id: ObjectId.createFromHexString(requestedTenantId),
+            isActive: { $ne: false },
+          });
+        }
+
+        // 2. Look up tenant from WB organizationId via embedTokens mapping
+        if (!tenant && wbOrganizationId) {
+          const { getTenantIdFromOrganizationId } = await import('@/lib/embed-token-storage');
+          const mappedTenantId = await getTenantIdFromOrganizationId(wbOrganizationId);
+          if (mappedTenantId) {
+            tenant = await tenantsCollection.findOne({
+              _id: mappedTenantId,
+              isActive: { $ne: false },
+            });
+          }
+        }
+
+        if (!tenant) {
+          console.error(
+            '[auth-helper] Widget Builder auth failed: could not resolve tenant',
+            { requestedTenantId, wbOrganizationId },
+          );
+          return null;
+        }
+
+        const owner = tenant.ownerId
+          ? await usersCollection.findOne({ _id: tenant.ownerId })
+          : null;
+
+        return {
+          id: owner?._id?.toString() || 'widget-builder-system',
+          email: owner?.email || 'system@widget-builder',
+          name: owner?.name || 'Widget Builder',
+          image: null,
+          sessionToken: null,
+          currentTenantId: tenant._id.toString(),
+          authTenantId: null,
+        };
+      }
+    }
+
     // ── Session token auth (mobile app) ──────────────────────────────
     if (req) {
       const authHeader = req.headers.get('authorization');
