@@ -72,6 +72,12 @@ export interface UserProfile {
     logoUrl: string | null;
     isActive: boolean;
     roleName: string | null;
+    permissions: unknown;
+    isAdmin: boolean | null;
+    isManager: boolean | null;
+    isTeamManager: boolean | null;
+    isMechanic: boolean | null;
+    isDriver: boolean | null;
   } | null;
   workspaces: Array<{
     id: string;

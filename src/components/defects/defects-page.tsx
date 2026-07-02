@@ -307,7 +307,7 @@ export function DefectsPage() {
         <PageHeader title="Defects" count={pagination.total}>
           <Button onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
-            Report Defect
+            Create Defect
           </Button>
         </PageHeader>
 
@@ -460,7 +460,7 @@ export function DefectsPage() {
                 ? 'No defects match your search.'
                 : activeTab !== 'all'
                   ? `No ${STATUS_DISPLAY_NAME[activeTab] || activeTab} defects.`
-                  : 'No defects yet. Click "Report Defect" to create one.'
+                  : 'No defects yet. Click "Create Defect" to create one.'
             }
           />
         </div>

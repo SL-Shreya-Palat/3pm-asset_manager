@@ -70,6 +70,7 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
         inspections: { view: true, create: true },
         defects: { view: true, create: true },
         fuel: { view: true, create: true },
+        drivers: { view: true },
         driver_wellness: { view: true, create: true },
       },
     },
@@ -98,18 +99,24 @@ export async function seedSystemRoles(tenantId: ObjectId, userId: ObjectId): Pro
             description: def.description,
             baseCostPerHour: 0,
             chargeOutRate: 0,
+            createdBy: userId,
+            createdAt: now,
+            isActive: true,
+          },
+          // Always sync permissions and flags from canonical definitions so that
+          // code-level changes (e.g. adding a new module to Driver) propagate to
+          // existing role documents on next login.
+          $set: {
+            isSystem: true,
             permissions: def.permissions,
             isManager: def.isManager ?? null,
             isTeamManager: null,
             isMechanic: def.isMechanic ?? null,
             isDriver: def.isDriver ?? null,
             isAdmin: def.isAdmin ?? null,
-            createdBy: userId,
-            createdAt: now,
-            isActive: true,
+            updatedBy: userId,
+            updatedAt: now,
           },
-          // Enforce system status without overwriting a tenant's permission config.
-          $set: { isSystem: true, updatedBy: userId, updatedAt: now },
         },
         upsert: true,
       },

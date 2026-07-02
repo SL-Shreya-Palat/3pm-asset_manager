@@ -22,7 +22,7 @@ export function StatCard({ label, value, icon, accent, hint, loading, className 
   return (
     <div
       className={cn(
-        'rounded-lg border bg-card p-4 shadow-sm transition-shadow hover:shadow',
+        'rounded-lg border bg-card p-4 shadow-md transition-shadow hover:shadow-lg',
         className,
       )}
     >

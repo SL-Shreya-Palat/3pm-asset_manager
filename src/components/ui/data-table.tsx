@@ -79,7 +79,7 @@ export function DataTable<T>({
   );
 
   return (
-    <div className={cn('rounded-lg border bg-card shadow-sm overflow-hidden', className)}>
+    <div className={cn('rounded-lg border bg-card shadow-md overflow-hidden', className)}>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>

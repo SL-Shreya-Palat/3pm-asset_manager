@@ -31,6 +31,9 @@ interface ProvisioningInput {
   /** When set, skip provisioning the user's own (owner) tenant from 3pm-auth.
    *  Instead, activate the pending tenantMember on this invited tenant. */
   invitedTenantId?: string;
+  /** Role from the accepted invitation — used when creating a new tenantMember
+   *  for an invited user whose pending member wasn't pre-created. */
+  invitedRoleId?: string;
 }
 
 interface ProvisioningResult {
@@ -120,19 +123,30 @@ export async function ensureLocalRecords(
       // ── INVITATION FLOW ──────────────────────────────────────────
       // User is logging in after accepting an invitation.
       // Skip creating their personal (owner) tenant from 3pm-auth.
-      // Instead, activate the pending tenantMember on the invited tenant.
+      // Instead, activate (or create) the tenantMember on the invited tenant.
+      // Mirrors the construction portal's completePending3PMInvitationFromAccept().
       const invitedTenantOid = ObjectId.createFromHexString(input.invitedTenantId);
       const tenantMembersCollection = await getTenantMembersCollection();
 
-      const pendingMember = await tenantMembersCollection.findOne({
+      // Try finding the member — prefer status='pending' but also match
+      // members created without a status (e.g. driver flow before the fix).
+      let existingMember = await tenantMembersCollection.findOne({
         tenantId: invitedTenantOid,
         email: normalizedEmail,
         status: 'pending',
       });
 
-      if (pendingMember) {
+      if (!existingMember) {
+        existingMember = await tenantMembersCollection.findOne({
+          tenantId: invitedTenantOid,
+          email: normalizedEmail,
+        });
+      }
+
+      if (existingMember) {
+        // Activate the existing member
         await tenantMembersCollection.updateOne(
-          { _id: pendingMember._id },
+          { _id: existingMember._id },
           {
             $set: {
               userId: localUserId,
@@ -148,104 +162,154 @@ export async function ensureLocalRecords(
         );
         localTenantId = invitedTenantOid;
         console.log(
-          `[provisioning] Activated pending invitation — member=${pendingMember._id} tenant=${invitedTenantOid}`,
+          `[provisioning] Activated invitation member — member=${existingMember._id} tenant=${invitedTenantOid}`,
+        );
+      } else {
+        // No member exists yet — create one so the user lands in the invited
+        // tenant. This covers edge cases where the tenantMember wasn't
+        // pre-created at invitation time.
+        const roleId =
+          input.invitedRoleId && ObjectId.isValid(input.invitedRoleId)
+            ? ObjectId.createFromHexString(input.invitedRoleId)
+            : null;
+
+        await tenantMembersCollection.insertOne({
+          userId: localUserId,
+          tenantId: invitedTenantOid,
+          firstName: input.user.firstName,
+          lastName: input.user.lastName,
+          email: normalizedEmail,
+          ...(roleId ? { roleId } : {}),
+          isActive: true,
+          portalUser: true,
+          status: 'active',
+          createdAt: now,
+          updatedAt: now,
+        });
+        localTenantId = invitedTenantOid;
+        console.log(
+          `[provisioning] Created new member for invitation — tenant=${invitedTenantOid}`,
         );
       }
     } else if (input.tenant?.id && ObjectId.isValid(input.tenant.id)) {
       // ── NORMAL FLOW (no pending invitation) ──────────────────────
-      // Provision the user's own tenant from 3pm-auth.
-      const tenantsCollection = await getTenantsCollection();
-      const authTenantId = ObjectId.createFromHexString(input.tenant.id);
-      const isOwner = input.tenant.role === 'owner';
+      // Before creating a new tenant from 3pm-auth data, check if the user
+      // already has active tenant memberships (e.g. from a completed
+      // invitation). If so, use that tenant instead of creating a personal
+      // one. This prevents invited users from getting a second (personal)
+      // tenant on subsequent logins. Mirrors the construction portal pattern
+      // where `hasPendingInviteForLogin` skips owner tenant sync.
+      const tenantMembersCollection = await getTenantMembersCollection();
+      const existingMembership = await tenantMembersCollection.findOne({
+        userId: localUserId,
+        isActive: true,
+        status: 'active',
+      });
 
-      const tenantResult = await tenantsCollection.findOneAndUpdate(
-        { authTenantId },
-        {
-          $set: {
-            name: input.tenant.name,
-            ...(isOwner ? { ownerId: localUserId, authOwnerId: authUserId } : {}),
-            updatedAt: now,
-          },
-          $setOnInsert: {
-            authTenantId,
-            description: `Tenant for ${normalizedEmail}`,
-            logoUrl: null,
-            isActive: true,
-            createdAt: now,
-            ...(!isOwner ? { ownerId: null, authOwnerId: null } : {}),
-          },
-        },
-        { upsert: true, returnDocument: 'after' },
-      );
-
-      if (tenantResult) {
-        localTenantId = tenantResult._id as ObjectId;
-      }
-
-      // ── Seed canonical system roles (Admin / Manager / Driver) ───
-      // Always available once the org exists. Idempotent.
-      if (localTenantId) {
+      if (existingMembership) {
+        localTenantId = existingMembership.tenantId as ObjectId;
+        // Sync system roles even for returning users so that code-level
+        // permission changes propagate to the database.
         await seedSystemRoles(localTenantId, localUserId);
-      }
+        console.log(
+          `[provisioning] User already has active membership — using existing tenant=${localTenantId}`,
+        );
+      } else {
+        // Provision the user's own tenant from 3pm-auth.
+        const tenantsCollection = await getTenantsCollection();
+        const authTenantId = ObjectId.createFromHexString(input.tenant.id);
+        const isOwner = input.tenant.role === 'owner';
 
-      // ── 3. Upsert role ──────────────────────────────────────────
-      let roleId: ObjectId | null = null;
-
-      if (localTenantId && input.tenant?.role) {
-        const rolesCollection = await getRolesCollection();
-        const roleInfo = mapAuthRole(input.tenant.role);
-        const nameLower = roleInfo.name.toLowerCase();
-
-        const roleResult = await rolesCollection.findOneAndUpdate(
-          { tenantId: localTenantId, nameLower },
+        const tenantResult = await tenantsCollection.findOneAndUpdate(
+          { authTenantId },
           {
             $set: {
+              name: input.tenant.name,
+              ...(isOwner ? { ownerId: localUserId, authOwnerId: authUserId } : {}),
               updatedAt: now,
             },
             $setOnInsert: {
-              tenantId: localTenantId,
-              name: roleInfo.name,
-              nameLower,
-              description: roleInfo.description,
-              permissions: [],
-              isSystem: roleInfo.isSystem,
+              authTenantId,
+              description: `Tenant for ${normalizedEmail}`,
+              logoUrl: null,
               isActive: true,
               createdAt: now,
+              ...(!isOwner ? { ownerId: null, authOwnerId: null } : {}),
             },
           },
           { upsert: true, returnDocument: 'after' },
         );
 
-        if (roleResult) {
-          roleId = roleResult._id as ObjectId;
+        if (tenantResult) {
+          localTenantId = tenantResult._id as ObjectId;
         }
-      }
 
-      // ── 4. Upsert tenantMember ──────────────────────────────────
-      if (localTenantId) {
-        const tenantMembersCollection = await getTenantMembersCollection();
+        // ── Seed canonical system roles (Admin / Manager / Driver) ───
+        // Always available once the org exists. Idempotent.
+        if (localTenantId) {
+          await seedSystemRoles(localTenantId, localUserId);
+        }
 
-        await tenantMembersCollection.findOneAndUpdate(
-          { userId: localUserId, tenantId: localTenantId },
-          {
-            $set: {
-              firstName: input.user.firstName,
-              lastName: input.user.lastName,
-              email: normalizedEmail,
-              isActive: true,
-              portalUser: true,
-              status: 'active',
-              updatedAt: now,
+        // ── 3. Upsert role ──────────────────────────────────────────
+        let roleId: ObjectId | null = null;
+
+        if (localTenantId && input.tenant?.role) {
+          const rolesCollection = await getRolesCollection();
+          const roleInfo = mapAuthRole(input.tenant.role);
+          const nameLower = roleInfo.name.toLowerCase();
+
+          const roleResult = await rolesCollection.findOneAndUpdate(
+            { tenantId: localTenantId, nameLower },
+            {
+              $set: {
+                updatedAt: now,
+              },
+              $setOnInsert: {
+                tenantId: localTenantId,
+                name: roleInfo.name,
+                nameLower,
+                description: roleInfo.description,
+                permissions: { scope: 'all', teamScoped: false, mobileOnly: false },
+                isSystem: roleInfo.isSystem,
+                isAdmin: nameLower === 'owner' || nameLower === 'admin' ? true : null,
+                isActive: true,
+                createdAt: now,
+              },
             },
-            $setOnInsert: {
-              userId: localUserId,
-              tenantId: localTenantId,
-              ...(roleId ? { roleId } : {}),
-              createdAt: now,
+            { upsert: true, returnDocument: 'after' },
+          );
+
+          if (roleResult) {
+            roleId = roleResult._id as ObjectId;
+          }
+        }
+
+        // ── 4. Upsert tenantMember ──────────────────────────────────
+        if (localTenantId) {
+          const tenantMembersCol = await getTenantMembersCollection();
+
+          await tenantMembersCol.findOneAndUpdate(
+            { userId: localUserId, tenantId: localTenantId },
+            {
+              $set: {
+                firstName: input.user.firstName,
+                lastName: input.user.lastName,
+                email: normalizedEmail,
+                isActive: true,
+                portalUser: true,
+                status: 'active',
+                updatedAt: now,
+              },
+              $setOnInsert: {
+                userId: localUserId,
+                tenantId: localTenantId,
+                ...(roleId ? { roleId } : {}),
+                createdAt: now,
+              },
             },
-          },
-          { upsert: true },
-        );
+            { upsert: true },
+          );
+        }
       }
     }
 

@@ -8,7 +8,7 @@
  */
 import { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
-import { Wrench, AlertTriangle, Clock, CheckCircle2, Plus, History } from 'lucide-react';
+import { Wrench, AlertTriangle, Clock, CheckCircle2, Plus, History, Gauge, User, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { StatCard } from '@/components/ui/stat-card';
@@ -20,6 +20,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import { MeterTypeSelect, ProgramChecklist } from '@/components/maintenance/service-fields';
+import { cn } from '@/lib/utils';
 
 type ServiceStatus = 'ok' | 'due_soon' | 'overdue' | 'unknown';
 
@@ -50,6 +51,22 @@ const STATUS_META: Record<ServiceStatus, { label: string; className: string }> =
   due_soon: { label: 'Due soon', className: 'bg-amber-100 text-amber-700 hover:bg-amber-100' },
   ok: { label: 'OK', className: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' },
   unknown: { label: 'No data', className: 'bg-muted text-muted-foreground hover:bg-muted' },
+};
+
+/** Per-status icon + accent for the program cards. */
+const STATUS_CONFIG: Record<ServiceStatus, { icon: typeof Wrench; wrap: string; border: string }> = {
+  overdue: { icon: AlertTriangle, wrap: 'bg-red-100 text-red-600', border: 'border-red-200' },
+  due_soon: { icon: Clock, wrap: 'bg-amber-100 text-amber-600', border: 'border-amber-200' },
+  ok: { icon: CheckCircle2, wrap: 'bg-emerald-100 text-emerald-600', border: 'border-border' },
+  unknown: { icon: Wrench, wrap: 'bg-muted text-muted-foreground', border: 'border-border' },
+};
+
+/** Per-trigger chip styling by that condition's status. */
+const TRIGGER_CONFIG: Record<ServiceStatus, string> = {
+  overdue: 'border-red-200 bg-red-50 text-red-700',
+  due_soon: 'border-amber-200 bg-amber-50 text-amber-700',
+  ok: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  unknown: 'border-border bg-muted text-muted-foreground',
 };
 
 function formatDate(iso: string | null) {
@@ -111,73 +128,139 @@ export function AssetServiceTab({ assetId }: { assetId: string }) {
 
       {/* Programs */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-base font-semibold text-foreground">Service Schedule</h3>
+        <div>
+          <h3 className="text-base font-semibold text-foreground">Service Schedule</h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">Preventive maintenance due on this asset</p>
+        </div>
         <Button size="sm" onClick={() => openLog(null)}>
           <Plus className="h-4 w-4" /> Log Service
         </Button>
       </div>
 
       {programs.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border p-8 text-center">
-          <Wrench className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
-          <p className="text-sm text-muted-foreground">
-            No service programs assigned to this asset. Assign one from Maintenance → Service Programs.
+        <div className="mb-8 rounded-xl border border-dashed border-border p-10 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <Wrench className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <p className="text-sm font-medium text-foreground">No service programs assigned</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Assign one from Maintenance → Service Programs to start tracking due dates.
           </p>
         </div>
       ) : (
-        <div className="rounded-lg border border-border divide-y divide-border mb-8">
-          {programs.map((p) => (
-            <div key={p.programId} className="flex items-start justify-between gap-4 px-4 py-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-foreground">{p.title}</span>
-                  <Badge className={STATUS_META[p.status].className}>{STATUS_META[p.status].label}</Badge>
+        <div className="mb-8 space-y-2.5">
+          {programs.map((p) => {
+            const meta = STATUS_CONFIG[p.status];
+            const Icon = meta.icon;
+            const urgent = p.status === 'overdue' || p.status === 'due_soon';
+            return (
+              <div
+                key={p.programId}
+                className={cn(
+                  'flex items-center gap-4 rounded-xl border bg-card px-4 py-3.5 shadow-sm',
+                  meta.border,
+                )}
+              >
+                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-full', meta.wrap)}>
+                  <Icon className="h-5 w-5" />
                 </div>
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-                  {p.triggers.map((t, i) => (
-                    <span key={i} className="text-xs text-muted-foreground">{t.label}</span>
-                  ))}
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold text-foreground">{p.title}</span>
+                    <Badge className={STATUS_META[p.status].className}>{STATUS_META[p.status].label}</Badge>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {p.triggers.map((t, i) => (
+                      <span
+                        key={i}
+                        className={cn(
+                          'inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium',
+                          TRIGGER_CONFIG[t.status],
+                        )}
+                      >
+                        {t.label}
+                      </span>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    Last performed: <span className="text-foreground/80">{formatDate(p.lastPerformedAt)}</span>
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Last performed: {formatDate(p.lastPerformedAt)}
-                </p>
+
+                <Button
+                  variant={urgent ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => openLog(p.programId)}
+                  className="shrink-0"
+                >
+                  Log
+                </Button>
               </div>
-              <Button variant="outline" size="sm" onClick={() => openLog(p.programId)}>
-                Log
-              </Button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
       {/* History */}
-      <div className="flex items-center gap-2 mb-3">
+      <div className="mb-3 flex items-center gap-2">
         <History className="h-4 w-4 text-muted-foreground" />
         <h3 className="text-base font-semibold text-foreground">Service History</h3>
-        <span className="text-muted-foreground text-sm">({history.length})</span>
+        <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+          {history.length}
+        </span>
       </div>
       {history.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No services logged yet.</p>
+        <div className="rounded-xl border border-dashed border-border p-10 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <History className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <p className="text-sm text-muted-foreground">No services logged yet.</p>
+        </div>
       ) : (
-        <div className="rounded-lg border border-border divide-y divide-border">
-          {history.map((h) => (
-            <div key={h.id} className="px-4 py-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-foreground">{formatDate(h.performedAt)}</span>
-                {h.totalCost != null && <span className="text-sm text-foreground">${h.totalCost.toFixed(2)}</span>}
+        <div className="space-y-2.5">
+          {history.map((h) => {
+            const label = [...h.programNames, ...h.taskNames].filter(Boolean).join(', ') || 'Service';
+            return (
+              <div key={h.id} className="flex gap-3.5 rounded-xl border border-border bg-card px-4 py-3.5 shadow-sm">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Wrench className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-foreground">{label}</p>
+                      <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                        <Calendar className="h-3 w-3" /> {formatDate(h.performedAt)}
+                      </p>
+                    </div>
+                    {h.totalCost != null && (
+                      <span className="shrink-0 rounded-md bg-muted px-2 py-1 text-sm font-semibold tabular-nums text-foreground">
+                        ${h.totalCost.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    {h.meterAtService != null && (
+                      <span className="inline-flex items-center gap-1">
+                        <Gauge className="h-3 w-3" />
+                        {h.meterAtService.toLocaleString()} {h.meterType === 'engine_hours' ? 'hrs' : 'mi/km'}
+                      </span>
+                    )}
+                    <span className="inline-flex items-center gap-1">
+                      <User className="h-3 w-3" />
+                      {h.performedByName || 'Unknown'}
+                    </span>
+                  </div>
+                  {h.notes && (
+                    <p className="mt-2 rounded-md bg-muted/50 px-2.5 py-1.5 text-xs italic text-muted-foreground">
+                      {h.notes}
+                    </p>
+                  )}
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {[...h.programNames, ...h.taskNames].filter(Boolean).join(', ') || 'Service'}
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {h.meterAtService != null && (
-                  <span>{h.meterAtService.toLocaleString()} {h.meterType === 'engine_hours' ? 'hrs' : 'mi/km'} · </span>
-                )}
-                {h.performedByName || 'Unknown'}
-              </p>
-              {h.notes && <p className="text-xs text-muted-foreground mt-0.5 italic">{h.notes}</p>}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

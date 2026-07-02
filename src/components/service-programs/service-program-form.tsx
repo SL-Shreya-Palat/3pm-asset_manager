@@ -91,8 +91,6 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
   const [autoCreateWorkOrder, setAutoCreateWorkOrder] = useState(false);
   const [mechanicId, setMechanicId] = useState('');
   const [availableMechanics, setAvailableMechanics] = useState<MechanicOption[]>([]);
-  const [channels, setChannels] = useState<Set<string>>(new Set());
-  const [recipientSelf, setRecipientSelf] = useState(false);
 
   // ── Fetch available service tasks ──
   const fetchAvailableTasks = useCallback(async () => {
@@ -191,8 +189,6 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
         if (tc) { setThresholdCalendarEnabled(tc.enabled); setThresholdCalendarValue(tc.value ? String(tc.value) : ''); setThresholdCalendarUnit(tc.unit || 'day'); }
         setAutoCreateWorkOrder((rm.autoCreateWorkOrder as boolean) ?? false);
         setMechanicId((rm.mechanicId as string) || '');
-        setChannels(new Set((rm.channels as string[]) || []));
-        setRecipientSelf((rm.recipientSelf as boolean) ?? false);
       }
     }
   }, [initialData, mode]);
@@ -229,16 +225,6 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
       !selectedTaskIds.includes(t.id) &&
       (taskSearch ? t.title.toLowerCase().includes(taskSearch.toLowerCase()) : true),
   );
-
-  // ── Channel toggle ──
-  const toggleChannel = (channel: string) => {
-    setChannels((prev) => {
-      const next = new Set(prev);
-      if (next.has(channel)) next.delete(channel);
-      else next.add(channel);
-      return next;
-    });
-  };
 
   const navigateBack = () => router.push('/maintenance/service-programs');
 
@@ -283,8 +269,6 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
         thresholdCalendar: { enabled: thresholdCalendarEnabled, value: thresholdCalendarValue ? parseFloat(thresholdCalendarValue) : 0, unit: thresholdCalendarUnit },
         autoCreateWorkOrder,
         mechanicId: autoCreateWorkOrder && mechanicId ? mechanicId : undefined,
-        channels: Array.from(channels),
-        recipientSelf,
       },
     };
 
@@ -935,55 +919,6 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
                   )}
                 </div>
 
-                {/* Recipients */}
-                <div>
-                  <Label className="text-xs mb-2 block">Recipients</Label>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="recipientSelf"
-                      checked={recipientSelf}
-                      onCheckedChange={(checked) => setRecipientSelf(checked === true)}
-                    />
-                    <Label htmlFor="recipientSelf" className="text-sm cursor-pointer">
-                      Myself
-                    </Label>
-                  </div>
-                </div>
-
-                {/* Channels */}
-                <div>
-                  <Label className="text-xs mb-2 block">Channels</Label>
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        id="channel-dashboard"
-                        checked={channels.has('dashboard')}
-                        onCheckedChange={() => toggleChannel('dashboard')}
-                      />
-                      <Label htmlFor="channel-dashboard" className="text-sm cursor-pointer">
-                        Dashboard
-                      </Label>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-[260px]">
-                          <p>Dashboard reminders will be prompted on your dashboard based on thresholds setting.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Checkbox
-                        id="channel-email"
-                        checked={channels.has('email')}
-                        onCheckedChange={() => toggleChannel('email')}
-                      />
-                      <Label htmlFor="channel-email" className="text-sm cursor-pointer">
-                        Email
-                      </Label>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
           </div>

@@ -8,8 +8,11 @@ import {
   getUsersCollection,
   getTenantMembersCollection,
   getRolesCollection,
+  getTenantsCollection,
 } from '@/lib/mongodb';
 import { validateCreateDriverInput, serializeDriver } from './utils';
+import { createInvitation } from '@/controller/invitations';
+import { sendInvitationEmail } from '@/lib/email';
 import type { CreateDriverInput, UpdateDriverInput } from './types';
 
 /** List drivers with pagination and search. */
@@ -166,7 +169,7 @@ export async function createDriver(tenantId: string, userId: string, input: Crea
 
   // 2. Create user + tenantMember and link back
   try {
-    const tenantMemberId = await createTenantMemberForDriver(
+    const { tenantMemberId, roleId } = await createTenantMemberForDriver(
       tenantOid, userOid, now,
       { firstName: input.firstName.trim(), lastName: input.lastName.trim(), email: normalizedEmail },
     );
@@ -174,6 +177,43 @@ export async function createDriver(tenantId: string, userId: string, input: Crea
     // 3. Update driver with tenantMemberId
     await collection.updateOne({ _id: driverId }, { $set: { tenantMemberId } });
     doc.tenantMemberId = tenantMemberId;
+
+    // 4. Send invitation email if driver has an email
+    if (normalizedEmail) {
+      try {
+        const { rawToken } = await createInvitation(tenantId, {
+          email: normalizedEmail,
+          firstName: input.firstName.trim(),
+          lastName: input.lastName.trim(),
+          roleId: roleId.toString(),
+          invitedByUserId: userId,
+        });
+
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        const acceptUrl = `${appUrl}/invite/accept?token=${rawToken}`;
+
+        const usersCol = await getUsersCollection();
+        const inviter = await usersCol.findOne({ _id: userOid });
+        const inviterName = inviter
+          ? `${inviter.firstName || ''} ${inviter.lastName || ''}`.trim()
+          : 'A team member';
+
+        const tenantsCol = await getTenantsCollection();
+        const tenant = await tenantsCol.findOne({ _id: tenantOid });
+        const tenantName = (tenant?.name as string) || 'your organization';
+
+        await sendInvitationEmail({
+          recipientEmail: normalizedEmail,
+          recipientName: input.firstName.trim(),
+          inviterName,
+          tenantName,
+          roleName: 'Driver',
+          acceptUrl,
+        });
+      } catch (emailError) {
+        console.error('[driver] Failed to send invitation email:', emailError);
+      }
+    }
   } catch (err) {
     // Non-fatal: driver is created, but tenantMember linkage failed.
     // Log and continue — the driver record is still valid.
@@ -195,7 +235,7 @@ async function createTenantMemberForDriver(
   createdByOid: ObjectId,
   now: Date,
   driver: { firstName: string; lastName: string; email?: string },
-): Promise<ObjectId> {
+): Promise<{ tenantMemberId: ObjectId; roleId: ObjectId }> {
   const usersCol = await getUsersCollection();
   const tenantMembersCol = await getTenantMembersCollection();
 
@@ -248,6 +288,7 @@ async function createTenantMemberForDriver(
         email: driver.email || null,
         isActive: true,
         portalUser: false,
+        status: 'pending',
         updatedAt: now,
       },
       $setOnInsert: {
@@ -259,7 +300,7 @@ async function createTenantMemberForDriver(
     { upsert: true, returnDocument: 'after' },
   );
 
-  return tmResult!._id as ObjectId;
+  return { tenantMemberId: tmResult!._id as ObjectId, roleId: driverRoleId };
 }
 
 /** Update an existing driver. */

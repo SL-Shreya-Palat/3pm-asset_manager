@@ -4,7 +4,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Asset Manager',
+  title: '3PM Asset Manager',
   description: 'Fleet asset management platform',
 };
 

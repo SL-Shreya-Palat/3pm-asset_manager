@@ -385,8 +385,8 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
                                     className={cn(
                                       'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
                                       checked
-                                        ? 'border-foreground bg-foreground text-background shadow-sm hover:bg-foreground/90'
-                                        : 'border-border bg-background text-muted-foreground hover:border-foreground/30 hover:text-foreground',
+                                        ? 'border-primary bg-primary text-primary-foreground shadow-sm hover:bg-primary/90'
+                                        : 'border-border bg-background text-foreground/70 hover:border-foreground/30 hover:text-foreground',
                                     )}
                                   >
                                     {checked && <Check className="h-3 w-3" />}

@@ -299,20 +299,53 @@ export async function getUserTenant(userId: string) {
     const tenant = await tenantsCollection.findOne({ _id: tenantMember.tenantId });
     if (!tenant) return null;
 
-    // Look up role name from roles collection via tenantMember.roleId
+    // Look up role from roles collection via tenantMember.roleId
     let roleName: string | null = null;
+    let permissions: unknown = null;
+    let isAdmin: boolean | null = null;
+    let isManager: boolean | null = null;
+    let isTeamManager: boolean | null = null;
+    let isMechanic: boolean | null = null;
+    let isDriver: boolean | null = null;
+
     if (tenantMember.roleId) {
       const role = await rolesCollection.findOne({ _id: tenantMember.roleId });
       roleName = role?.name ?? null;
+      permissions = role?.permissions ?? null;
+      isAdmin = role?.isAdmin ?? null;
+      isManager = role?.isManager ?? null;
+      isTeamManager = role?.isTeamManager ?? null;
+      isMechanic = role?.isMechanic ?? null;
+      isDriver = role?.isDriver ?? null;
+    }
+
+    // If the user is the tenant owner, always grant owner-level access regardless
+    // of whatever role document the tenantMember happens to point to. This handles:
+    // - tenantMember with no roleId (created before role was upserted)
+    // - tenantMember linked to a wrong role (e.g. "Member" instead of "Owner")
+    // - Owner role with stale/empty permissions
+    const ownerIdStr = tenant.ownerId ? tenant.ownerId.toString() : null;
+    const isOwnerByTenant = ownerIdStr === userId;
+
+    if (isOwnerByTenant) {
+      roleName = 'Owner';
+      isAdmin = true;
+      permissions = { scope: 'all', teamScoped: false, mobileOnly: false };
     }
 
     return {
       id: tenant._id.toString(),
       name: tenant.name,
-      ownerId: tenant.ownerId.toString(),
+      ownerId: ownerIdStr || '',
       logoUrl: tenant.logoUrl || null,
       isActive: tenant.isActive,
       roleName,
+      permissions,
+      isAdmin,
+      isManager,
+      isTeamManager,
+      isMechanic,
+      isDriver,
     };
   } catch (error) {
     console.error('Error getting user tenant:', error);

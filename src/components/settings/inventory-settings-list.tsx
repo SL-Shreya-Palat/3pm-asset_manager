@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { Input } from '@/components/ui/input';
@@ -12,6 +11,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/ui/search-input';
+import { DataTable, type DataTableColumn, type DataTablePagination } from '@/components/ui/data-table';
+import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
+import { useDataTable } from '@/hooks/use-data-table';
 import {
   Dialog,
   DialogContent,
@@ -62,6 +64,11 @@ export function InventorySettingsList({
   const [loading, setLoading] = useState(true);
   const [search, setSearch, debouncedSearch] = useDebouncedSearch(300);
 
+  // Table state
+  const { hiddenColumnKeys, setHiddenColumnKeys, density, setDensity } = useDataTable();
+  const [page, setPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+
   // Dialog state
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogMode, setDialogMode] = useState<'create' | 'edit'>('create');
@@ -92,6 +99,77 @@ export function InventorySettingsList({
   useEffect(() => {
     fetchItems();
   }, [fetchItems]);
+
+  // Reset to page 1 when search changes
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
+
+  // Client-side pagination
+  const paginatedData = useMemo(() => {
+    const start = (page - 1) * rowsPerPage;
+    return items.slice(start, start + rowsPerPage);
+  }, [items, page, rowsPerPage]);
+
+  const pagination: DataTablePagination = useMemo(() => ({
+    page,
+    limit: rowsPerPage,
+    total: items.length,
+    hasMore: page * rowsPerPage < items.length,
+  }), [page, rowsPerPage, items.length]);
+
+  // Columns
+  const columns: DataTableColumn<SettingsItem>[] = useMemo(() => {
+    const cols: DataTableColumn<SettingsItem>[] = [
+      {
+        key: 'name',
+        header: 'Name',
+        pinned: true,
+        render: (item) => (
+          <span className="font-medium text-foreground">
+            {(item as unknown as Record<string, unknown>)[nameField] as string}
+            {item.isDefault && (
+              <Badge variant="secondary" className="ml-2 text-xs">Default</Badge>
+            )}
+          </span>
+        ),
+      },
+      ...extraColumns.map((col) => ({
+        key: col.key,
+        header: col.header,
+        render: (item: SettingsItem) => (
+          <span className="text-muted-foreground">
+            {(item as unknown as Record<string, unknown>)[col.key] as string || '—'}
+          </span>
+        ),
+      })),
+      {
+        key: 'description',
+        header: 'Description',
+        render: (item) => (
+          <span className="text-muted-foreground">{item.description || '—'}</span>
+        ),
+      },
+      {
+        key: 'actions',
+        header: 'Actions',
+        align: 'right' as const,
+        pinned: true,
+        render: (item) => (
+          <RowActions>
+            <RowActionButton label="Edit" icon={<Pencil />} onClick={() => openEditDialog(item)} />
+            <RowActionButton
+              label="Delete"
+              tone="destructive"
+              icon={<Trash2 />}
+              onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
+            />
+          </RowActions>
+        ),
+      },
+    ];
+    return cols;
+  }, [nameField, extraColumns]);
 
   // Dialog helpers
   const openCreateDialog = () => {
@@ -183,81 +261,35 @@ export function InventorySettingsList({
         </Button>
       </div>
 
-      {/* Search */}
-      <div className="mb-4">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder={`Search ${title.toLowerCase()}...`}
-        />
-      </div>
+      {/* Toolbar */}
+      <DataTableToolbar
+        columns={columns}
+        hiddenColumnKeys={hiddenColumnKeys}
+        onHiddenColumnKeysChange={setHiddenColumnKeys}
+        density={density}
+        onDensityChange={setDensity}
+        searchNode={
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder={`Search ${title.toLowerCase()}...`}
+          />
+        }
+      />
 
       {/* Table */}
-      <div className="rounded-md border border-border overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-muted/50 border-b border-border">
-              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Name</th>
-              {extraColumns.map((col) => (
-                <th key={col.key} className="text-left px-4 py-2.5 font-medium text-muted-foreground">
-                  {col.header}
-                </th>
-              ))}
-              <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">Description</th>
-              <th className="text-right px-4 py-2.5 font-medium text-muted-foreground">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i} className="border-b border-border last:border-0">
-                  {Array.from({ length: 3 + extraColumns.length }).map((_, j) => (
-                    <td key={j} className="px-4 py-2.5">
-                      <Skeleton className="h-4 w-full max-w-[120px]" />
-                    </td>
-                  ))}
-                </tr>
-              ))
-            ) : items.length === 0 ? (
-              <tr>
-                <td colSpan={3 + extraColumns.length} className="text-center py-8 text-muted-foreground">
-                  {debouncedSearch ? 'No results match your search.' : `No ${title.toLowerCase()} yet.`}
-                </td>
-              </tr>
-            ) : (
-              items.map((item) => (
-                <tr key={item.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                  <td className="px-4 py-2.5 font-medium text-foreground">
-                    {(item as unknown as Record<string, unknown>)[nameField] as string}
-                    {item.isDefault && (
-                      <Badge variant="secondary" className="ml-2 text-xs">Default</Badge>
-                    )}
-                  </td>
-                  {extraColumns.map((col) => (
-                    <td key={col.key} className="px-4 py-2.5 text-muted-foreground">
-                      {(item as unknown as Record<string, unknown>)[col.key] as string || '—'}
-                    </td>
-                  ))}
-                  <td className="px-4 py-2.5 text-muted-foreground">
-                    {item.description || '—'}
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    <RowActions>
-                      <RowActionButton label="Edit" icon={<Pencil />} onClick={() => openEditDialog(item)} />
-                      <RowActionButton
-                        label="Delete"
-                        tone="destructive"
-                        icon={<Trash2 />}
-                        onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
-                      />
-                    </RowActions>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columns}
+        data={paginatedData}
+        pagination={pagination}
+        loading={loading}
+        onPageChange={setPage}
+        onRowsPerPageChange={(rpp) => { setRowsPerPage(rpp); setPage(1); }}
+        rowsPerPage={rowsPerPage}
+        density={density}
+        hiddenColumnKeys={hiddenColumnKeys}
+        emptyMessage={debouncedSearch ? 'No results match your search.' : `No ${title.toLowerCase()} yet.`}
+      />
 
       {/* Create / Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

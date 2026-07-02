@@ -55,7 +55,7 @@ interface DetailCardProps {
 /** A titled card (icon chip + title) wrapping a responsive grid of DetailFields. */
 export function DetailCard({ icon: Icon, title, action, columns = 4, children, className }: DetailCardProps) {
   return (
-    <section className={cn('rounded-xl border bg-card p-5 shadow-sm', className)}>
+    <section className={cn('rounded-xl border bg-card p-5 shadow-md', className)}>
       <div className="flex items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2.5 min-w-0">
           {Icon && (
