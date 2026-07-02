@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-import { ArrowLeft, Save, ShieldAlert, Power, Ban, RotateCcw, Check, Info } from 'lucide-react';
+import { ArrowLeft, Save, ShieldAlert, Wrench, Ban, RotateCcw, Check, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
@@ -30,7 +31,7 @@ interface EligibleField {
   page: string;
   options: FieldOption[];
   selectedDefectValues: string[];
-  severity: 'critical' | 'non_critical';
+  severity: 'high' | 'medium' | 'low';
   outOfService: boolean;
   ignored: boolean;
 }
@@ -61,7 +62,7 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
 
   // Track user edits: fieldKey → set of ticked defect values
   const [defectAnswers, setDefectAnswers] = useState<Record<string, Set<string>>>({});
-  const [severityByField, setSeverityByField] = useState<Record<string, 'critical' | 'non_critical'>>({});
+  const [severityByField, setSeverityByField] = useState<Record<string, 'high' | 'medium' | 'low'>>({});
   const [outOfServiceByField, setOutOfServiceByField] = useState<Record<string, boolean>>({});
   const [ignoredByField, setIgnoredByField] = useState<Record<string, boolean>>({});
 
@@ -87,7 +88,7 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
 
       // Initialize state from saved ticks
       const answers: Record<string, Set<string>> = {};
-      const severities: Record<string, 'critical' | 'non_critical'> = {};
+      const severities: Record<string, 'high' | 'medium' | 'low'> = {};
       const oos: Record<string, boolean> = {};
       const ign: Record<string, boolean> = {};
       for (const f of data.fields) {
@@ -129,7 +130,7 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
     setSuccess('');
   }
 
-  function updateSeverity(fieldKey: string, sev: 'critical' | 'non_critical') {
+  function updateSeverity(fieldKey: string, sev: 'high' | 'medium' | 'low') {
     setSeverityByField((prev) => ({ ...prev, [fieldKey]: sev }));
     setSuccess('');
   }
@@ -253,7 +254,7 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
               For each question, tick the answer(s) that mean a <span className="font-medium">fault</span>.
               When someone submits the form and picks a ticked answer, a defect is raised automatically for
               that asset. Set the <span className="font-medium">severity</span>, turn on{' '}
-              <span className="font-medium">Out of service</span> to also take the asset off the road, or{' '}
+              <span className="font-medium">Under maintenance</span> to flag the asset, or{' '}
               <span className="font-medium">Ignore</span> a question so it does nothing. Only choice questions
               (dropdown, radio, multi-select, checkbox, toggle) can trigger defects.
             </p>
@@ -304,7 +305,7 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
                   const ticked = defectAnswers[field.fieldKey] || new Set<string>();
                   const hasTicks = ticked.size > 0;
                   const oos = outOfServiceByField[field.fieldKey] || false;
-                  const sev = severityByField[field.fieldKey] || 'non_critical';
+                  const sev = severityByField[field.fieldKey] || '';
 
                   return (
                     <div
@@ -337,17 +338,17 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
                               <span
                                 className={cn(
                                   'font-medium',
-                                  sev === 'critical' ? 'text-red-600 dark:text-red-400' : 'text-foreground',
+                                  sev === 'high' ? 'text-red-600 dark:text-red-400' : 'text-foreground',
                                 )}
                               >
-                                {sev === 'critical' ? 'Critical' : 'Non-Critical'}
+                                {sev === 'high' ? 'High' : sev === 'medium' ? 'Medium' : 'Low'}
                               </span>{' '}
-                              defect
+                              severity defect
                               {oos && (
                                 <>
                                   {' · '}
-                                  <span className="font-medium text-red-600 dark:text-red-400">
-                                    takes asset out of service
+                                  <span className="font-medium text-amber-600 dark:text-amber-400">
+                                    under maintenance
                                   </span>
                                 </>
                               )}
@@ -396,57 +397,79 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
                               })}
                             </div>
 
-                            {/* Consequence cluster — severity + out of service */}
+                            {/* Consequence cluster — severity + under maintenance */}
                             {hasTicks && (
                               <div className="flex items-center gap-1.5 md:ml-1 md:border-l md:border-border/70 md:pl-2.5">
-                                <Select
-                                  value={sev}
-                                  onValueChange={(v) =>
-                                    updateSeverity(field.fieldKey, v as 'critical' | 'non_critical')
-                                  }
-                                >
-                                  <SelectTrigger
-                                    className={cn(
-                                      'h-8 w-33 text-xs',
-                                      sev === 'critical' && 'text-red-600 dark:text-red-400',
-                                    )}
-                                  >
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="critical">Critical</SelectItem>
-                                    <SelectItem value="non_critical">Non-Critical</SelectItem>
-                                  </SelectContent>
-                                </Select>
+                                <TooltipProvider delayDuration={200}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div>
+                                        <Select
+                                          value={sev || undefined}
+                                          onValueChange={(v) =>
+                                            updateSeverity(field.fieldKey, v as 'high' | 'medium' | 'low')
+                                          }
+                                        >
+                                          <SelectTrigger
+                                            className={cn(
+                                              'h-8 w-36 text-xs cursor-pointer',
+                                              sev === 'high' && 'text-red-600 dark:text-red-400',
+                                            )}
+                                          >
+                                            <SelectValue placeholder="Severity" />
+                                          </SelectTrigger>
+                                          <SelectContent>
+                                            <SelectItem value="high">High</SelectItem>
+                                            <SelectItem value="medium">Medium</SelectItem>
+                                            <SelectItem value="low">Low</SelectItem>
+                                          </SelectContent>
+                                        </Select>
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Set the severity level for this defect</TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
 
-                                <button
-                                  type="button"
-                                  onClick={() => toggleOutOfService(field.fieldKey)}
-                                  aria-pressed={oos}
-                                  title="Put the asset Under Maintenance when this answer is submitted"
-                                  className={cn(
-                                    'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
-                                    oos
-                                      ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
-                                      : 'border-border bg-background text-muted-foreground hover:border-red-300 hover:text-red-600',
-                                  )}
-                                >
-                                  <Power className="h-3.5 w-3.5" />
-                                  Out of service
-                                </button>
+                                <TooltipProvider delayDuration={200}>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleOutOfService(field.fieldKey)}
+                                        aria-pressed={oos}
+                                        className={cn(
+                                          'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer',
+                                          oos
+                                            ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-400 dark:hover:bg-amber-950/60'
+                                            : 'border-border bg-background text-muted-foreground hover:border-amber-300 hover:text-amber-600',
+                                        )}
+                                      >
+                                        <Wrench className="h-3.5 w-3.5" />
+                                        Under maintenance
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Mark the asset as under maintenance when this answer is submitted</TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
                               </div>
                             )}
 
                             {/* Ignore — quiet secondary action */}
-                            <button
-                              type="button"
-                              onClick={() => toggleIgnore(field.fieldKey)}
-                              title="Ignore this question — it will do nothing"
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                            >
-                              <Ban className="h-3.5 w-3.5" />
-                              Ignore
-                            </button>
+                            <TooltipProvider delayDuration={200}>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleIgnore(field.fieldKey)}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                  >
+                                    <Ban className="h-3.5 w-3.5" />
+                                    Ignore
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent>Ignore this question — it will never raise a defect</TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                           </>
                         )}
                       </div>

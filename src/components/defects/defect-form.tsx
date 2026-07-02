@@ -10,6 +10,13 @@ import { DateField } from '@/components/ui/date-field';
 import { Textarea } from '@/components/ui/textarea';
 import { AttachmentUploader, type UploadedFile } from '@/components/ui/attachment-uploader';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { DefectRow, LookupOption } from './types';
 
 interface DefectFormProps {
@@ -174,18 +181,6 @@ export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) 
             {fieldErrors.name && <p className="text-sm text-destructive mt-1">{fieldErrors.name}</p>}
           </div>
 
-          {/* Date */}
-          <div>
-            <DateField
-              label="Date"
-              required
-              value={date}
-              onChange={(v) => { setDate(v); clearFieldError('date'); }}
-              error={fieldErrors.date}
-              placeholder="Select date"
-            />
-          </div>
-
           {/* Comment */}
           <div>
             <Label>Comment <span className="text-destructive">*</span></Label>
@@ -200,49 +195,62 @@ export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) 
             {fieldErrors.comment && <p className="text-sm text-destructive mt-1">{fieldErrors.comment}</p>}
           </div>
 
-          {/* Asset */}
-          <SearchableSelect
-            label="Asset"
-            required
-            options={assets.map((a) => ({ label: a.name, value: a.id }))}
-            value={assetId || null}
-            onValueChange={(val) => { setAssetId(val || ''); clearFieldError('assetId'); }}
-            placeholder="Select asset"
-            searchPlaceholder="Search assets..."
-            emptyMessage="No assets found"
-            error={fieldErrors.assetId}
-            isClearable
-          />
+          {/* Asset + Date */}
+          <div className="grid grid-cols-2 gap-4">
+            <SearchableSelect
+              label="Asset"
+              required
+              options={assets.map((a) => ({ label: a.name, value: a.id }))}
+              value={assetId || null}
+              onValueChange={(val) => { setAssetId(val || ''); clearFieldError('assetId'); }}
+              placeholder="Select asset"
+              searchPlaceholder="Search assets..."
+              emptyMessage="No assets found"
+              error={fieldErrors.assetId}
+              isClearable
+            />
+            <DateField
+              label="Date"
+              required
+              value={date}
+              onChange={(v) => { setDate(v); clearFieldError('date'); }}
+              error={fieldErrors.date}
+              placeholder="Select date"
+            />
+          </div>
 
-          {/* Driver */}
-          <SearchableSelect
-            label="Driver"
-            options={drivers.map((d) => ({ label: d.name, value: d.id }))}
-            value={driverId || null}
-            onValueChange={(val) => setDriverId(val || '')}
-            placeholder="Select driver (optional)"
-            searchPlaceholder="Search drivers..."
-            emptyMessage="No drivers found"
-            isClearable
-          />
-
-          {/* Severity */}
-          <SearchableSelect
-            label="Severity"
-            required
-            options={[
-              { label: 'High', value: 'high' },
-              { label: 'Medium', value: 'medium' },
-              { label: 'Low', value: 'low' },
-            ]}
-            value={priority || null}
-            onValueChange={(val) => { setPriority(val || ''); clearFieldError('priority'); }}
-            placeholder="Select severity"
-            searchPlaceholder="Search..."
-            emptyMessage="No options found"
-            error={fieldErrors.priority}
-            isClearable={false}
-          />
+          {/* Driver + Severity */}
+          <div className="grid grid-cols-2 gap-4">
+            <SearchableSelect
+              label="Driver"
+              options={drivers.map((d) => ({ label: d.name, value: d.id }))}
+              value={driverId || null}
+              onValueChange={(val) => setDriverId(val || '')}
+              placeholder="Select driver (optional)"
+              searchPlaceholder="Search drivers..."
+              emptyMessage="No drivers found"
+              isClearable
+            />
+            <div>
+              <Label className="mb-1.5 block">
+                Severity <span className="text-destructive">*</span>
+              </Label>
+              <Select
+                value={priority || undefined}
+                onValueChange={(val) => { setPriority(val); clearFieldError('priority'); }}
+              >
+                <SelectTrigger className={fieldErrors.priority ? 'border-destructive' : ''}>
+                  <SelectValue placeholder="Select severity" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                </SelectContent>
+              </Select>
+              {fieldErrors.priority && <p className="text-sm text-destructive mt-1">{fieldErrors.priority}</p>}
+            </div>
+          </div>
 
           {/* Status (edit mode only) */}
           {mode === 'edit' && (

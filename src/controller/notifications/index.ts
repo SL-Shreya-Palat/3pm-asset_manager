@@ -17,6 +17,7 @@ import { publishNotification } from '@/lib/notificationHub';
 
 export type NotificationType =
   | 'defect_created'
+  | 'fault_reported'
   | 'work_order_assigned'
   | 'work_order_completed'
   | 'work_order_created'

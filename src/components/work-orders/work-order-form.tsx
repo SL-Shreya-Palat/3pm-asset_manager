@@ -49,6 +49,14 @@ interface DefectLookup {
   status: string;
 }
 
+/** An open fault that this WO can be created to resolve. */
+interface FaultLookup {
+  id: string;
+  faultNumber: string;
+  title: string;
+  status: string;
+}
+
 /** Map a defect status to a Badge variant. */
 function defectStatusBadge(status: string): 'default' | 'secondary' | 'success' | 'warning' {
   if (status === 'corrected') return 'success';
@@ -57,18 +65,28 @@ function defectStatusBadge(status: string): 'default' | 'secondary' | 'success' 
   return 'warning'; // new
 }
 
+/** Map a fault status to a Badge variant. */
+function faultStatusBadge(status: string): 'default' | 'secondary' | 'success' | 'warning' {
+  if (status === 'resolved') return 'success';
+  if (status === 'in_progress') return 'default';
+  if (status === 'wont_fix') return 'secondary';
+  return 'warning'; // open
+}
+
 interface WorkOrderFormProps {
   mode: 'create' | 'edit';
   workOrder?: WorkOrderRow | null;
   onClose: () => void;
   onSaved: () => void;
-  /** 'defect' when raised to correct defects — prefills + locks asset, defaults to mechanic, makes items optional. */
-  source?: 'manual' | 'defect';
+  /** 'defect' when raised to correct defects, 'fault' for faults — prefills + locks asset, defaults to mechanic, makes items optional. */
+  source?: 'manual' | 'defect' | 'fault';
   /** Pre-selected asset (create mode). */
   initialAssetId?: string;
   /** Defects this WO will correct (create mode, source='defect'). */
   initialDefectIds?: string[];
-  /** Lock the asset selector (used when raised from a specific defect). */
+  /** Faults this WO will resolve (create mode, source='fault'). */
+  initialFaultIds?: string[];
+  /** Lock the asset selector (used when raised from a specific defect/fault). */
   lockAsset?: boolean;
 }
 
@@ -82,21 +100,24 @@ export function WorkOrderForm({
   source = 'manual',
   initialAssetId,
   initialDefectIds,
+  initialFaultIds,
   lockAsset = false,
 }: WorkOrderFormProps) {
   const router = useRouter();
-  // Defect-sourced covers raising a WO from a defect (create) AND later editing
-  // that WO (its stored source), so items stay optional in both cases.
+  // Defect/fault-sourced covers raising a WO from a defect/fault (create) AND later
+  // editing that WO (its stored source), so items stay optional in both cases.
   const isDefectSourced = source === 'defect' || workOrder?.source === 'defect';
+  const isFaultSourced = source === 'fault' || workOrder?.source === 'fault';
+  const isItemsOptional = isDefectSourced || isFaultSourced;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  // Form fields — prefill asset + default to mechanic when raised from a defect.
-  const [assetId, setAssetId] = useState(mode === 'create' && isDefectSourced ? (initialAssetId || '') : '');
+  // Form fields — prefill asset + default to mechanic when raised from a defect/fault.
+  const [assetId, setAssetId] = useState(mode === 'create' && (isDefectSourced || isFaultSourced) ? (initialAssetId || '') : '');
   const [serviceTaskIds, setServiceTaskIds] = useState<string[]>([]);
   const [assigneeTab, setAssigneeTab] = useState<AssigneeTab>(
-    mode === 'create' && isDefectSourced ? 'mechanic' : 'vendor',
+    mode === 'create' && (isDefectSourced || isFaultSourced) ? 'mechanic' : 'vendor',
   );
   const [assigneeId, setAssigneeId] = useState('');
   const [thirdPartyName, setThirdPartyName] = useState('');
@@ -115,6 +136,10 @@ export function WorkOrderForm({
   // Defects this WO will correct — open defects for the selected asset.
   const [availableDefects, setAvailableDefects] = useState<DefectLookup[]>([]);
   const [selectedDefectIds, setSelectedDefectIds] = useState<string[]>(initialDefectIds || []);
+
+  // Faults this WO will resolve — open faults for the selected asset.
+  const [availableFaults, setAvailableFaults] = useState<FaultLookup[]>([]);
+  const [selectedFaultIds, setSelectedFaultIds] = useState<string[]>(initialFaultIds || []);
 
   // Prepopulated assignee fields (read-only)
   const [assigneeContact, setAssigneeContact] = useState('');
@@ -218,12 +243,31 @@ export function WorkOrderForm({
     }
   }, []);
 
+  // Open faults for the chosen asset — powers the "Faults to resolve" picker.
+  const fetchAssetFaults = useCallback(async (aid: string) => {
+    if (!aid) { setAvailableFaults([]); return; }
+    try {
+      const res = await axios.get(`/api/faults?assetId=${aid}&limit=100`, { withCredentials: true });
+      const items = (res.data.data?.items || []) as Array<Record<string, unknown>>;
+      setAvailableFaults(
+        items.map((f) => ({
+          id: f.id as string,
+          faultNumber: (f.faultNumber as string) || '',
+          title: (f.title as string) || '',
+          status: (f.status as string) || '',
+        })),
+      );
+    } catch {
+      setAvailableFaults([]);
+    }
+  }, []);
+
   // Defer so setState isn't called synchronously inside the effect body.
   useEffect(() => {
     if (mode !== 'create') return;
-    const t = setTimeout(() => fetchAssetDefects(assetId), 0);
+    const t = setTimeout(() => { fetchAssetDefects(assetId); fetchAssetFaults(assetId); }, 0);
     return () => clearTimeout(t);
-  }, [assetId, mode, fetchAssetDefects]);
+  }, [assetId, mode, fetchAssetDefects, fetchAssetFaults]);
 
   // Populate form (edit mode)
   useEffect(() => {
@@ -335,6 +379,15 @@ export function WorkOrderForm({
   const removeDefect = (defectId: string) =>
     setSelectedDefectIds((prev) => prev.filter((id) => id !== defectId));
 
+  // A WO can resolve one or more of the asset's faults, chosen from the dropdown.
+  const addFault = (faultId: string) => {
+    if (!faultId) return;
+    setSelectedFaultIds((prev) => (prev.includes(faultId) ? prev : [...prev, faultId]));
+    clearFieldError('serviceTaskIds');
+  };
+  const removeFault = (faultId: string) =>
+    setSelectedFaultIds((prev) => prev.filter((id) => id !== faultId));
+
   // ── Parts ──
   const handleAddPart = () => {
     const part = availableParts.find((p) => p.id === partToAdd);
@@ -371,8 +424,8 @@ export function WorkOrderForm({
 
     const errors: Record<string, string> = {};
     if (!assetId) errors.assetId = 'Asset is required';
-    if (!isDefectSourced && serviceTaskIds.length === 0 && selectedDefectIds.length === 0) {
-      errors.serviceTaskIds = 'Select at least one service task or defect to correct';
+    if (!isItemsOptional && serviceTaskIds.length === 0 && selectedDefectIds.length === 0 && selectedFaultIds.length === 0) {
+      errors.serviceTaskIds = 'Select at least one service task, defect, or fault';
     }
     if (assigneeTab === 'vendor' && !assigneeId) errors.assigneeId = 'Vendor is required';
     if (assigneeTab === 'mechanic' && !assigneeId) errors.assigneeId = 'Mechanic is required';
@@ -390,9 +443,11 @@ export function WorkOrderForm({
     const payload: Record<string, unknown> = {
       assetId,
       serviceTaskIds,
-      // A WO with any linked defects is defect-sourced; otherwise keep the caller's source.
-      source: mode === 'create' && selectedDefectIds.length > 0 ? 'defect' : source,
-      ...(mode === 'create' ? { defectIds: selectedDefectIds } : {}),
+      // Source by precedence: fault > defect > passed-in.
+      source: mode === 'create'
+        ? (selectedFaultIds.length > 0 ? 'fault' : selectedDefectIds.length > 0 ? 'defect' : source)
+        : source,
+      ...(mode === 'create' ? { defectIds: selectedDefectIds, faultIds: selectedFaultIds } : {}),
       parts: parts.map((p) => ({ partId: p.partId, quantity: p.quantity, unitCost: p.unitCost })),
       assigneeType: assigneeTab,
       statusId,
@@ -455,7 +510,7 @@ export function WorkOrderForm({
           <FormSection icon={Truck} title="Details">
             <div>
               <Label>Asset <span className="text-destructive">*</span></Label>
-              <Select value={assetId} onValueChange={(val) => { setAssetId(val); setSelectedDefectIds([]); clearFieldError('assetId'); }} disabled={lockAsset}>
+              <Select value={assetId} onValueChange={(val) => { setAssetId(val); setSelectedDefectIds([]); setSelectedFaultIds([]); clearFieldError('assetId'); }} disabled={lockAsset}>
                 <SelectTrigger className={`mt-1.5 ${fieldErrors.assetId ? 'border-destructive' : ''}`}>
                   <SelectValue placeholder="Select asset" />
                 </SelectTrigger>
@@ -476,7 +531,7 @@ export function WorkOrderForm({
           {/* ── Items / Service Tasks ── */}
           <FormSection icon={Wrench} title="Items">
             <div>
-              <Label>Items {!isDefectSourced && <span className="text-destructive">*</span>}</Label>
+              <Label>Items {!isItemsOptional && <span className="text-destructive">*</span>}</Label>
               <div className="mt-1.5 space-y-2">
                 {serviceTasks.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No service tasks available.</p>
@@ -617,6 +672,72 @@ export function WorkOrderForm({
 
                 <p className="text-xs text-muted-foreground mt-2">
                   Linked defects are marked in progress now and resolved when this work order is completed.
+                </p>
+              </div>
+            </FormSection>
+          )}
+
+          {/* ── Faults to resolve (optional) ── */}
+          {mode === 'create' && (
+            <FormSection icon={AlertTriangle} title="Faults to resolve">
+              <div>
+                <Label>Faults</Label>
+                <Select value="" onValueChange={addFault} disabled={!assetId}>
+                  <SelectTrigger className="mt-1.5">
+                    <SelectValue placeholder={assetId ? 'Select a fault' : 'Select an asset first'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableFaults.filter((f) => !selectedFaultIds.includes(f.id)).length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">
+                        {assetId ? 'No faults for this asset' : 'Select an asset first'}
+                      </div>
+                    ) : (
+                      availableFaults
+                        .filter((f) => !selectedFaultIds.includes(f.id))
+                        .map((f) => (
+                          <SelectItem key={f.id} value={f.id}>
+                            {f.faultNumber ? `${f.faultNumber} · ` : ''}{f.title}
+                            {f.status ? ` (${f.status.replace(/_/g, ' ')})` : ''}
+                          </SelectItem>
+                        ))
+                    )}
+                  </SelectContent>
+                </Select>
+
+                {selectedFaultIds.length > 0 && (
+                  <div className="mt-3 rounded-lg border border-border bg-card shadow-sm divide-y divide-border overflow-hidden">
+                    {selectedFaultIds.map((id) => {
+                      const f = availableFaults.find((x) => x.id === id);
+                      return (
+                        <div key={id} className="flex items-center gap-3 px-3 py-2.5">
+                          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-orange-100 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400">
+                            <AlertTriangle className="h-4 w-4" />
+                          </span>
+                          <span className="text-sm text-foreground flex-1 truncate">
+                            {f ? `${f.faultNumber ? `${f.faultNumber} · ` : ''}${f.title}` : 'Fault'}
+                          </span>
+                          {f?.status && (
+                            <Badge variant={faultStatusBadge(f.status)} className="capitalize shrink-0">
+                              {f.status.replace(/_/g, ' ')}
+                            </Badge>
+                          )}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() => removeFault(id)}
+                            className="text-muted-foreground hover:text-destructive shrink-0"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground mt-2">
+                  Linked faults are marked in progress now and resolved when this work order is completed.
                 </p>
               </div>
             </FormSection>

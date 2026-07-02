@@ -1,11 +1,13 @@
 /**
  * Pre-start inspection form templates.
  *
- * Modelled after Whiparound-style inspection checklists with comprehensive
- * safety items grouped by system category.
+ * Asset templates (A–C) are modelled after Whiparound-style inspection
+ * checklists with pass / fail / na options — compatible with the auto-derived
+ * defect-settings architecture.
  *
- * Each radio field uses pass / fail / na options — compatible with the
- * defect-settings architecture (admin ticks "fail" → defect created on submit).
+ * The Driver Wellness template (D) is a fitness-for-duty assessment with
+ * custom option values; its defect settings are supplied explicitly via
+ * `customDefectSettings` since the pass/fail auto-derivation does not apply.
  *
  * Field types used: text, number, datetime, radio, textarea, image, toggle, signature
  */
@@ -453,6 +455,127 @@ function buildPlantExcavatorForm() {
   };
 }
 
+// ═════════════════════════════════════════════════════════════════════════════
+// TEMPLATE D — Driver Wellness Pre-Start Check
+//
+// Driver-centric fitness-for-duty check covering fatigue, substance use,
+// medical fitness, mental wellbeing, and PPE compliance.
+// ═════════════════════════════════════════════════════════════════════════════
+
+function buildDriverWellnessForm() {
+  // ── Wellness assessment ─────────────────────────────────────────────────
+  const wellnessFields = [
+    radioField('Hours of sleep in the last 24 hours', [
+      { id: uid('opt'), title: '7 hours or more', value: '7_plus' },
+      { id: uid('opt'), title: '5–7 hours', value: '5_to_7' },
+      { id: uid('opt'), title: 'Less than 5 hours', value: 'under_5' },
+    ], { fieldKey: 'sleep_hours' }),
+
+    radioField('Current fatigue level', [
+      { id: uid('opt'), title: 'Alert and well-rested', value: 'alert' },
+      { id: uid('opt'), title: 'Slightly tired but fit to work', value: 'slightly_tired' },
+      { id: uid('opt'), title: 'Fatigued / drowsy', value: 'fatigued' },
+      { id: uid('opt'), title: 'Severely fatigued / unable to concentrate', value: 'severely_fatigued' },
+    ], { fieldKey: 'fatigue_level' }),
+
+    radioField('Have you consumed alcohol in the last 12 hours?', [
+      { id: uid('opt'), title: 'No', value: 'no' },
+      { id: uid('opt'), title: 'Yes', value: 'yes' },
+    ], { fieldKey: 'alcohol_consumed' }),
+
+    radioField('Are you under the influence of any drugs or medications that may impair your ability to drive or operate equipment?', [
+      { id: uid('opt'), title: 'No', value: 'no' },
+      { id: uid('opt'), title: 'Yes — prescribed (may cause drowsiness)', value: 'yes_prescribed' },
+      { id: uid('opt'), title: 'Yes — other', value: 'yes_other' },
+    ], { fieldKey: 'drugs_medication' }),
+
+    radioField('Do you have any illness, injury, or medical condition that could affect your ability to perform duties safely?', [
+      { id: uid('opt'), title: 'No', value: 'no' },
+      { id: uid('opt'), title: 'Yes — minor (manageable)', value: 'yes_minor' },
+      { id: uid('opt'), title: 'Yes — significant (may affect performance)', value: 'yes_significant' },
+    ], { fieldKey: 'medical_condition' }),
+
+    radioField('Emotional and mental wellbeing', [
+      { id: uid('opt'), title: 'Good — feeling well and focused', value: 'good' },
+      { id: uid('opt'), title: 'Fair — some stress but manageable', value: 'fair' },
+      { id: uid('opt'), title: 'Poor — distracted, anxious, or upset', value: 'poor' },
+    ], { fieldKey: 'mental_wellbeing' }),
+
+    radioField('Vision and hearing', [
+      { id: uid('opt'), title: 'No issues', value: 'no_issues' },
+      { id: uid('opt'), title: 'Minor issue (e.g. mild headache, slight blur)', value: 'minor_issue' },
+      { id: uid('opt'), title: 'Impaired — affecting ability to operate safely', value: 'impaired' },
+    ], { fieldKey: 'vision_hearing' }),
+
+    radioField('Physical fitness to perform tasks', [
+      { id: uid('opt'), title: 'Fit — no restrictions', value: 'fit' },
+      { id: uid('opt'), title: 'Restricted — can perform some tasks', value: 'restricted' },
+      { id: uid('opt'), title: 'Unfit — unable to perform physical tasks safely', value: 'unfit' },
+    ], { fieldKey: 'physical_fitness' }),
+
+    radioField('Are you wearing all required PPE for this shift?', [
+      { id: uid('opt'), title: 'Yes', value: 'yes' },
+      { id: uid('opt'), title: 'No', value: 'no' },
+    ], { fieldKey: 'ppe_worn' }),
+
+    radioField('Have you been briefed on today\'s tasks, hazards, and site conditions?', [
+      { id: uid('opt'), title: 'Yes', value: 'yes' },
+      { id: uid('opt'), title: 'No', value: 'no' },
+      { id: uid('opt'), title: 'N/A', value: 'na' },
+    ], { fieldKey: 'briefing_received' }),
+  ];
+
+  // ── Declaration & sign-off ──────────────────────────────────────────────
+  const signoffFields = [
+    textareaField('Comments / Additional information', {
+      placeholder: 'Note anything relevant to your fitness for duty...',
+      fieldKey: 'signoff_comments',
+    }),
+    imageField('Supporting photos', { multiple: true, fieldKey: 'signoff_photos' }),
+    toggleField('I declare that I am fit for duty', { fieldKey: 'fit_for_duty' }),
+    signatureField('Driver Signature', { required: true, fieldKey: 'driver_signature' }),
+  ];
+
+  return {
+    templateKey: 'driver_wellness',
+    title: 'Driver Wellness Pre-Start Check',
+    description: 'Driver fitness-for-duty assessment covering fatigue, substance use, medical fitness, mental wellbeing, and PPE compliance.',
+    category: 'prestart',
+    pages: [
+      page('Wellness Assessment', 1, wellnessFields),
+      page('Declaration & Sign-Off', 2, signoffFields),
+    ],
+    // Explicit defect settings — the generic derivation (pass/fail) does not
+    // apply to wellness questions where "yes" can be a bad answer.
+    customDefectSettings: {
+      defectAnswers: {
+        sleep_hours: ['under_5'],
+        fatigue_level: ['fatigued', 'severely_fatigued'],
+        alcohol_consumed: ['yes'],
+        drugs_medication: ['yes_prescribed', 'yes_other'],
+        medical_condition: ['yes_significant'],
+        mental_wellbeing: ['poor'],
+        vision_hearing: ['impaired'],
+        physical_fitness: ['unfit'],
+        ppe_worn: ['no'],
+        briefing_received: ['no'],
+      } as Record<string, string[]>,
+      severityByField: {
+        fatigue_level: 'critical' as SeverityValue,
+        alcohol_consumed: 'critical' as SeverityValue,
+        drugs_medication: 'critical' as SeverityValue,
+        vision_hearing: 'critical' as SeverityValue,
+        physical_fitness: 'critical' as SeverityValue,
+        sleep_hours: 'non_critical' as SeverityValue,
+        medical_condition: 'non_critical' as SeverityValue,
+        mental_wellbeing: 'non_critical' as SeverityValue,
+        ppe_worn: 'non_critical' as SeverityValue,
+        briefing_received: 'non_critical' as SeverityValue,
+      } as Record<string, SeverityValue>,
+    },
+  };
+}
+
 // ── public API ───────────────────────────────────────────────────────────────
 
 export interface PrestartFormTemplate {
@@ -462,6 +585,8 @@ export interface PrestartFormTemplate {
   category: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   pages: any[];
+  /** Explicit defect settings for templates where auto-derivation doesn't apply. */
+  customDefectSettings?: DerivedDefectSettings;
 }
 
 /** Force every field optional — operators can submit a partial inspection. */
@@ -485,6 +610,7 @@ export function getPrestartFormTemplates(): PrestartFormTemplate[] {
     buildLightVehicleForm(),
     buildHeavyVehicleForm(),
     buildPlantExcavatorForm(),
+    buildDriverWellnessForm(),
   ];
   for (const t of templates) makeAllOptional(t.pages);
   return templates;

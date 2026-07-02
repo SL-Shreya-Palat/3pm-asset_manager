@@ -52,6 +52,7 @@ export const navItems: NavItem[] = [
       { label: 'Asset Service Schedule', href: '/maintenance/service-schedule', requiredModule: 'service_programs' },
       { label: 'Work Orders', href: '/maintenance/work-orders', requiredModule: 'work_order' },
       { label: 'Defects', href: '/maintenance/defects', requiredModule: 'defects' },
+      { label: 'Faults', href: '/maintenance/faults', requiredModule: 'faults' },
       { label: 'Purchase Orders', href: '/maintenance/purchase-orders', adminOnly: true },
       { label: 'Inventory', href: '/maintenance/inventory', requiredModule: 'inventory' },
     ],

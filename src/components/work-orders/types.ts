@@ -33,6 +33,7 @@ export interface WorkOrderRow {
   serviceTaskIds: string[];
   source?: string;
   defectIds?: string[];
+  faultIds?: string[];
   parts?: WOPartRow[];
   partsCost?: number;
   isCompleted?: boolean;

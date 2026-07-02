@@ -219,6 +219,15 @@ export async function getDefectsCollection(): Promise<Collection> {
 }
 
 // ---------------------------------------------------------------------------
+// Faults collection
+// ---------------------------------------------------------------------------
+
+export async function getFaultsCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('faults');
+}
+
+// ---------------------------------------------------------------------------
 // Fuel collection
 // ---------------------------------------------------------------------------
 
@@ -303,4 +312,13 @@ export async function getNotificationsCollection(): Promise<Collection> {
 export async function getServiceHistoryCollection(): Promise<Collection> {
   const db = await getDb();
   return db.collection('serviceHistory');
+}
+
+// ---------------------------------------------------------------------------
+// Driver wellness checks
+// ---------------------------------------------------------------------------
+
+export async function getDriverWellnessChecksCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('driverWellnessChecks');
 }

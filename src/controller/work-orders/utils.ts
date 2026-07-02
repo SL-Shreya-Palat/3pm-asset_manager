@@ -29,11 +29,11 @@ export function validateCreateWOInput(input: Record<string, unknown>): Validatio
     errors.assetId = 'Valid asset is required';
   }
 
-  // Service Tasks — required for manual WOs; optional for defect-raised WOs
-  // (the defect itself describes the work to do).
-  const isDefectSourced = input.source === 'defect';
+  // Service Tasks — required for manual WOs; optional for defect/fault-raised WOs
+  // (the defect/fault itself describes the work to do).
+  const isItemsOptional = input.source === 'defect' || input.source === 'fault';
   if (!Array.isArray(input.serviceTaskIds) || input.serviceTaskIds.length === 0) {
-    if (!isDefectSourced) {
+    if (!isItemsOptional) {
       errors.serviceTaskIds = 'At least one service task is required';
     }
   } else {
@@ -93,6 +93,7 @@ export function serializeWorkOrder(doc: Record<string, unknown>): Record<string,
     serviceTaskIds: (wo.serviceTaskIds || []).map((id) => id.toString()),
     source: wo.source || 'manual',
     defectIds: (wo.defectIds || []).map((id) => id.toString()),
+    faultIds: (wo.faultIds || []).map((id) => id.toString()),
     assigneeType: wo.assigneeType,
     assigneeId: wo.assigneeId ? wo.assigneeId.toString() : null,
     assigneeName: wo.assigneeName || '',

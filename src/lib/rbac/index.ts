@@ -18,6 +18,7 @@ export type ModuleKey =
   | 'forms'
   | 'exception_report'
   | 'defects'
+  | 'faults'
   | 'service_tasks'
   | 'service_programs'
   | 'work_order'
