@@ -315,10 +315,3 @@ export async function getServiceHistoryCollection(): Promise<Collection> {
 }
 
 // ---------------------------------------------------------------------------
-// Driver wellness checks
-// ---------------------------------------------------------------------------
-
-export async function getDriverWellnessChecksCollection(): Promise<Collection> {
-  const db = await getDb();
-  return db.collection('driverWellnessChecks');
-}
