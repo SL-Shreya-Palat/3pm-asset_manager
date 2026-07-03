@@ -156,6 +156,7 @@ export function DataTable<T>({
                           : 'text-left',
                       col.className,
                       isSortable && 'cursor-pointer select-none hover:text-foreground transition-colors',
+                      col.key === 'actions' && 'sticky right-0 z-20 bg-muted shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]',
                     )}
                     onClick={isSortable ? () => handleSort(col.key) : undefined}
                   >
@@ -196,7 +197,7 @@ export function DataTable<T>({
                   <tr
                     key={key}
                     className={cn(
-                      'border-b last:border-0 hover:bg-muted/30 transition-colors',
+                      'group border-b last:border-0 hover:bg-muted/30 transition-colors',
                       onRowClick && 'cursor-pointer',
                       isSelected && 'bg-muted/40',
                     )}
@@ -223,6 +224,10 @@ export function DataTable<T>({
                               ? 'text-center'
                               : '',
                           col.className,
+                          col.key === 'actions' && cn(
+                            'sticky right-0 z-10 shadow-[-4px_0_8px_-4px_rgba(0,0,0,0.1)]',
+                            isSelected ? 'bg-muted/40' : 'bg-card group-hover:bg-muted/50',
+                          ),
                         )}
                       >
                         {col.render

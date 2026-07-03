@@ -21,6 +21,8 @@ export default function DefectSettingsListPage() {
 
   const fetchForms = useCallback(async () => {
     try {
+      // Auto-seed pre-start forms (idempotent — skips if already seeded)
+      await axios.post('/api/forms/seed-prestart', {}, { withCredentials: true }).catch(() => {});
       // Fetch ALL forms (any status) so nothing from the builder is hidden — the
       // builder's `status` string isn't a fixed enum, so we don't filter on it.
       const res = await axios.get('/api/forms', { withCredentials: true });
@@ -48,29 +50,8 @@ export default function DefectSettingsListPage() {
     }
   }, []);
 
-  // Auto-seed pre-start forms on first load so every tenant gets all templates
-  // (including Driver Wellness) without clicking the button. The endpoint is
-  // idempotent — already-seeded templates are skipped, and when all templates
-  // exist the call returns immediately without hitting the form-builder API.
   useEffect(() => {
-    let cancelled = false;
-    const init = async () => {
-      await fetchForms();
-      try {
-        const res = await axios.post('/api/forms/seed-prestart', {}, { withCredentials: true });
-        const seeded = res.data.data?.forms?.filter(
-          (f: { status: string }) => f.status === 'seeded',
-        ).length ?? 0;
-        // Refresh the list only if new forms were actually seeded
-        if (seeded > 0 && !cancelled) {
-          await fetchForms();
-        }
-      } catch {
-        // Silent — seeding is best-effort on page load
-      }
-    };
-    init();
-    return () => { cancelled = true; };
+    fetchForms();
   }, [fetchForms]);
 
   const configurable = forms.filter((f) => f.hasSchema).length;
