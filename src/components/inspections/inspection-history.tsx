@@ -133,7 +133,7 @@ export function InspectionHistory() {
           density={density}
           onDensityChange={setDensity}
           searchNode={
-            <SearchInput value={search} onChange={setSearch} placeholder="Search by number, asset, form…" className="max-w-sm w-full" />
+            <SearchInput value={search} onChange={setSearch} placeholder="Search by number, asset, form…" />
           }
         />
         <DataTable<Row>

@@ -1,9 +1,10 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
+import { CountBadge } from '@/components/ui/count-badge';
 
 interface PageHeaderProps {
   title: string;
-  /** Total count shown as a muted suffix, e.g. "Vendors (42)". */
+  /** Total count shown as a badge next to the title. */
   count?: number;
   /** Optional one-line hint under the title. */
   description?: string;
@@ -17,12 +18,14 @@ export function PageHeader({ title, count, description, children, className }: P
   return (
     <div className={cn('flex items-center justify-between gap-4 px-6 pt-6 pb-4', className)}>
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground truncate">
-          {title}
+        <div className="flex items-center gap-2.5">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground truncate">
+            {title}
+          </h1>
           {count !== undefined && (
-            <span className="text-muted-foreground font-normal ml-2">({count})</span>
+            <CountBadge count={count} variant="primary" size="md" />
           )}
-        </h1>
+        </div>
         {description && <p className="text-sm text-muted-foreground mt-0.5 truncate">{description}</p>}
       </div>
       {children && <div className="flex items-center gap-2 shrink-0">{children}</div>}

@@ -33,6 +33,8 @@ interface AttachmentUploaderProps {
   emptyText?: string;
   /** Surface an upload failure to the parent (e.g. its error banner). */
   onError?: (message: string) => void;
+  /** Visual variant: 'default' = button-based, 'dropzone' = dashed border drag-and-drop area. */
+  variant?: 'default' | 'dropzone';
 }
 
 function formatFileSize(bytes: number): string {
@@ -49,14 +51,13 @@ export function AttachmentUploader({
   hint,
   emptyText = 'No files uploaded.',
   onError,
+  variant = 'default',
 }: AttachmentUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const list = e.target.files;
-    if (!list || list.length === 0) return;
-
+  const uploadFiles = async (list: FileList) => {
     setUploading(true);
     try {
       const uploaded: UploadedFile[] = [];
@@ -86,7 +87,104 @@ export function AttachmentUploader({
     }
   };
 
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const list = e.target.files;
+    if (!list || list.length === 0) return;
+    await uploadFiles(list);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragging(false);
+    const list = e.dataTransfer.files;
+    if (!list || list.length === 0) return;
+    await uploadFiles(list);
+  };
+
   const remove = (idx: number) => onChange(files.filter((_, i) => i !== idx));
+
+  const fileList = (
+    <div className="space-y-2">
+      {files.map((f, idx) => (
+        <div
+          key={idx}
+          className="flex items-center gap-3 rounded-lg border border-border bg-card shadow-sm px-3 py-2.5"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
+            <FileText className="h-4 w-4" />
+          </span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-foreground truncate">{f.originalName}</p>
+            <p className="text-xs text-muted-foreground">{formatFileSize(f.size)}</p>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => remove(idx)}
+            className="text-muted-foreground hover:text-destructive shrink-0"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+
+  const hiddenInput = (
+    <input
+      ref={inputRef}
+      type="file"
+      accept={accept}
+      multiple={multiple}
+      className="hidden"
+      onChange={handleUpload}
+    />
+  );
+
+  if (variant === 'dropzone') {
+    return (
+      <div>
+        {hiddenInput}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => !uploading && inputRef.current?.click()}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); inputRef.current?.click(); } }}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-8 cursor-pointer transition-colors ${
+            dragging
+              ? 'border-primary bg-primary/5'
+              : 'border-muted-foreground/25 hover:border-primary/50'
+          }`}
+        >
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted mb-3">
+            <Upload className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <p className="text-sm font-medium text-foreground">
+            {uploading ? 'Uploading...' : 'Click to upload or drag and drop'}
+          </p>
+          {hint && <p className="text-xs text-muted-foreground mt-1">{hint}</p>}
+        </div>
+        {files.length > 0 && <div className="mt-3">{fileList}</div>}
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -105,43 +203,12 @@ export function AttachmentUploader({
         </Button>
       </div>
 
-      <input
-        ref={inputRef}
-        type="file"
-        accept={accept}
-        multiple={multiple}
-        className="hidden"
-        onChange={handleUpload}
-      />
+      {hiddenInput}
 
       {files.length === 0 ? (
         <p className="text-sm text-muted-foreground">{emptyText}</p>
       ) : (
-        <div className="space-y-2">
-          {files.map((f, idx) => (
-            <div
-              key={idx}
-              className="flex items-center gap-3 rounded-lg border border-border bg-card shadow-sm px-3 py-2.5"
-            >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
-                <FileText className="h-4 w-4" />
-              </span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-foreground truncate">{f.originalName}</p>
-                <p className="text-xs text-muted-foreground">{formatFileSize(f.size)}</p>
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => remove(idx)}
-                className="text-muted-foreground hover:text-destructive shrink-0"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          ))}
-        </div>
+        fileList
       )}
     </div>
   );

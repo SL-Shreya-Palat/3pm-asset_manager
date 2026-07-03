@@ -19,7 +19,7 @@ export default async function DashboardPage() {
         <StatCard label="Total Assets" value="—" icon={<Truck />} />
         <StatCard label="Active" value="—" icon={<CircleCheck />} accent="text-emerald-600" />
         <StatCard label="In Shop" value="—" icon={<Wrench />} accent="text-amber-600" />
-        <StatCard label="Out of Service" value="—" icon={<CircleSlash />} accent="text-red-600" />
+        <StatCard label="Under Maintenance" value="—" icon={<CircleSlash />} accent="text-red-600" />
       </div>
 
       <DashboardWidgets />

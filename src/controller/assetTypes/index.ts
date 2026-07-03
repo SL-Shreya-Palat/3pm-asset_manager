@@ -6,13 +6,17 @@ import { getAssetTypesCollection } from '@/lib/mongodb';
 import { isNonEmptyString } from '@/lib/validation/commonValidators';
 
 /** List all asset types for a tenant. */
-export async function getAllAssetTypes(tenantId: string) {
+export async function getAllAssetTypes(tenantId: string, search?: string) {
   const collection = await getAssetTypesCollection();
+  const filter: Record<string, unknown> = {
+    tenantId: ObjectId.createFromHexString(tenantId),
+    isArchived: { $ne: true },
+  };
+  if (search) {
+    filter.name = { $regex: search, $options: 'i' };
+  }
   const items = await collection
-    .find({
-      tenantId: ObjectId.createFromHexString(tenantId),
-      isArchived: { $ne: true },
-    })
+    .find(filter)
     .sort({ name: 1 })
     .toArray();
 

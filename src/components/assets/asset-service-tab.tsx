@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { StatCard } from '@/components/ui/stat-card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { DateField } from '@/components/ui/date-field';
 import { Textarea } from '@/components/ui/textarea';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -129,7 +130,7 @@ export function AssetServiceTab({ assetId }: { assetId: string }) {
       {/* Programs */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-base font-semibold text-foreground">Service Schedule</h3>
+          <h3 className="text-base font-semibold text-foreground">Asset Service Schedule</h3>
           <p className="mt-0.5 text-xs text-muted-foreground">Preventive maintenance due on this asset</p>
         </div>
         <Button size="sm" onClick={() => openLog(null)}>
@@ -352,8 +353,7 @@ function LogServiceDialog({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label htmlFor="svcDate">Date</Label>
-              <Input id="svcDate" type="date" value={performedAt} onChange={(e) => setPerformedAt(e.target.value)} className="mt-1.5" />
+              <DateField id="svcDate" label="Date" value={performedAt} onChange={setPerformedAt} placeholder="Select date" />
             </div>
             <div>
               <Label>Meter type</Label>

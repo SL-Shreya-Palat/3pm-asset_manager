@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import axios from 'axios';
-import { FileCheck2, Settings2, ArrowRight, CheckCircle2, FileX2 } from 'lucide-react';
+import { FileCheck2, Settings2, ArrowRight, CheckCircle2, FileX2, DatabaseZap } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/ui/page-header';
 
 interface FormItem {
@@ -18,6 +19,8 @@ interface FormItem {
 export default function DefectSettingsListPage() {
   const [forms, setForms] = useState<FormItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [seeding, setSeeding] = useState(false);
+  const [seedResult, setSeedResult] = useState<string | null>(null);
 
   const fetchForms = useCallback(async () => {
     try {
@@ -48,6 +51,25 @@ export default function DefectSettingsListPage() {
     fetchForms();
   }, [fetchForms]);
 
+  const handleSeedForms = async () => {
+    try {
+      setSeeding(true);
+      setSeedResult(null);
+      // Delete stale Driver Wellness form first so it re-seeds with updated schema
+      await axios.delete('/api/forms/seed-prestart', { withCredentials: true }).catch(() => {});
+      const res = await axios.post('/api/forms/seed-prestart', {}, { withCredentials: true });
+      const msg = res.data.data?.message || 'Forms seeded successfully';
+      setSeedResult(msg);
+      // Refresh the list to show newly seeded forms
+      await fetchForms();
+    } catch (err) {
+      const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Failed to seed forms';
+      setSeedResult(`Error: ${msg || 'Failed to seed forms'}`);
+    } finally {
+      setSeeding(false);
+    }
+  };
+
   const configurable = forms.filter((f) => f.hasSchema).length;
 
   return (
@@ -58,6 +80,24 @@ export default function DefectSettingsListPage() {
       />
 
       <div className="flex-1 overflow-auto px-6 pb-8">
+        {/* Seed button + result */}
+        <div className="mb-4 flex items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSeedForms}
+            disabled={seeding}
+          >
+            <DatabaseZap className="mr-2 h-4 w-4" />
+            {seeding ? 'Seeding...' : 'Seed Pre-Start Forms'}
+          </Button>
+          {seedResult && (
+            <span className={`text-xs ${seedResult.startsWith('Error') ? 'text-destructive' : 'text-emerald-600 dark:text-emerald-400'}`}>
+              {seedResult}
+            </span>
+          )}
+        </div>
+
         {/* Section heading */}
         <div className="mb-4 flex items-center gap-3">
           <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Your forms</h2>

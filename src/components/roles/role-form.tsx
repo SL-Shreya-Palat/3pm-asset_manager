@@ -61,7 +61,6 @@ export const PERMISSION_TABS: PermissionTab[] = [
     modules: [
       { key: 'teams', label: 'Teams' },
       { key: 'drivers', label: 'Drivers' },
-      { key: 'driver_wellness', label: 'Driver Wellness' },
     ],
   },
   {
@@ -80,7 +79,7 @@ export const PERMISSION_TABS: PermissionTab[] = [
 const ALL_MODULES: ModuleKey[] = [
   'teams', 'assets', 'inspections', 'forms', 'exception_report',
   'defects', 'service_tasks', 'service_programs', 'work_order',
-  'inventory', 'drivers', 'driver_wellness', 'fuel',
+  'inventory', 'drivers', 'fuel',
 ];
 
 /** Build a full-access permission set for a list of modules. */

@@ -169,8 +169,8 @@ export function TeamPage() {
       label: 'Status',
       type: 'select',
       options: [
-        { label: 'In Service', value: 'in_service' },
-        { label: 'Out of Service', value: 'out_of_service' },
+        { label: 'Active', value: 'in_service' },
+        { label: 'Under Maintenance', value: 'out_of_service' },
       ],
     },
   ], []);
@@ -194,21 +194,12 @@ export function TeamPage() {
     },
     {
       columnKey: 'priority',
-      label: 'Priority',
+      label: 'Severity',
       type: 'select',
       options: [
         { label: 'High', value: 'high' },
         { label: 'Medium', value: 'medium' },
         { label: 'Low', value: 'low' },
-      ],
-    },
-    {
-      columnKey: 'severity',
-      label: 'Severity',
-      type: 'select',
-      options: [
-        { label: 'Critical', value: 'critical' },
-        { label: 'Non-Critical', value: 'non_critical' },
       ],
     },
   ], []);
@@ -1202,29 +1193,21 @@ export function TeamPage() {
     }
   };
 
-  const getDefectPriorityBadge = (priority: string) => {
-    switch (priority) {
-      case 'high':
-        return <Badge variant="destructive">High</Badge>;
-      case 'medium':
-        return <Badge variant="warning">Medium</Badge>;
-      case 'low':
-        return <Badge variant="outline">Low</Badge>;
-      default:
-        return <Badge variant="outline">{priority}</Badge>;
-    }
+  const SEVERITY_PILL: Record<string, string> = {
+    high: 'bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-400',
+    medium: 'bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400',
+    low: 'bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300',
   };
+  const SEVERITY_LABEL: Record<string, string> = { high: 'High', medium: 'Medium', low: 'Low' };
 
-  const getDefectSeverityBadge = (severity: string) => {
-    switch (severity) {
-      case 'critical':
-        return <Badge variant="destructive">Critical</Badge>;
-      case 'non_critical':
-        return <Badge variant="outline">Non-Critical</Badge>;
-      default:
-        return <Badge variant="outline">{severity}</Badge>;
-    }
-  };
+  const getDefectSeverityBadge = (priority: string) => (
+    <span className={cn(
+      'inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium',
+      SEVERITY_PILL[priority] || 'bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300',
+    )}>
+      {SEVERITY_LABEL[priority] || priority}
+    </span>
+  );
 
   const teamDefectColumns: DataTableColumn<DefectRow>[] = [
     {
@@ -1251,15 +1234,9 @@ export function TeamPage() {
     },
     {
       key: 'priority',
-      header: 'Priority',
-      label: 'Priority',
-      render: (defect) => getDefectPriorityBadge(defect.priority),
-    },
-    {
-      key: 'severity',
       header: 'Severity',
       label: 'Severity',
-      render: (defect) => getDefectSeverityBadge(defect.severity),
+      render: (defect) => getDefectSeverityBadge(defect.priority),
     },
     {
       key: 'assetName',

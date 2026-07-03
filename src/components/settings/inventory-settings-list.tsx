@@ -50,6 +50,8 @@ interface InventorySettingsListProps {
   createLabel: string;
   nameField?: string; // the field key used as the display name column (default: 'name')
   extraColumns?: Array<{ key: string; header: string }>;
+  /** Optional callback fired after a create, update, or delete succeeds. */
+  onDataChange?: () => void;
 }
 
 export function InventorySettingsList({
@@ -59,6 +61,7 @@ export function InventorySettingsList({
   createLabel,
   nameField = 'name',
   extraColumns = [],
+  onDataChange,
 }: InventorySettingsListProps) {
   const [items, setItems] = useState<SettingsItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -223,6 +226,7 @@ export function InventorySettingsList({
       }
       setDialogOpen(false);
       fetchItems();
+      onDataChange?.();
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {
         const errData = err.response.data.error;
@@ -243,6 +247,7 @@ export function InventorySettingsList({
       setDeleteDialogOpen(false);
       setDeletingItem(null);
       fetchItems();
+      onDataChange?.();
     } catch {
       // Silent fail
     } finally {

@@ -9,6 +9,8 @@ import {
   Trash2,
   User,
   Eye,
+  ClipboardCheck,
+  FileText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/ui/search-input';
@@ -24,13 +26,10 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
+import { Spinner } from '@/components/ui/spinner';
 import type { DriverRow, TeamOption, Pagination } from './types';
-
-const FORM_TABS = ['Personal', 'Details'] as const;
-type FormTab = (typeof FORM_TABS)[number];
 
 export function DriversPage() {
   const router = useRouter();
@@ -51,10 +50,11 @@ export function DriversPage() {
   // Teams for display
   const [teams, setTeams] = useState<TeamOption[]>([]);
 
-  // View dialog
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [viewDriver, setViewDriver] = useState<DriverRow | null>(null);
-  const [viewTab, setViewTab] = useState<FormTab>('Personal');
+  // Inspect dialog
+  const [inspectDialogOpen, setInspectDialogOpen] = useState(false);
+  const [inspectDriver, setInspectDriver] = useState<DriverRow | null>(null);
+  const [inspectLoading, setInspectLoading] = useState(false);
+  const [inspectForms, setInspectForms] = useState<{ formId: string; title: string }[]>([]);
 
   // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -98,15 +98,34 @@ export function DriversPage() {
     loadTeams();
   }, []);
 
-  const handleOpenView = (driver: DriverRow) => {
-    setViewDriver(driver);
-    setViewTab('Personal');
-    setViewDialogOpen(true);
-  };
-
   const handleOpenDelete = (driver: DriverRow) => {
     setDeletingDriver(driver);
     setDeleteDialogOpen(true);
+  };
+
+  // ── Inspection ──
+  const handleOpenInspect = async (driver: DriverRow) => {
+    setInspectDriver(driver);
+    setInspectDialogOpen(true);
+    setInspectLoading(true);
+    try {
+      const res = await axios.get('/api/forms?status=published&includeSchema=false', { withCredentials: true });
+      const allForms = res.data?.data?.items || [];
+      const wellness = allForms
+        .filter(
+          (f: Record<string, unknown>) =>
+            (f.title || f.formTitle) === 'Driver Wellness Pre-Start Check',
+        )
+        .map((f: Record<string, unknown>) => ({
+          formId: String(f.formId || f.id),
+          title: String(f.title || f.formTitle || 'Untitled form'),
+        }));
+      setInspectForms(wellness);
+    } catch {
+      setInspectForms([]);
+    } finally {
+      setInspectLoading(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -131,6 +150,11 @@ export function DriversPage() {
     return team?.name || '—';
   };
 
+  // ── Navigate to driver detail page ──
+  const handleViewDriver = (driver: DriverRow) => {
+    router.push(`/people/drivers/${driver.id}`);
+  };
+
   // ── Column definitions ──
   const driverColumns: DataTableColumn<DriverRow>[] = [
     {
@@ -138,6 +162,8 @@ export function DriversPage() {
       header: 'Driver',
       label: 'Driver Name',
       pinned: true,
+      sortable: true,
+      sortValue: (driver) => `${driver.firstName} ${driver.lastName}`,
       render: (driver) => (
         <div className="flex items-center gap-3">
           {driver.photoUrl ? (
@@ -159,6 +185,7 @@ export function DriversPage() {
       key: 'email',
       header: 'Email',
       label: 'Email',
+      sortable: true,
       render: (driver) => (
         <span className="text-muted-foreground">{driver.email || '—'}</span>
       ),
@@ -175,6 +202,8 @@ export function DriversPage() {
       key: 'teamId',
       header: 'Team',
       label: 'Team',
+      sortable: true,
+      sortValue: (driver) => getTeamName(driver.teamId),
       render: (driver) => (
         <span className="text-muted-foreground">{getTeamName(driver.teamId)}</span>
       ),
@@ -183,6 +212,7 @@ export function DriversPage() {
       key: 'licenseNumber',
       header: 'License #',
       label: 'License Number',
+      sortable: true,
       render: (driver) => (
         <span className="text-muted-foreground">{driver.licenseNumber || '—'}</span>
       ),
@@ -193,7 +223,8 @@ export function DriversPage() {
       align: 'right',
       render: (driver) => (
         <RowActions>
-          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(driver)} />
+          <RowActionButton label="Inspect" icon={<ClipboardCheck />} onClick={() => handleOpenInspect(driver)} />
+          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleViewDriver(driver)} />
           <RowActionButton label="Edit" icon={<Pencil />} onClick={() => router.push(`/people/drivers/${driver.id}/edit`)} />
           <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(driver)} />
         </RowActions>
@@ -220,7 +251,7 @@ export function DriversPage() {
           density={density}
           onDensityChange={setDensity}
           searchNode={
-            <SearchInput value={search} onChange={setSearch} placeholder="Search drivers..." className="max-w-sm w-full" />
+            <SearchInput value={search} onChange={setSearch} placeholder="Search drivers..." />
           }
         />
         <DataTable<DriverRow>
@@ -231,7 +262,7 @@ export function DriversPage() {
           rowsPerPage={rowsPerPage}
           onPageChange={fetchDrivers}
           onRowsPerPageChange={setRowsPerPage}
-          onRowClick={handleOpenView}
+          onRowClick={handleViewDriver}
           rowKey={(d) => d.id}
           density={density}
           hiddenColumnKeys={hiddenColumnKeys}
@@ -242,82 +273,6 @@ export function DriversPage() {
           }
         />
       </div>
-
-      {/* View Driver Dialog */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>
-              {viewDriver ? `${viewDriver.firstName} ${viewDriver.lastName}` : 'Driver Details'}
-            </DialogTitle>
-            <DialogDescription>Driver information overview.</DialogDescription>
-          </DialogHeader>
-
-          {/* Tabs */}
-          <div className="border-b border-border">
-            <div className="flex gap-0">
-              {FORM_TABS.map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setViewTab(tab)}
-                  className={cn(
-                    'px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px',
-                    viewTab === tab
-                      ? 'border-primary text-primary'
-                      : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
-                  )}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* View content */}
-          <div className="flex-1 overflow-y-auto py-4">
-            {viewDriver && (
-              <ViewDriverContent
-                viewForm={{
-                  firstName: viewDriver.firstName,
-                  lastName: viewDriver.lastName,
-                  email: viewDriver.email || '',
-                  photoUrl: viewDriver.photoUrl || '',
-                  notes: viewDriver.notes || '',
-                  teamId: viewDriver.teamId || '',
-                  mobileNumber: viewDriver.mobileNumber || '',
-                  homePhone: viewDriver.homePhone || '',
-                  workPhone: viewDriver.workPhone || '',
-                  dateOfBirth: viewDriver.dateOfBirth ? viewDriver.dateOfBirth.split('T')[0] : '',
-                  employeeNumber: viewDriver.employeeNumber || '',
-                  jobPosition: viewDriver.jobPosition || '',
-                  ratePerUnit: viewDriver.ratePerUnit !== undefined ? String(viewDriver.ratePerUnit) : '',
-                  otherNotes: viewDriver.otherNotes || '',
-                  driverLicense: viewDriver.driverLicense || '',
-                  licenseClass: viewDriver.licenseClass || '',
-                  licenseNumber: viewDriver.licenseNumber || '',
-                  healthCertificate: viewDriver.healthCertificate || '',
-                }}
-                viewTab={viewTab}
-                getTeamName={getTeamName}
-              />
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setViewDialogOpen(false);
-                if (viewDriver) router.push(`/people/drivers/${viewDriver.id}/edit`);
-              }}
-            >
-              <Pencil className="h-4 w-4 mr-1" />
-              Edit
-            </Button>
-            <Button variant="outline" onClick={() => setViewDialogOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* Delete Driver Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
@@ -336,76 +291,44 @@ export function DriversPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
 
-/** Read-only view of driver details. */
-function ViewDriverContent({
-  viewForm,
-  viewTab,
-  getTeamName,
-}: {
-  viewForm: Record<string, string>;
-  viewTab: FormTab;
-  getTeamName: (id?: string) => string;
-}) {
-  if (viewTab === 'Personal') {
-    return (
-      <div className="space-y-4">
-        {/* Photo */}
-        <div className="flex items-center gap-4">
-          {viewForm.photoUrl ? (
-            <div className="h-16 w-16 rounded-full overflow-hidden border">
-              <img src={viewForm.photoUrl} alt="Driver" className="h-full w-full object-cover" />
-            </div>
+      {/* Inspect Driver Dialog */}
+      <Dialog open={inspectDialogOpen} onOpenChange={setInspectDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Start Inspection</DialogTitle>
+            <DialogDescription>
+              {inspectDriver
+                ? `Select a form to inspect ${inspectDriver.firstName} ${inspectDriver.lastName}.`
+                : 'Select a form to begin the inspection.'}
+            </DialogDescription>
+          </DialogHeader>
+
+          {inspectLoading ? (
+            <div className="flex items-center justify-center py-10"><Spinner /></div>
+          ) : inspectForms.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">
+              No inspection forms found. Please seed pre-start forms first.
+            </p>
           ) : (
-            <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center border">
-              <User className="h-6 w-6 text-muted-foreground" />
+            <div className="space-y-2 py-1 max-h-80 overflow-y-auto">
+              {inspectForms.map((f) => (
+                <button
+                  key={f.formId}
+                  onClick={() => {
+                    setInspectDialogOpen(false);
+                    router.push(`/inspections/fill?driverId=${inspectDriver?.id}&formId=${f.formId}`);
+                  }}
+                  className="w-full flex items-center gap-3 rounded-md border p-3 text-left hover:bg-muted transition-colors"
+                >
+                  <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm font-medium">{f.title}</span>
+                </button>
+              ))}
             </div>
           )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <ViewField label="First Name" value={viewForm.firstName} />
-          <ViewField label="Last Name" value={viewForm.lastName} />
-        </div>
-        <ViewField label="Email" value={viewForm.email} />
-        <ViewField label="Team" value={getTeamName(viewForm.teamId)} />
-        <div className="grid grid-cols-3 gap-4">
-          <ViewField label="Mobile Number" value={viewForm.mobileNumber} />
-          <ViewField label="Home Phone" value={viewForm.homePhone} />
-          <ViewField label="Work Phone" value={viewForm.workPhone} />
-        </div>
-        <ViewField label="Date of Birth" value={viewForm.dateOfBirth} />
-        <ViewField label="Notes" value={viewForm.notes} />
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <ViewField label="Employee Number" value={viewForm.employeeNumber} />
-        <ViewField label="Job Position" value={viewForm.jobPosition} />
-      </div>
-      <ViewField label="Rate per mi/hr" value={viewForm.ratePerUnit} />
-      <ViewField label="Driver License" value={viewForm.driverLicense} />
-      <div className="grid grid-cols-2 gap-4">
-        <ViewField label="License Class" value={viewForm.licenseClass} />
-        <ViewField label="License Number" value={viewForm.licenseNumber} />
-      </div>
-      <ViewField label="Health Certificate" value={viewForm.healthCertificate} />
-      <ViewField label="Other Notes" value={viewForm.otherNotes} />
-    </div>
-  );
-}
-
-function ViewField({ label, value }: { label: string; value?: string }) {
-  return (
-    <div>
-      <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <p className="text-sm text-foreground mt-0.5">{value || '—'}</p>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -71,7 +71,6 @@ export function InventoryPage() {
   const [rowsPerPage, setRowsPerPage] = useState(25);
 
   // Lookup maps
-  const [manufacturerMap, setManufacturerMap] = useState<Record<string, string>>({});
   const [categoryMap, setCategoryMap] = useState<Record<string, string>>({});
   const [unitMap, setUnitMap] = useState<Record<string, string>>({});
   const [locationMap, setLocationMap] = useState<Record<string, string>>({});
@@ -109,8 +108,7 @@ export function InventoryPage() {
   // Fetch lookup data
   const fetchLookups = useCallback(async () => {
     try {
-      const [mfRes, catRes, muRes, locRes, venRes] = await Promise.all([
-        axios.get('/api/inventory-settings/part-manufacturers', { withCredentials: true }),
+      const [catRes, muRes, locRes, venRes] = await Promise.all([
         axios.get('/api/inventory-settings/part-categories', { withCredentials: true }),
         axios.get('/api/inventory-settings/measurement-units', { withCredentials: true }),
         axios.get('/api/inventory-settings/part-locations', { withCredentials: true }),
@@ -121,7 +119,6 @@ export function InventoryPage() {
         items.forEach((i) => { map[i.id] = i.name; });
         return map;
       };
-      setManufacturerMap(toMap(mfRes.data.data || []));
       setCategoryMap(toMap(catRes.data.data || []));
       setUnitMap(toMap(muRes.data.data || []));
       setLocationMap(toMap(locRes.data.data || []));
@@ -188,6 +185,7 @@ export function InventoryPage() {
       header: 'Part Name',
       label: 'Part name',
       pinned: true,
+      sortable: true,
       render: (part) => (
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -205,6 +203,7 @@ export function InventoryPage() {
       header: 'Part #',
       label: 'Part number',
       pinned: true,
+      sortable: true,
       render: (part) => (
         <span className="text-muted-foreground font-mono text-xs">{part.partNumber}</span>
       ),
@@ -213,22 +212,17 @@ export function InventoryPage() {
       key: 'category',
       header: 'Category',
       label: 'Category',
+      sortable: true,
       render: (part) => (
         <span className="text-muted-foreground">{part.categoryId ? categoryMap[part.categoryId] || '—' : '—'}</span>
-      ),
-    },
-    {
-      key: 'manufacturer',
-      header: 'Manufacturer',
-      label: 'Manufacturer',
-      render: (part) => (
-        <span className="text-muted-foreground">{part.manufacturerId ? manufacturerMap[part.manufacturerId] || '—' : '—'}</span>
       ),
     },
     {
       key: 'totalStock',
       header: 'Stock',
       label: 'Total stock',
+      sortable: true,
+      sortValue: (part) => getTotalStock(part),
       render: (part) => {
         const total = getTotalStock(part);
         const status = getStockStatus(part, total);
@@ -325,7 +319,7 @@ export function InventoryPage() {
               ) : null
             }
             searchNode={
-              <SearchInput value={search} onChange={setSearch} placeholder="Search parts..." className="max-w-sm w-full" />
+              <SearchInput value={search} onChange={setSearch} placeholder="Search parts..." />
             }
           />
           <DataTable<PartRow>
@@ -381,7 +375,6 @@ export function InventoryPage() {
             {viewPart && (
               <ViewPartContent
                 part={viewPart}
-                manufacturerMap={manufacturerMap}
                 categoryMap={categoryMap}
                 unitMap={unitMap}
                 locationMap={locationMap}
@@ -429,14 +422,12 @@ export function InventoryPage() {
 /** Read-only view of part details. */
 function ViewPartContent({
   part,
-  manufacturerMap,
   categoryMap,
   unitMap,
   locationMap,
   vendorMap,
 }: {
   part: PartRow;
-  manufacturerMap: Record<string, string>;
   categoryMap: Record<string, string>;
   unitMap: Record<string, string>;
   locationMap: Record<string, string>;
@@ -459,7 +450,6 @@ function ViewPartContent({
             <ViewField label="Part Number" value={part.partNumber} />
             <ViewField label="UPC" value={part.upc} />
           </div>
-          <ViewField label="Manufacturer" value={part.manufacturerId ? manufacturerMap[part.manufacturerId] : undefined} />
           <ViewField label="Category" value={part.categoryId ? categoryMap[part.categoryId] : undefined} />
           <ViewField label="Description" value={part.description} />
         </div>

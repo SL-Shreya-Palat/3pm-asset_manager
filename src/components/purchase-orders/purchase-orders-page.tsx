@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 
 import { Badge } from '@/components/ui/badge';
+import { CountBadge } from '@/components/ui/count-badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -338,6 +339,7 @@ export function PurchaseOrdersPage() {
       header: 'PO #',
       label: 'PO number',
       pinned: true,
+      sortable: true,
       render: (order) => (
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -352,6 +354,7 @@ export function PurchaseOrdersPage() {
       header: 'Status',
       label: 'Status',
       pinned: true,
+      sortable: true,
       render: (order) => (
         <Badge variant={STATUS_BADGE_VARIANT[order.status] || 'secondary'}>
           {STATUS_DISPLAY_NAME[order.status] || order.status}
@@ -362,6 +365,7 @@ export function PurchaseOrdersPage() {
       key: 'vendorName',
       header: 'Vendor',
       label: 'Vendor',
+      sortable: true,
       render: (order) => (
         <span className="text-foreground">{order.vendorName || '—'}</span>
       ),
@@ -370,6 +374,7 @@ export function PurchaseOrdersPage() {
       key: 'total',
       header: 'Total',
       label: 'Total',
+      sortable: true,
       render: (order) => (
         <span className="text-foreground font-medium">${order.total.toFixed(2)}</span>
       ),
@@ -378,9 +383,10 @@ export function PurchaseOrdersPage() {
       key: 'lineItemCount',
       header: 'Items',
       label: 'Items count',
-      render: (order) => (
-        <span className="text-muted-foreground">{order.lineItems.length}</span>
-      ),
+      render: (order) =>
+        order.lineItems.length === 0
+          ? <span className="text-muted-foreground">—</span>
+          : <CountBadge count={order.lineItems.length} variant="blue" size="sm" />,
     },
     {
       key: 'approver',
@@ -402,6 +408,8 @@ export function PurchaseOrdersPage() {
       key: 'createdAt',
       header: 'Created',
       label: 'Created',
+      sortable: true,
+      sortValue: (order) => new Date(order.createdAt).getTime(),
       render: (order) => (
         <span className="text-muted-foreground text-xs">
           {new Date(order.createdAt).toLocaleDateString()}
@@ -457,7 +465,7 @@ export function PurchaseOrdersPage() {
             density={density}
             onDensityChange={setDensity}
             searchNode={
-              <SearchInput value={search} onChange={setSearch} placeholder="Search purchase orders..." className="max-w-sm w-full" />
+              <SearchInput value={search} onChange={setSearch} placeholder="Search purchase orders..." />
             }
           />
           <DataTable<PurchaseOrderRow>

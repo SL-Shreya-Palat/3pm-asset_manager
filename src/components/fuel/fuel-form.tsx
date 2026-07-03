@@ -6,6 +6,7 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { DateField } from '@/components/ui/date-field';
 import { Separator } from '@/components/ui/separator';
 import {
   Select,
@@ -246,19 +247,15 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="date">
-                    Date <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
+                  <DateField
                     id="date"
-                    type="date"
+                    label="Date"
+                    required
                     value={date}
-                    onChange={(e) => { setDate(e.target.value); clearFieldError('date'); }}
-                    className={`mt-1.5 ${fieldErrors.date ? 'border-destructive' : ''}`}
+                    onChange={(v) => { setDate(v); clearFieldError('date'); }}
+                    error={fieldErrors.date}
+                    placeholder="Select date"
                   />
-                  {fieldErrors.date && (
-                    <p className="text-sm text-destructive mt-1">{fieldErrors.date}</p>
-                  )}
                 </div>
                 <div>
                   <Label htmlFor="fuelType">Fuel Type</Label>

@@ -140,15 +140,6 @@ export async function getDriversCollection(): Promise<Collection> {
 }
 
 // ---------------------------------------------------------------------------
-// Driver wellness checks collection
-// ---------------------------------------------------------------------------
-
-export async function getDriverWellnessChecksCollection(): Promise<Collection> {
-  const db = await getDb();
-  return db.collection('driverWellnessChecks');
-}
-
-// ---------------------------------------------------------------------------
 // Vendors collection
 // ---------------------------------------------------------------------------
 
@@ -195,11 +186,6 @@ export async function getPartLocationsCollection(): Promise<Collection> {
   return db.collection('partLocations');
 }
 
-export async function getPartManufacturersCollection(): Promise<Collection> {
-  const db = await getDb();
-  return db.collection('partManufacturers');
-}
-
 // ---------------------------------------------------------------------------
 // Purchase Orders collection
 // ---------------------------------------------------------------------------
@@ -230,6 +216,15 @@ export async function getWorkOrdersCollection(): Promise<Collection> {
 export async function getDefectsCollection(): Promise<Collection> {
   const db = await getDb();
   return db.collection('defects');
+}
+
+// ---------------------------------------------------------------------------
+// Faults collection
+// ---------------------------------------------------------------------------
+
+export async function getFaultsCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('faults');
 }
 
 // ---------------------------------------------------------------------------
@@ -331,4 +326,13 @@ export async function getNotificationsCollection(): Promise<Collection> {
 export async function getServiceHistoryCollection(): Promise<Collection> {
   const db = await getDb();
   return db.collection('serviceHistory');
+}
+
+// ---------------------------------------------------------------------------
+// Driver wellness checks
+// ---------------------------------------------------------------------------
+
+export async function getDriverWellnessChecksCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('driverWellnessChecks');
 }

@@ -119,7 +119,7 @@ export function computeProgramStatus(
     results.push({
       triggerType: 'distance',
       status: statusOf(remaining, mileageThreshold),
-      label: remaining < 0 ? `Overdue by ${-remaining} mi/km` : `Due in ${remaining} mi/km`,
+      label: remaining < 0 ? `Overdue by ${-remaining} km` : `Due in ${remaining} km`,
       remaining,
     });
   };

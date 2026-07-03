@@ -162,6 +162,7 @@ export function VendorsPage() {
       header: 'Vendor',
       label: 'Vendor Name',
       pinned: true,
+      sortable: true,
       render: (vendor) => (
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -176,6 +177,7 @@ export function VendorsPage() {
       header: 'Contact',
       label: 'Contact Name',
       pinned: true,
+      sortable: true,
       render: (vendor) => (
         <span className="text-muted-foreground">{vendor.contactName || '—'}</span>
       ),
@@ -184,6 +186,7 @@ export function VendorsPage() {
       key: 'email',
       header: 'Email',
       label: 'Email',
+      sortable: true,
       render: (vendor) => (
         <span className="text-muted-foreground">{vendor.email || '—'}</span>
       ),
@@ -244,6 +247,7 @@ export function VendorsPage() {
       key: 'laborRatePerHour',
       header: 'Labor Rate',
       label: 'Rate per hour ($)',
+      sortable: true,
       render: (vendor) => (
         <span className="text-muted-foreground">
           {vendor.laborRatePerHour != null ? `$${vendor.laborRatePerHour.toFixed(2)}` : '—'}
@@ -289,7 +293,7 @@ export function VendorsPage() {
             onFilterChange={setFilter}
             onFiltersClear={clearFilters}
             searchNode={
-              <SearchInput value={search} onChange={setSearch} placeholder="Search vendors..." className="max-w-sm w-full" />
+              <SearchInput value={search} onChange={setSearch} placeholder="Search vendors..." />
             }
           />
           <DataTable<VendorRow>

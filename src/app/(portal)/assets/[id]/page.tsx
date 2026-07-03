@@ -315,8 +315,8 @@ export default function AssetDetailPage() {
               {toggling
                 ? 'Updating...'
                 : normalizedStatus === 'in_service'
-                  ? 'Mark as Out of Service'
-                  : 'Mark as In Service'}
+                  ? 'Mark as Under Maintenance'
+                  : 'Mark as Active'}
             </Button>
             <Button onClick={() => router.push(`/assets/${params.id}/edit`)}>
               <Pencil className="h-4 w-4" />

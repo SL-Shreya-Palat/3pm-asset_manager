@@ -5,14 +5,21 @@
  * Exchanges the short-lived GUID (60s) for a JWT, auto-provisions local
  * user/tenant/tenantMember records, and sets the session cookies.
  *
- * If the user has an accepted invitation, skip provisioning their personal
- * (owner) tenant and instead activate the pending tenantMember on the
- * invited tenant. This mirrors the construction-portal pattern.
+ * Supports two invitation flows:
+ * - 3PM flow (new): invitation created via Data API, detected by
+ *   getPending3PMInviteByEmail(). Mirrors construction-portal pattern.
+ * - Legacy flow: invitation accepted via /invite/accept page, detected by
+ *   getAcceptedInvitationByEmail(). Kept for backward compatibility.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { exchangeToken, SESSION_COOKIE, TENANT_COOKIE } from '@/lib/auth-3pm';
 import { ensureLocalRecords } from '@/lib/provisioning';
-import { getAcceptedInvitationByEmail, completeInvitation } from '@/controller/invitations';
+import {
+  getAcceptedInvitationByEmail,
+  completeInvitation,
+  getPending3PMInviteByEmail,
+  completePending3PMInvitationFromAccept,
+} from '@/controller/invitations';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -26,31 +33,67 @@ export async function GET(request: NextRequest) {
   try {
     const { jwt, user, tenant } = await exchangeToken(guid);
 
-    // Check if this user has an accepted invitation (clicked invite link → logged in).
-    // If so, skip creating their personal owner tenant and activate the invited tenant instead.
-    const acceptedInvitation = await getAcceptedInvitationByEmail(user.email);
+    // ── Check for pending invitations ────────────────────────────────
+    // 3PM flow: invitation created via Data API (status: 'invited')
+    let pending3PMInvite = null;
+    try {
+      pending3PMInvite = await getPending3PMInviteByEmail(user.email);
+    } catch (err) {
+      console.warn('[callback] Pending 3PM invite lookup failed:', err);
+    }
 
+    // Legacy flow: invitation accepted via /invite/accept page (status: 'accepted')
+    let acceptedLegacyInvite = null;
+    if (!pending3PMInvite) {
+      acceptedLegacyInvite = await getAcceptedInvitationByEmail(user.email);
+    }
+
+    const hasPendingInvite = !!(pending3PMInvite || acceptedLegacyInvite);
+    const invitedTenantId = pending3PMInvite?.tenantId?.toString()
+      ?? acceptedLegacyInvite?.tenantId?.toString();
+    const invitedRoleId = pending3PMInvite?.roleId?.toString()
+      ?? acceptedLegacyInvite?.roleId?.toString();
+
+    // ── Provision local records ──────────────────────────────────────
+    // When an invitation exists, pass invitedTenantId so provisioning
+    // skips the owner tenant sync (prevents personal tenant creation).
     const provisioned = await ensureLocalRecords({
       user,
       tenant,
-      // When an accepted invitation exists, pass the invited tenantId
-      // so provisioning skips the owner tenant sync
-      ...(acceptedInvitation
-        ? {
-            invitedTenantId: acceptedInvitation.tenantId.toString(),
-            invitedRoleId: acceptedInvitation.roleId?.toString(),
-          }
+      ...(hasPendingInvite
+        ? { invitedTenantId, invitedRoleId }
         : {}),
     });
 
-    // Mark invitation as completed so it doesn't trigger again on subsequent logins
-    if (acceptedInvitation && provisioned) {
-      await completeInvitation(acceptedInvitation._id.toString());
+    // ── Complete the invitation ──────────────────────────────────────
+    let completedTenantId: string | null = null;
+
+    if (pending3PMInvite && provisioned) {
+      // 3PM flow: activate tenantMember + mark invitation accepted
+      try {
+        const localUserId = provisioned.localUserId.toString();
+        const invTenantId = pending3PMInvite.tenantId.toString();
+        const result = await completePending3PMInvitationFromAccept(
+          localUserId,
+          invTenantId,
+          user.email,
+        );
+        if (result.completed) {
+          completedTenantId = invTenantId;
+        }
+      } catch (err) {
+        console.error('[callback] Complete 3PM invite error:', err);
+      }
+    } else if (acceptedLegacyInvite && provisioned) {
+      // Legacy flow: mark invitation as completed
+      await completeInvitation(acceptedLegacyInvite._id.toString());
+      completedTenantId = acceptedLegacyInvite.tenantId.toString();
     }
 
+    // ── Set cookies ──────────────────────────────────────────────────
     const response = NextResponse.redirect(new URL(returnUrl, request.url));
 
-    // Set session cookie (JWT from 3pm-auth)
+    // Session cookie (JWT from 3pm-auth)
     response.cookies.set(SESSION_COOKIE, jwt, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -59,9 +102,14 @@ export async function GET(request: NextRequest) {
       path: '/',
     });
 
-    // Set tenant cookie — use LOCAL tenant _id (not the 3pm tenant id).
+    // Tenant cookie — prefer invited tenant when user just accepted an invitation.
     // resolveCurrentTenantFor3PM() expects a local ObjectId in this cookie.
-    const tenantCookieValue = provisioned?.localTenantId?.toString() ?? tenant?.id ?? null;
+    const tenantCookieValue =
+      completedTenantId
+      ?? provisioned?.localTenantId?.toString()
+      ?? tenant?.id
+      ?? null;
+
     if (tenantCookieValue) {
       response.cookies.set(TENANT_COOKIE, tenantCookieValue, {
         httpOnly: true,

@@ -18,12 +18,12 @@ export type ModuleKey =
   | 'forms'
   | 'exception_report'
   | 'defects'
+  | 'faults'
   | 'service_tasks'
   | 'service_programs'
   | 'work_order'
   | 'inventory'
   | 'drivers'
-  | 'driver_wellness'
   | 'fuel';
 
 export type Action =

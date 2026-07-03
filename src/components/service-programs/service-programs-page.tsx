@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { Badge } from '@/components/ui/badge';
+import { CountBadge } from '@/components/ui/count-badge';
 import { PageHeader } from '@/components/ui/page-header';
 import { SearchInput } from '@/components/ui/search-input';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
@@ -27,6 +28,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
 import type { ServiceProgramRow, Pagination } from './types';
@@ -148,27 +150,27 @@ export function ServiceProgramsPage() {
   };
 
   // ── Helpers ──
-  const getIntervalSummary = (program: ServiceProgramRow): string => {
+  const getIntervalParts = (program: ServiceProgramRow): { type: string; parts: string[] } => {
     const iv = program.interval;
-    if (!iv) return '—';
+    if (!iv) return { type: '', parts: [] };
     if (iv.type === 'repeat') {
       const parts: string[] = [];
-      if (iv.mileage?.enabled && iv.mileage.every) parts.push(`${iv.mileage.every} mi`);
-      if (iv.engineHours?.enabled && iv.engineHours.every) parts.push(`${iv.engineHours.every} hrs`);
+      if (iv.mileage?.enabled && iv.mileage.every) parts.push(`Every ${iv.mileage.every} km`);
+      if (iv.engineHours?.enabled && iv.engineHours.every) parts.push(`Every ${iv.engineHours.every} hrs`);
       if (iv.calendar?.enabled && iv.calendar.every) {
         const unit = CALENDAR_UNIT_LABELS[iv.calendar.unit] || iv.calendar.unit;
-        parts.push(`${iv.calendar.every} ${unit}${iv.calendar.every !== 1 ? 's' : ''}`);
+        parts.push(`Every ${iv.calendar.every} ${unit}${iv.calendar.every !== 1 ? 's' : ''}`);
       }
-      return parts.length > 0 ? `Every ${parts.join(' / ')}` : 'Repeat';
+      return { type: 'Repeat', parts };
     }
     if (iv.type === 'one_time') {
       const parts: string[] = [];
-      if (iv.dueMileage?.enabled && iv.dueMileage.value) parts.push(`${iv.dueMileage.mode === 'in' ? 'In' : 'At'} ${iv.dueMileage.value} mi`);
+      if (iv.dueMileage?.enabled && iv.dueMileage.value) parts.push(`${iv.dueMileage.mode === 'in' ? 'In' : 'At'} ${iv.dueMileage.value} km`);
       if (iv.dueEngineHours?.enabled && iv.dueEngineHours.value) parts.push(`${iv.dueEngineHours.mode === 'in' ? 'In' : 'At'} ${iv.dueEngineHours.value} hrs`);
       if (iv.dueOnDate?.enabled && iv.dueOnDate.date) parts.push(`On ${new Date(iv.dueOnDate.date).toLocaleDateString()}`);
-      return parts.length > 0 ? parts.join(' / ') : 'One Time';
+      return { type: 'One Time', parts };
     }
-    return 'Repeat';
+    return { type: 'Repeat', parts: [] };
   };
 
   // ── Column definitions ──
@@ -191,35 +193,45 @@ export function ServiceProgramsPage() {
       key: 'serviceTasks',
       header: 'Service Tasks',
       label: 'Service Tasks',
-      render: (program) => (
-        <span className="text-muted-foreground">
-          {program.serviceTaskIds.length === 0
-            ? '—'
-            : `${program.serviceTaskIds.length} task${program.serviceTaskIds.length !== 1 ? 's' : ''}`}
-        </span>
-      ),
+      render: (program) =>
+        program.serviceTaskIds.length === 0
+          ? <span className="text-muted-foreground">—</span>
+          : <CountBadge count={program.serviceTaskIds.length} variant="blue" size="sm" />,
     },
     {
       key: 'interval',
       header: 'Interval',
       label: 'Interval',
-      render: (program) => (
-        <span className="text-muted-foreground text-sm">
-          {getIntervalSummary(program)}
-        </span>
-      ),
+      render: (program) => {
+        const { type, parts } = getIntervalParts(program);
+        if (!type) return <span className="text-muted-foreground">—</span>;
+        return (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className={cn(
+              'inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium',
+              type === 'Repeat'
+                ? 'bg-violet-100 text-violet-600 dark:bg-violet-950/40 dark:text-violet-400'
+                : 'bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400',
+            )}>
+              {type}
+            </span>
+            {parts.map((part, i) => (
+              <span key={i} className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-normal bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300">
+                {part}
+              </span>
+            ))}
+          </div>
+        );
+      },
     },
     {
       key: 'assets',
       header: 'Assets',
       label: 'Assets',
-      render: (program) => (
-        <span className="text-muted-foreground">
-          {program.assetIds.length === 0
-            ? '—'
-            : `${program.assetIds.length} asset${program.assetIds.length !== 1 ? 's' : ''}`}
-        </span>
-      ),
+      render: (program) =>
+        program.assetIds.length === 0
+          ? <span className="text-muted-foreground">—</span>
+          : <CountBadge count={program.assetIds.length} variant="emerald" size="sm" />,
     },
     {
       key: 'actions',
@@ -255,7 +267,7 @@ export function ServiceProgramsPage() {
           density={density}
           onDensityChange={setDensity}
           searchNode={
-            <SearchInput value={search} onChange={setSearch} placeholder="Search service programs..." className="max-w-sm w-full" />
+            <SearchInput value={search} onChange={setSearch} placeholder="Search service programs..." />
           }
         />
         <DataTable<ServiceProgramRow>
@@ -386,7 +398,7 @@ function ViewServiceProgramContent({
             {iv.type === 'repeat' && (
               <div className="space-y-1">
                 {iv.mileage?.enabled && iv.mileage.every > 0 && (
-                  <p className="text-sm text-foreground">Every {iv.mileage.every} mi</p>
+                  <p className="text-sm text-foreground">Every {iv.mileage.every} km</p>
                 )}
                 {iv.engineHours?.enabled && iv.engineHours.every > 0 && (
                   <p className="text-sm text-foreground">Every {iv.engineHours.every} hrs</p>
@@ -410,7 +422,7 @@ function ViewServiceProgramContent({
             {iv.type === 'one_time' && (
               <div className="space-y-1">
                 {iv.dueMileage?.enabled && iv.dueMileage.value > 0 && (
-                  <p className="text-sm text-foreground">{iv.dueMileage.mode === 'in' ? 'In' : 'At'} {iv.dueMileage.value} mi</p>
+                  <p className="text-sm text-foreground">{iv.dueMileage.mode === 'in' ? 'In' : 'At'} {iv.dueMileage.value} km</p>
                 )}
                 {iv.dueEngineHours?.enabled && iv.dueEngineHours.value > 0 && (
                   <p className="text-sm text-foreground">{iv.dueEngineHours.mode === 'in' ? 'In' : 'At'} {iv.dueEngineHours.value} hrs</p>
@@ -446,7 +458,7 @@ function ViewServiceProgramContent({
         {rm ? (
           <div className="space-y-2">
             {rm.thresholdMileage?.enabled && rm.thresholdMileage.value > 0 && (
-              <ViewField label="Threshold (Mileage)" value={`${rm.thresholdMileage.value} mi before due`} />
+              <ViewField label="Threshold (Mileage)" value={`${rm.thresholdMileage.value} km before due`} />
             )}
             {rm.thresholdEngineHours?.enabled && rm.thresholdEngineHours.value > 0 && (
               <ViewField label="Threshold (Engine Hours)" value={`${rm.thresholdEngineHours.value} hrs before due`} />

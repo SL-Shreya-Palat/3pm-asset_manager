@@ -99,5 +99,12 @@ export async function setupIndexes(): Promise<void> {
   await tenantMembers.createIndex({ tenantId: 1, email: 1 }, { sparse: true });
   await tenantMembers.createIndex({ tenantId: 1, status: 1 });
 
+  // --- faults ---
+  const faults = db.collection('faults');
+  await faults.createIndex({ tenantId: 1, status: 1 });
+  await faults.createIndex({ tenantId: 1, assetId: 1 });
+  await faults.createIndex({ tenantId: 1, isArchived: 1 });
+  await faults.createIndex({ tenantId: 1, faultNumber: 1 }, { unique: true, sparse: true });
+
   console.log('All indexes created successfully');
 }

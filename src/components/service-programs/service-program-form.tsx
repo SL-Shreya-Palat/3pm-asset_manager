@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-import { ArrowLeft, X, Info, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Trash2, Info, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -24,6 +25,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { SearchableSelect } from '@/components/ui/searchable-select';
+import { DateField } from '@/components/ui/date-field';
 import type {
   ServiceTaskOption,
   AssetOption,
@@ -47,8 +50,6 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
   const [title, setTitle] = useState('');
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [availableTasks, setAvailableTasks] = useState<ServiceTaskOption[]>([]);
-  const [taskSearch, setTaskSearch] = useState('');
-  const [taskDropdownOpen, setTaskDropdownOpen] = useState(false);
 
   // ── Section 2: Intervals ──
   const [intervalType, setIntervalType] = useState<'repeat' | 'one_time'>('repeat');
@@ -76,7 +77,7 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
 
   // ── Section 3: Assets ──
   const [availableAssets, setAvailableAssets] = useState<AssetOption[]>([]);
-  const [selectedAssetIds, setSelectedAssetIds] = useState<Set<string>>(new Set());
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
 
   // ── Section 4: Reminders ──
   // Threshold rows
@@ -177,7 +178,7 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
         }
       }
 
-      setSelectedAssetIds(new Set((initialData.assetIds as string[]) || []));
+      setSelectedAssetIds((initialData.assetIds as string[]) || []);
 
       const rm = initialData.reminders as Record<string, unknown> | undefined;
       if (rm) {
@@ -202,29 +203,6 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
       });
     }
   };
-
-  // ── Task helpers ──
-  const handleAddTask = (taskId: string) => {
-    if (!selectedTaskIds.includes(taskId)) {
-      setSelectedTaskIds((prev) => [...prev, taskId]);
-    }
-    setTaskSearch('');
-    setTaskDropdownOpen(false);
-  };
-
-  const handleRemoveTask = (taskId: string) => {
-    setSelectedTaskIds((prev) => prev.filter((id) => id !== taskId));
-  };
-
-  const getTaskTitle = (taskId: string): string => {
-    return availableTasks.find((t) => t.id === taskId)?.title || 'Unknown Task';
-  };
-
-  const filteredTasks = availableTasks.filter(
-    (t) =>
-      !selectedTaskIds.includes(t.id) &&
-      (taskSearch ? t.title.toLowerCase().includes(taskSearch.toLowerCase()) : true),
-  );
 
   const navigateBack = () => router.push('/maintenance/service-programs');
 
@@ -262,7 +240,7 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
       title: title.trim(),
       serviceTaskIds: selectedTaskIds,
       interval: intervalPayload,
-      assetIds: Array.from(selectedAssetIds),
+      assetIds: selectedAssetIds,
       reminders: {
         thresholdMileage: { enabled: thresholdMileageEnabled, value: thresholdMileageValue ? parseFloat(thresholdMileageValue) : 0 },
         thresholdEngineHours: { enabled: thresholdEngineHoursEnabled, value: thresholdEngineHoursValue ? parseFloat(thresholdEngineHoursValue) : 0 },
@@ -343,55 +321,43 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
                 {/* Service Task */}
                 <div>
                   <Label>Service Task</Label>
+                  <div className="mt-1.5">
+                    <SearchableSelect
+                      isMulti
+                      options={availableTasks.map((t) => ({
+                        label: t.title,
+                        value: t.id,
+                      }))}
+                      value={selectedTaskIds}
+                      onValueChange={setSelectedTaskIds}
+                      placeholder="Search and select service tasks..."
+                      searchPlaceholder="Search service tasks..."
+                      emptyMessage="No service tasks found"
+                    />
+                  </div>
                   {selectedTaskIds.length > 0 && (
-                    <div className="space-y-2 mt-1.5 mb-2">
-                      {selectedTaskIds.map((taskId) => (
-                        <div
-                          key={taskId}
-                          className="flex items-center justify-between rounded-md border border-border px-3 py-2"
-                        >
-                          <span className="text-sm text-foreground">{getTaskTitle(taskId)}</span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={() => handleRemoveTask(taskId)}
-                            className="text-destructive hover:text-destructive"
+                    <div className="space-y-2 mt-3">
+                      {selectedTaskIds.map((taskId) => {
+                        const task = availableTasks.find((t) => t.id === taskId);
+                        return (
+                          <div
+                            key={taskId}
+                            className="flex items-center justify-between rounded-md border border-border bg-white dark:bg-background px-3 py-2"
                           >
-                            <X className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      ))}
+                            <span className="text-sm text-foreground">{task?.title || 'Unknown Task'}</span>
+                            <RowActions>
+                              <RowActionButton
+                                label="Delete"
+                                tone="destructive"
+                                icon={<Trash2 />}
+                                onClick={() => setSelectedTaskIds((prev) => prev.filter((id) => id !== taskId))}
+                              />
+                            </RowActions>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
-                  <div className="relative">
-                    <Input
-                      value={taskSearch}
-                      onChange={(e) => { setTaskSearch(e.target.value); setTaskDropdownOpen(true); }}
-                      onFocus={() => setTaskDropdownOpen(true)}
-                      placeholder="Click to select a service task..."
-                      className="mt-1.5"
-                    />
-                    {taskDropdownOpen && filteredTasks.length > 0 && (
-                      <div className="absolute z-10 mt-1 w-full rounded-md border border-border bg-background shadow-md max-h-[200px] overflow-y-auto">
-                        {filteredTasks.map((task) => (
-                          <button
-                            key={task.id}
-                            type="button"
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
-                            onClick={() => handleAddTask(task.id)}
-                          >
-                            {task.title}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {taskDropdownOpen && taskSearch && filteredTasks.length === 0 && (
-                      <div className="absolute z-10 mt-1 w-full rounded-md border border-border bg-background shadow-md p-3">
-                        <p className="text-sm text-muted-foreground">No matching service tasks found.</p>
-                      </div>
-                    )}
-                  </div>
                 </div>
               </div>
             </div>
@@ -451,7 +417,7 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
                           'px-3 py-1.5 text-xs font-medium',
                           'bg-primary text-primary-foreground',
                         )}>
-                          mi
+                          km
                         </span>
                       </div>
                     </div>
@@ -546,12 +512,12 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
                             className="h-4 w-4 accent-primary"
                           />
                           <span className="text-sm text-foreground w-10 shrink-0">On</span>
-                          <Input
-                            type="date"
+                          <DateField
                             value={endsDate}
-                            onChange={(e) => setEndsDate(e.target.value)}
+                            onChange={setEndsDate}
                             disabled={endsType !== 'on'}
-                            className="w-44"
+                            placeholder="Select date"
+                            className="w-48"
                           />
                         </div>
                         {/* After */}
@@ -624,7 +590,7 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
                           'px-3 py-1.5 text-xs font-medium',
                           'bg-primary text-primary-foreground',
                         )}>
-                          mi
+                          km
                         </span>
                       </div>
                     </div>
@@ -682,13 +648,12 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
                         onCheckedChange={(checked) => setDueOnDateEnabled(checked === true)}
                       />
                       <span className="text-sm text-foreground w-6 shrink-0">On</span>
-                      <Input
-                        type="date"
+                      <DateField
                         value={dueOnDate}
-                        onChange={(e) => setDueOnDate(e.target.value)}
+                        onChange={setDueOnDate}
                         disabled={!dueOnDateEnabled}
-                        className="w-44"
                         placeholder="Select date"
+                        className="w-48"
                       />
                     </div>
                   </div>
@@ -698,74 +663,55 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
 
             {/* ── Section 3: Assets ── */}
             <div className="rounded-lg border bg-card p-5 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-base font-semibold text-foreground">Assets</h2>
-                {availableAssets.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const allSelected = availableAssets.every((a) => selectedAssetIds.has(a.id));
-                      setSelectedAssetIds(allSelected ? new Set() : new Set(availableAssets.map((a) => a.id)));
-                    }}
-                    className="text-xs text-primary hover:underline font-medium"
-                  >
-                    {availableAssets.every((a) => selectedAssetIds.has(a.id)) ? 'Deselect All' : 'Select All'}
-                  </button>
-                )}
-              </div>
+              <h2 className="text-base font-semibold text-foreground mb-4">Assets</h2>
               <Separator className="mb-4" />
-              <div className="rounded-md border border-border overflow-hidden">
-                <div className="max-h-[300px] overflow-y-auto divide-y divide-border">
-                  {availableAssets.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-6 text-center">
-                      No assets available
-                    </p>
-                  ) : (
-                    availableAssets.map((asset) => (
-                      <label
-                        key={asset.id}
-                        className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/30 cursor-pointer transition-colors"
+              <SearchableSelect
+                isMulti
+                options={availableAssets.map((a) => ({
+                  label: a.name,
+                  value: a.id,
+                  meta: [a.assetNumber ? `#${a.assetNumber}` : '', a.make, a.model].filter(Boolean).join(' · '),
+                }))}
+                value={selectedAssetIds}
+                onValueChange={setSelectedAssetIds}
+                placeholder="Search and select assets..."
+                searchPlaceholder="Search by name, number, make, or model..."
+                emptyMessage="No assets found"
+              />
+              {selectedAssetIds.length > 0 && (
+                <div className="space-y-2 mt-3">
+                  {selectedAssetIds.map((assetId) => {
+                    const asset = availableAssets.find((a) => a.id === assetId);
+                    return (
+                      <div
+                        key={assetId}
+                        className="flex items-center justify-between rounded-md border border-border bg-white dark:bg-background px-3 py-2"
                       >
-                        <Checkbox
-                          checked={selectedAssetIds.has(asset.id)}
-                          onCheckedChange={(checked) => {
-                            const next = new Set(selectedAssetIds);
-                            if (checked) next.add(asset.id);
-                            else next.delete(asset.id);
-                            setSelectedAssetIds(next);
-                          }}
-                        />
                         <div className="flex-1 min-w-0">
-                          <span className="text-sm font-medium text-foreground">{asset.name}</span>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            {asset.assetNumber && (
-                              <span className="text-xs text-muted-foreground">#{asset.assetNumber}</span>
-                            )}
-                            {asset.make && (
-                              <span className="text-xs text-muted-foreground">{asset.make}</span>
-                            )}
-                            {asset.model && (
-                              <span className="text-xs text-muted-foreground">{asset.model}</span>
-                            )}
-                          </div>
+                          <span className="text-sm font-medium text-foreground">{asset?.name || 'Unknown Asset'}</span>
+                          {asset && (
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {asset.assetNumber && <span className="text-xs text-muted-foreground">#{asset.assetNumber}</span>}
+                              {asset.make && <span className="text-xs text-muted-foreground">{asset.make}</span>}
+                              {asset.model && <span className="text-xs text-muted-foreground">{asset.model}</span>}
+                            </div>
+                          )}
                         </div>
-                        {asset.status && (
-                          <span className={cn(
-                            'text-xs px-1.5 py-0.5 rounded-full capitalize',
-                            asset.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600',
-                          )}>
-                            {asset.status}
-                          </span>
-                        )}
-                      </label>
-                    ))
-                  )}
+                        <RowActions>
+                          <RowActionButton
+                            label="Delete"
+                            tone="destructive"
+                            icon={<Trash2 />}
+                            onClick={() => setSelectedAssetIds((prev) => prev.filter((id) => id !== assetId))}
+                          />
+                        </RowActions>
+                      </div>
+                    );
+                  })}
+                  <p className="text-xs text-muted-foreground">
+                    {selectedAssetIds.length} asset{selectedAssetIds.length !== 1 ? 's' : ''} selected
+                  </p>
                 </div>
-              </div>
-              {selectedAssetIds.size > 0 && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  {selectedAssetIds.size} asset{selectedAssetIds.size !== 1 ? 's' : ''} selected
-                </p>
               )}
             </div>
 
@@ -799,7 +745,7 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
                         'px-3 py-1.5 text-xs font-medium',
                         'bg-primary text-primary-foreground',
                       )}>
-                        mi
+                        km
                       </span>
                     </div>
                   </div>
@@ -894,19 +840,19 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
 
                   {autoCreateWorkOrder && (
                     <div>
-                      <Label className="text-xs">Choose Mechanic</Label>
-                      <Select value={mechanicId} onValueChange={setMechanicId}>
-                        <SelectTrigger className="mt-1.5">
-                          <SelectValue placeholder="Select mechanic..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {availableMechanics.map((m) => (
-                            <SelectItem key={m.id} value={m.id}>
-                              {m.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <SearchableSelect
+                        label="Choose Mechanic"
+                        options={availableMechanics.map((m) => ({
+                          value: m.id,
+                          label: m.name,
+                          meta: m.email,
+                        }))}
+                        value={mechanicId || null}
+                        onValueChange={(v) => setMechanicId(v || '')}
+                        placeholder="Select mechanic..."
+                        searchPlaceholder="Search mechanics..."
+                        emptyMessage="No mechanics found"
+                      />
                       <Link
                         href="/people/users"
                         target="_blank"

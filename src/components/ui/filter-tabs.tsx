@@ -19,7 +19,7 @@ interface FilterTabsProps {
 /** Pill-style tab row used to filter list pages by status/category. */
 export function FilterTabs({ tabs, value, onChange, className }: FilterTabsProps) {
   return (
-    <div className={cn('flex gap-1 flex-wrap', className)}>
+    <div className={cn('flex gap-2 flex-wrap', className)}>
       {tabs.map((tab) => {
         const active = value === tab.value;
         return (
@@ -28,10 +28,10 @@ export function FilterTabs({ tabs, value, onChange, className }: FilterTabsProps
             type="button"
             onClick={() => onChange(tab.value)}
             className={cn(
-              'inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md transition-colors',
+              'inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm rounded-full border transition-colors',
               active
-                ? 'bg-primary text-primary-foreground font-medium shadow-sm'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                ? 'bg-primary text-primary-foreground font-medium border-primary shadow-sm'
+                : 'bg-background text-muted-foreground border-border hover:bg-muted hover:text-foreground hover:border-muted-foreground/30',
             )}
           >
             {tab.color && (

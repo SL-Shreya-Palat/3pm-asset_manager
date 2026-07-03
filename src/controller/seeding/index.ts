@@ -1,9 +1,10 @@
 /**
  * Pre-start inspection form seeding.
  *
- * Seeds the three pre-start inspection form templates into a tenant's
- * form-builder org, stores them locally, and pre-configures defect settings so
- * auto-defect creation works. Idempotent — templates already present are skipped.
+ * Seeds the pre-start form templates (Light Vehicle, Heavy Vehicle,
+ * Plant / Excavator, Driver Wellness) into a tenant's form-builder org,
+ * stores them locally, and pre-configures defect settings so auto-defect
+ * creation works. Idempotent — templates already present are skipped.
  */
 import { ObjectId } from 'mongodb';
 import {
@@ -161,7 +162,10 @@ export async function seedInspectionForms(params: {
     });
 
     // 5. Pre-configure defect settings (mark Fail etc. as defects).
-    const { defectAnswers, severityByField } = deriveDefectSettingsFromTemplate(template);
+    //    Use template-specific settings when available (e.g. driver wellness
+    //    where "yes" can be a bad answer), otherwise auto-derive from options.
+    const { defectAnswers, severityByField } = template.customDefectSettings
+      ?? deriveDefectSettingsFromTemplate(template);
     await upsertDefectSettings(tenantId, userId, formId, { defectAnswers, severityByField });
 
     results.push({

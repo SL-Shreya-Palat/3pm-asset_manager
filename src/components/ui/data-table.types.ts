@@ -39,6 +39,19 @@ export interface DataTableColumn<T> {
   className?: string;
   /** When true, column is always visible and cannot be toggled off. */
   pinned?: boolean;
+  /** Enable sorting for this column. Uses case-insensitive string comparison by default. */
+  sortable?: boolean;
+  /** Custom sort value extractor. Returns the value to sort by from a row. */
+  sortValue?: (row: T) => string | number | null | undefined;
+}
+
+/* ── Sort types ────────────────────────────────────────────────────── */
+
+export type DataTableSortDirection = 'asc' | 'desc';
+
+export interface DataTableSortState {
+  key: string;
+  direction: DataTableSortDirection;
 }
 
 /* ── Pagination shape (matches API response format) ────────────────── */

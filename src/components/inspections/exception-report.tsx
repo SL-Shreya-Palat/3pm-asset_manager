@@ -130,7 +130,7 @@ export function ExceptionReport() {
         <div className="flex flex-wrap divide-x rounded-xl border bg-card shadow-sm">
           <StatSeg tone="amber" icon={AlertTriangle} label="Open" value={summary?.open} loading={!summary} />
           <StatSeg tone="red" icon={ShieldAlert} label="Critical open" value={summary?.criticalOpen} loading={!summary} />
-          <StatSeg tone="red" icon={CircleSlash} label="Out of service" value={summary?.outOfService} loading={!summary} />
+          <StatSeg tone="red" icon={CircleSlash} label="Under maintenance" value={summary?.outOfService} loading={!summary} />
           <StatSeg tone="emerald" icon={CheckCircle2} label="Corrected" value={summary?.corrected} loading={!summary} />
         </div>
       </div>
@@ -163,7 +163,7 @@ export function ExceptionReport() {
           <>
             {grounded.length > 0 && (
               <>
-                <SectionLabel label="Out of service" count={grounded.length} danger />
+                <SectionLabel label="Under maintenance" count={grounded.length} danger />
                 <div className="grid gap-4 sm:grid-cols-2">
                   {grounded.map((g) => <AssetTile key={groupKey(g)} group={g} onCreateWO={openWO} />)}
                 </div>
@@ -279,7 +279,7 @@ function AssetTile({ group, onCreateWO }: { group: AssetGroup; onCreateWO: (d: D
             grounded ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700',
           )}
         >
-          {grounded ? 'Out of service' : 'Attention'}
+          {grounded ? 'Under maintenance' : 'Attention'}
         </span>
       </div>
 

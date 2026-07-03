@@ -1,13 +1,14 @@
 'use client';
 
-import { type ReactNode, useMemo, useCallback } from 'react';
+import { type ReactNode, useMemo, useCallback, useState } from 'react';
+import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
 import { TableSkeleton } from '@/components/ui/skeleton';
 import { TablePagination } from '@/components/ui/table-pagination';
-import type { DataTableProps, DataTableDensity } from './data-table.types';
+import type { DataTableProps, DataTableDensity, DataTableSortState } from './data-table.types';
 
-export type { DataTableColumn, DataTablePagination, DataTableProps, DataTableDensity, DataTableFilterDef, DataTableFilterOption } from './data-table.types';
+export type { DataTableColumn, DataTablePagination, DataTableProps, DataTableDensity, DataTableFilterDef, DataTableFilterOption, DataTableSortState, DataTableSortDirection } from './data-table.types';
 
 const DENSITY_PADDING: Record<DataTableDensity, string> = {
   compact: 'px-3 py-1.5',
@@ -35,6 +36,8 @@ export function DataTable<T>({
 }: DataTableProps<T>) {
   const getRowKey = rowKey ?? ((row: T) => (row as Record<string, unknown>).id as string);
 
+  const [sort, setSort] = useState<DataTableSortState | null>(null);
+
   const visibleColumns = useMemo(
     () =>
       hiddenColumnKeys && hiddenColumnKeys.size > 0
@@ -43,13 +46,57 @@ export function DataTable<T>({
     [columns, hiddenColumnKeys],
   );
 
+  // Case-insensitive client-side sort
+  const sortedData = useMemo(() => {
+    if (!sort) return data;
+    const col = columns.find((c) => c.key === sort.key);
+    if (!col) return data;
+
+    return [...data].sort((a, b) => {
+      let valA: unknown;
+      let valB: unknown;
+
+      if (col.sortValue) {
+        valA = col.sortValue(a);
+        valB = col.sortValue(b);
+      } else {
+        valA = (a as Record<string, unknown>)[col.key];
+        valB = (b as Record<string, unknown>)[col.key];
+      }
+
+      // Nulls / undefined → push to end
+      if (valA == null && valB == null) return 0;
+      if (valA == null) return 1;
+      if (valB == null) return -1;
+
+      // Numeric comparison
+      if (typeof valA === 'number' && typeof valB === 'number') {
+        return sort.direction === 'asc' ? valA - valB : valB - valA;
+      }
+
+      // Case-insensitive string comparison (localeCompare)
+      const strA = String(valA).toLowerCase();
+      const strB = String(valB).toLowerCase();
+      const cmp = strA.localeCompare(strB);
+      return sort.direction === 'asc' ? cmp : -cmp;
+    });
+  }, [data, sort, columns]);
+
+  const handleSort = useCallback((key: string) => {
+    setSort((prev) => {
+      if (!prev || prev.key !== key) return { key, direction: 'asc' };
+      if (prev.direction === 'asc') return { key, direction: 'desc' };
+      return null; // third click clears sort
+    });
+  }, []);
+
   const showCheckboxes = selectable && selectedKeys && onSelectedKeysChange;
   const colCount = visibleColumns.length + (showCheckboxes ? 1 : 0);
   const padding = DENSITY_PADDING[density];
 
   // Selection helpers
-  const allSelected = showCheckboxes && data.length > 0 && data.every((row) => selectedKeys.has(getRowKey(row)));
-  const someSelected = showCheckboxes && data.some((row) => selectedKeys.has(getRowKey(row)));
+  const allSelected = showCheckboxes && sortedData.length > 0 && sortedData.every((row) => selectedKeys.has(getRowKey(row)));
+  const someSelected = showCheckboxes && sortedData.some((row) => selectedKeys.has(getRowKey(row)));
 
   const handleSelectAll = useCallback(
     (checked: boolean) => {
@@ -93,29 +140,46 @@ export function DataTable<T>({
                   />
                 </th>
               )}
-              {visibleColumns.map((col) => (
-                <th
-                  key={col.key}
-                  className={cn(
-                    'text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap',
-                    padding,
-                    col.align === 'right'
-                      ? 'text-right'
-                      : col.align === 'center'
-                        ? 'text-center'
-                        : 'text-left',
-                    col.className,
-                  )}
-                >
-                  {col.header}
-                </th>
-              ))}
+              {visibleColumns.map((col) => {
+                const isSortable = col.sortable === true;
+                const isSorted = sort?.key === col.key;
+                return (
+                  <th
+                    key={col.key}
+                    className={cn(
+                      'text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap',
+                      padding,
+                      col.align === 'right'
+                        ? 'text-right'
+                        : col.align === 'center'
+                          ? 'text-center'
+                          : 'text-left',
+                      col.className,
+                      isSortable && 'cursor-pointer select-none hover:text-foreground transition-colors',
+                    )}
+                    onClick={isSortable ? () => handleSort(col.key) : undefined}
+                  >
+                    <span className={cn('inline-flex items-center gap-1', isSortable && 'group')}>
+                      {col.header}
+                      {isSortable && (
+                        isSorted ? (
+                          sort.direction === 'asc'
+                            ? <ArrowUp className="h-3 w-3 text-foreground" />
+                            : <ArrowDown className="h-3 w-3 text-foreground" />
+                        ) : (
+                          <ArrowUpDown className="h-3 w-3 opacity-0 group-hover:opacity-50 transition-opacity" />
+                        )
+                      )}
+                    </span>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <TableSkeleton columns={colCount} rows={5} />
-            ) : data.length === 0 ? (
+            ) : sortedData.length === 0 ? (
               <tr>
                 <td
                   colSpan={colCount}
@@ -125,7 +189,7 @@ export function DataTable<T>({
                 </td>
               </tr>
             ) : (
-              data.map((row) => {
+              sortedData.map((row) => {
                 const key = getRowKey(row);
                 const isSelected = showCheckboxes && selectedKeys.has(key);
                 return (

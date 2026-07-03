@@ -1,6 +1,6 @@
 /**
  * Inventory settings domain types -- measurement units, part categories,
- * part locations, and part manufacturers.
+ * and part locations.
  */
 import { ObjectId } from 'mongodb';
 
@@ -68,22 +68,3 @@ export interface CreatePartLocationInput {
   isDefault?: boolean;
 }
 
-// ---------------------------------------------------------------------------
-// Part Manufacturers
-// ---------------------------------------------------------------------------
-export interface PartManufacturer {
-  _id: ObjectId;
-  tenantId: ObjectId;
-  name: string;
-  description?: string;
-  createdBy: ObjectId;
-  updatedBy: ObjectId;
-  createdAt: Date;
-  updatedAt: Date;
-  isArchived: boolean;
-}
-
-export interface CreatePartManufacturerInput {
-  name: string;
-  description?: string;
-}

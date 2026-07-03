@@ -1,20 +1,18 @@
 /**
  * Inventory settings controller -- CRUD for measurement units, part categories,
- * part locations, and part manufacturers.
+ * and part locations.
  */
 import { ObjectId } from 'mongodb';
 import {
   getMeasurementUnitsCollection,
   getPartCategoriesCollection,
   getPartLocationsCollection,
-  getPartManufacturersCollection,
 } from '@/lib/mongodb';
 import { isNonEmptyString } from '@/lib/validation/commonValidators';
 import type {
   CreateMeasurementUnitInput,
   CreatePartCategoryInput,
   CreatePartLocationInput,
-  CreatePartManufacturerInput,
 } from './types';
 
 /** Serialize a settings document. */
@@ -247,66 +245,3 @@ export async function deletePartLocation(tenantId: string, userId: string, id: s
   return result.modifiedCount > 0;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Part Manufacturers
-// ═══════════════════════════════════════════════════════════════════════════
-
-export async function getAllPartManufacturers(tenantId: string, search?: string) {
-  const col = await getPartManufacturersCollection();
-  const filter: Record<string, unknown> = {
-    tenantId: ObjectId.createFromHexString(tenantId),
-    isArchived: { $ne: true },
-  };
-  if (search) {
-    filter.name = { $regex: search, $options: 'i' };
-  }
-  const items = await col.find(filter).sort({ name: 1 }).toArray();
-  return items.map(serialize);
-}
-
-export async function createPartManufacturer(tenantId: string, userId: string, input: CreatePartManufacturerInput) {
-  const errors: Record<string, string> = {};
-  if (!isNonEmptyString(input.name)) errors.name = 'Manufacturer name is required';
-  if (Object.keys(errors).length > 0) return { data: null, error: errors };
-
-  const col = await getPartManufacturersCollection();
-  const now = new Date();
-  const tenantOid = ObjectId.createFromHexString(tenantId);
-  const userOid = ObjectId.createFromHexString(userId);
-
-  const doc = {
-    tenantId: tenantOid,
-    name: input.name.trim(),
-    description: input.description?.trim() || undefined,
-    createdBy: userOid, updatedBy: userOid,
-    createdAt: now, updatedAt: now,
-    isArchived: false,
-  };
-  const result = await col.insertOne(doc);
-  return { data: serialize({ ...doc, _id: result.insertedId }), error: null };
-}
-
-export async function updatePartManufacturer(tenantId: string, userId: string, id: string, input: Partial<CreatePartManufacturerInput>) {
-  const col = await getPartManufacturersCollection();
-  const tenantOid = ObjectId.createFromHexString(tenantId);
-  const itemOid = ObjectId.createFromHexString(id);
-  const existing = await col.findOne({ _id: itemOid, tenantId: tenantOid, isArchived: { $ne: true } });
-  if (!existing) return { data: null, error: 'Not found' };
-
-  const $set: Record<string, unknown> = { updatedBy: ObjectId.createFromHexString(userId), updatedAt: new Date() };
-  if (input.name !== undefined) $set.name = input.name.trim();
-  if (input.description !== undefined) $set.description = input.description?.trim() || undefined;
-
-  await col.updateOne({ _id: itemOid }, { $set });
-  const updated = await col.findOne({ _id: itemOid });
-  return { data: updated ? serialize(updated) : null, error: null };
-}
-
-export async function deletePartManufacturer(tenantId: string, userId: string, id: string) {
-  const col = await getPartManufacturersCollection();
-  const result = await col.updateOne(
-    { _id: ObjectId.createFromHexString(id), tenantId: ObjectId.createFromHexString(tenantId), isArchived: { $ne: true } },
-    { $set: { isArchived: true, archivedAt: new Date(), archivedBy: ObjectId.createFromHexString(userId), updatedAt: new Date() } },
-  );
-  return result.modifiedCount > 0;
-}

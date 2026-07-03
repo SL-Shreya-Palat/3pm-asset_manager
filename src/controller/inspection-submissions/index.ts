@@ -292,7 +292,7 @@ export async function processInspectionSubmission(
     await notifyTenantManagers(tenantId, {
       type: 'defect_created',
       title: `${defectIds.length} new defect${defectIds.length > 1 ? 's' : ''} reported`,
-      body: `${assetLabel} failed inspection "${formTitle}" — ${defectIds.length} defect${defectIds.length > 1 ? 's' : ''} need review.${grounded ? ' Asset marked Out of Service.' : ''}`,
+      body: `${assetLabel} failed inspection "${formTitle}" — ${defectIds.length} defect${defectIds.length > 1 ? 's' : ''} need review.${grounded ? ' Asset marked Under Maintenance.' : ''}`,
       link: '/maintenance/defects',
       entityType: 'inspectionSubmission',
       entityId: submissionId.toString(),

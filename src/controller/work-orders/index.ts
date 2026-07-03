@@ -6,6 +6,7 @@ import {
   getVendorsCollection,
   getTenantMembersCollection,
   getDefectsCollection,
+  getFaultsCollection,
 } from '@/lib/mongodb';
 import type { CreateWorkOrderInput, UpdateWorkOrderInput, WOPart } from './types';
 import { validateCreateWOInput, serializeWorkOrder, generateWONumber } from './utils';
@@ -145,11 +146,19 @@ export async function createWorkOrder(
     assigneeName = input.thirdPartyName?.trim() || '';
   }
 
-  // Source + linked defects (a defect-raised WO corrects one or more defects).
-  const source = input.source === 'defect' ? 'defect' : 'manual';
+  // Source + linked defects/faults.
   const defectOids = (Array.isArray(input.defectIds) ? input.defectIds : [])
     .filter((id) => ObjectId.isValid(id))
     .map((id) => ObjectId.createFromHexString(id));
+  const faultOids = (Array.isArray(input.faultIds) ? input.faultIds : [])
+    .filter((id) => ObjectId.isValid(id))
+    .map((id) => ObjectId.createFromHexString(id));
+
+  // Determine source: fault > defect > passed-in/manual
+  let source: string = input.source || 'manual';
+  if (faultOids.length > 0 && source !== 'defect') source = 'fault';
+  else if (defectOids.length > 0) source = 'defect';
+  if (!['manual', 'defect', 'fault'].includes(source)) source = 'manual';
 
   // Parts → denormalized lines + total (stock deducted after insert).
   const { parts, partsCost } = await resolveWorkOrderParts(tenantOid, input.parts);
@@ -162,6 +171,7 @@ export async function createWorkOrder(
     serviceTaskIds: (input.serviceTaskIds || []).map((id) => ObjectId.createFromHexString(id)),
     source,
     defectIds: defectOids,
+    faultIds: faultOids,
     assigneeType: input.assigneeType,
     assigneeId,
     assigneeName,
@@ -213,6 +223,23 @@ export async function createWorkOrder(
     const defectsCol = await getDefectsCollection();
     await defectsCol.updateMany(
       { _id: { $in: defectOids }, tenantId: tenantOid, isArchived: { $ne: true } },
+      {
+        $set: {
+          status: 'in_progress',
+          workOrderId: result.insertedId,
+          workOrderNumber,
+          updatedBy: userOid,
+          updatedAt: now,
+        },
+      },
+    );
+  }
+
+  // Link faults → mark in_progress + back-reference this WO.
+  if (faultOids.length > 0) {
+    const faultsCol = await getFaultsCollection();
+    await faultsCol.updateMany(
+      { _id: { $in: faultOids }, tenantId: tenantOid, isArchived: { $ne: true } },
       {
         $set: {
           status: 'in_progress',
@@ -545,6 +572,16 @@ export async function completeWorkOrder(
     );
   }
 
+  // 2b) Resolve linked faults → resolved.
+  const faultOids = Array.isArray(wo.faultIds) ? (wo.faultIds as ObjectId[]) : [];
+  if (faultOids.length > 0) {
+    const faultsCol = await getFaultsCollection();
+    await faultsCol.updateMany(
+      { _id: { $in: faultOids }, tenantId: tenantOid, isArchived: { $ne: true } },
+      { $set: { status: 'resolved', updatedBy: userOid, updatedAt: now } },
+    );
+  }
+
   // 3) Return the asset to service.
   if (wo.assetId) {
     const assetsCol = await getAssetsCollection();
@@ -581,7 +618,7 @@ export async function completeWorkOrder(
   await notifyTenantManagers(tenantId, {
     type: 'work_order_completed',
     title: `Work order ${wo.workOrderNumber} completed`,
-    body: `${(wo.assetName as string) || 'Asset'} — ${wo.workOrderNumber} completed${defectOids.length ? `, ${defectOids.length} defect(s) corrected` : ''}.`,
+    body: `${(wo.assetName as string) || 'Asset'} — ${wo.workOrderNumber} completed${defectOids.length ? `, ${defectOids.length} defect(s) corrected` : ''}${faultOids.length ? `, ${faultOids.length} fault(s) resolved` : ''}.`,
     link: '/maintenance/work-orders',
     entityType: 'workOrder',
     entityId: woId,
