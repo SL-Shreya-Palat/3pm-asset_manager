@@ -6,7 +6,6 @@ import {
   getVendorsCollection,
   getTenantMembersCollection,
   getDefectsCollection,
-  getFaultsCollection,
 } from '@/lib/mongodb';
 import type { CreateWorkOrderInput, UpdateWorkOrderInput, WOPart } from './types';
 import { validateCreateWOInput, serializeWorkOrder, generateWONumber } from './utils';
@@ -235,11 +234,11 @@ export async function createWorkOrder(
     );
   }
 
-  // Link faults → mark in_progress + back-reference this WO.
+  // Link faults (stored in defects collection with source='fault') → mark in_progress + back-reference this WO.
   if (faultOids.length > 0) {
-    const faultsCol = await getFaultsCollection();
-    await faultsCol.updateMany(
-      { _id: { $in: faultOids }, tenantId: tenantOid, isArchived: { $ne: true } },
+    const defectsCol2 = await getDefectsCollection();
+    await defectsCol2.updateMany(
+      { _id: { $in: faultOids }, tenantId: tenantOid, isArchived: { $ne: true }, source: 'fault' },
       {
         $set: {
           status: 'in_progress',
@@ -572,13 +571,13 @@ export async function completeWorkOrder(
     );
   }
 
-  // 2b) Resolve linked faults → resolved.
+  // 2b) Resolve linked faults (stored in defects collection) → corrected.
   const faultOids = Array.isArray(wo.faultIds) ? (wo.faultIds as ObjectId[]) : [];
   if (faultOids.length > 0) {
-    const faultsCol = await getFaultsCollection();
-    await faultsCol.updateMany(
-      { _id: { $in: faultOids }, tenantId: tenantOid, isArchived: { $ne: true } },
-      { $set: { status: 'resolved', updatedBy: userOid, updatedAt: now } },
+    const defectsCol2 = await getDefectsCollection();
+    await defectsCol2.updateMany(
+      { _id: { $in: faultOids }, tenantId: tenantOid, isArchived: { $ne: true }, source: 'fault' },
+      { $set: { status: 'corrected', updatedBy: userOid, updatedAt: now } },
     );
   }
 

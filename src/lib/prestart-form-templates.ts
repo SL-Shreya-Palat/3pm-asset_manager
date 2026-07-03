@@ -198,61 +198,60 @@ function page(
 
 function buildLightVehicleForm() {
   const headerFields = [
-    textField('Unit Number', { required: true, placeholder: 'e.g. LV-001' }),
-    textField('Operator', { required: true, placeholder: 'Full name' }),
-    datetimeField('Date & Time', { required: true }),
-    numberField('Odometer (km)', { required: true, placeholder: '0', min: 0, fieldKey: 'odometer_km' }),
+    textField('Unit Number', { placeholder: 'e.g. LV-001' }),
+    datetimeField('Date & Time'),
+    numberField('Odometer (km)', { placeholder: '0', min: 0, fieldKey: 'odometer_km' }),
   ];
 
   // ── Exterior & body ─────────────────────────────────────────────────────
   const exteriorFields = [
-    radioField('Body condition & panels', passFailNa(), { required: true }),
-    radioField('Lights & indicators', passFailNa(), { required: true }),
-    radioField('Tyres — tread & pressure', passFailNa(), { required: true }),
-    radioField('Wheels & wheel nuts', passFailNa(), { required: true }),
-    radioField('Mirrors (all)', passFailNa(), { required: true }),
-    radioField('Windscreen & wipers', passFailNa(), { required: true }),
-    radioField('Number plates & registration', passFailNa(), { required: true }),
+    radioField('Body condition & panels', passFailNa()),
+    radioField('Lights & indicators', passFailNa()),
+    radioField('Tyres — tread & pressure', passFailNa()),
+    radioField('Wheels & wheel nuts', passFailNa()),
+    radioField('Mirrors (all)', passFailNa()),
+    radioField('Windscreen & wipers', passFailNa()),
+    radioField('Number plates & registration', passFailNa()),
   ];
 
   // ── Under hood & mechanical ─────────────────────────────────────────────
   const mechanicalFields = [
-    radioField('Engine oil level', passFailNa(), { required: true }),
-    radioField('Coolant level', passFailNa(), { required: true }),
-    radioField('Brake fluid level', passFailNa(), { required: true }),
-    radioField('Power steering fluid', passFailNa(), { required: true }),
-    radioField('Windscreen washer fluid', passFailNa(), { required: true }),
-    radioField('No visible leaks', passFailNa(), { required: true }),
-    radioField('Belts & hoses condition', passFailNa(), { required: true }),
-    radioField('Battery terminals secure', passFailNa(), { required: true }),
+    radioField('Engine oil level', passFailNa()),
+    radioField('Coolant level', passFailNa()),
+    radioField('Brake fluid level', passFailNa()),
+    radioField('Power steering fluid', passFailNa()),
+    radioField('Windscreen washer fluid', passFailNa()),
+    radioField('No visible leaks', passFailNa()),
+    radioField('Belts & hoses condition', passFailNa()),
+    radioField('Battery terminals secure', passFailNa()),
   ];
 
   // ── Cab / interior ──────────────────────────────────────────────────────
   const interiorFields = [
-    radioField('Seatbelts', passFailNa(), { required: true }),
-    radioField('Horn', passFailNa(), { required: true }),
-    radioField('Brakes (pedal feel)', passFailNa(), { required: true }),
-    radioField('Park brake', passFailNa(), { required: true }),
-    radioField('Steering', passFailNa(), { required: true }),
-    radioField('Dashboard warning lights', passFailNa(), { required: true }),
-    radioField('Gauges & instruments', passFailNa(), { required: true }),
-    radioField('Air conditioning / heating', passFailNa(), { required: true }),
+    radioField('Seatbelts', passFailNa()),
+    radioField('Horn', passFailNa()),
+    radioField('Brakes (pedal feel)', passFailNa()),
+    radioField('Park brake', passFailNa()),
+    radioField('Steering', passFailNa()),
+    radioField('Dashboard warning lights', passFailNa()),
+    radioField('Gauges & instruments', passFailNa()),
+    radioField('Air conditioning / heating', passFailNa()),
   ];
 
   // ── Safety equipment ────────────────────────────────────────────────────
   const safetyFields = [
-    radioField('Fire extinguisher (charged & accessible)', passFailNa(), { required: true, fieldKey: 'fire_extinguisher' }),
-    radioField('First aid kit', passFailNa(), { required: true }),
-    radioField('Warning triangle / hazard equipment', passFailNa(), { required: true, fieldKey: 'warning_triangle' }),
-    radioField('Exhaust & emissions', passFailNa(), { required: true }),
+    radioField('Fire extinguisher (charged & accessible)', passFailNa(), { fieldKey: 'fire_extinguisher' }),
+    radioField('First aid kit', passFailNa()),
+    radioField('Warning triangle / hazard equipment', passFailNa(), { fieldKey: 'warning_triangle' }),
+    radioField('Exhaust & emissions', passFailNa()),
   ];
 
   // ── Sign-off ────────────────────────────────────────────────────────────
   const signoffFields = [
     textareaField('Faults / comments', { placeholder: 'Describe any faults or issues observed...', fieldKey: 'faults_comments' }),
     imageField('Photos', { multiple: true }),
-    toggleField('Safe to operate', { required: true, fieldKey: 'safe_to_operate' }),
-    signatureField('Operator signature', { required: true, fieldKey: 'signature' }),
+    toggleField('Safe to operate', { fieldKey: 'safe_to_operate' }),
+    signatureField('Operator signature', { fieldKey: 'signature' }),
   ];
 
   return {
@@ -279,80 +278,80 @@ function buildLightVehicleForm() {
 
 function buildHeavyVehicleForm() {
   const headerFields = [
-    textField('Unit Number', { required: true, placeholder: 'e.g. HV-010' }),
-    datetimeField('Date & Time', { required: true }),
-    numberField('Odometer (km)', { required: true, placeholder: '0', min: 0, fieldKey: 'odometer_km' }),
+    textField('Unit Number', { placeholder: 'e.g. HV-010' }),
+    datetimeField('Date & Time'),
+    numberField('Odometer (km)', { placeholder: '0', min: 0, fieldKey: 'odometer_km' }),
     numberField('Engine Hours', { placeholder: '0', min: 0 }),
   ];
 
   // ── Engine compartment ──────────────────────────────────────────────────
   const engineFields = [
-    radioField('Engine oil level', passFailNa(), { required: true }),
-    radioField('Coolant level', passFailNa(), { required: true }),
-    radioField('Power steering fluid', passFailNa(), { required: true }),
-    radioField('Windscreen washer fluid', passFailNa(), { required: true }),
-    radioField('Belts & hoses condition', passFailNa(), { required: true }),
-    radioField('Battery condition & terminals', passFailNa(), { required: true, fieldKey: 'battery_condition' }),
-    radioField('No visible leaks', passFailNa(), { required: true }),
-    radioField('Exhaust system & DPF', passFailNa(), { required: true, fieldKey: 'exhaust_dpf' }),
+    radioField('Engine oil level', passFailNa()),
+    radioField('Coolant level', passFailNa()),
+    radioField('Power steering fluid', passFailNa()),
+    radioField('Windscreen washer fluid', passFailNa()),
+    radioField('Belts & hoses condition', passFailNa()),
+    radioField('Battery condition & terminals', passFailNa(), { fieldKey: 'battery_condition' }),
+    radioField('No visible leaks', passFailNa()),
+    radioField('Exhaust system & DPF', passFailNa(), { fieldKey: 'exhaust_dpf' }),
   ];
 
   // ── Exterior & body ─────────────────────────────────────────────────────
   const exteriorFields = [
-    radioField('Body & chassis condition', passFailNa(), { required: true, fieldKey: 'body_chassis' }),
-    radioField('Lights, indicators & reflectors', passFailNa(), { required: true }),
-    radioField('Tyres — tread & pressure (all axles)', passFailNa(), { required: true, fieldKey: 'tyres_all_axles' }),
-    radioField('Wheels & wheel nuts', passFailNa(), { required: true }),
-    radioField('Mirrors (all)', passFailNa(), { required: true }),
-    radioField('Windscreen & wipers', passFailNa(), { required: true }),
-    radioField('Mud flaps & splash guards', passFailNa(), { required: true, fieldKey: 'mud_flaps' }),
-    radioField('Number plates & registration', passFailNa(), { required: true }),
+    radioField('Body & chassis condition', passFailNa(), { fieldKey: 'body_chassis' }),
+    radioField('Lights, indicators & reflectors', passFailNa()),
+    radioField('Tyres — tread & pressure (all axles)', passFailNa(), { fieldKey: 'tyres_all_axles' }),
+    radioField('Wheels & wheel nuts', passFailNa()),
+    radioField('Mirrors (all)', passFailNa()),
+    radioField('Windscreen & wipers', passFailNa()),
+    radioField('Mud flaps & splash guards', passFailNa(), { fieldKey: 'mud_flaps' }),
+    radioField('Number plates & registration', passFailNa()),
   ];
 
   // ── Brakes ──────────────────────────────────────────────────────────────
   const brakeFields = [
-    radioField('Service brakes', passFailNa(), { required: true }),
-    radioField('Air brakes — pressure build-up', passFailNa(), { required: true, fieldKey: 'air_brakes_pressure' }),
-    radioField('Air brakes — leak test', passFailNa(), { required: true, fieldKey: 'air_brakes_leak' }),
-    radioField('Park brake', passFailNa(), { required: true }),
-    radioField('Low-pressure warning', passFailNa(), { required: true, fieldKey: 'low_pressure_warning' }),
-    radioField('Brake lines & hoses', passFailNa(), { required: true }),
+    radioField('Service brakes', passFailNa()),
+    radioField('Air brakes — pressure build-up', passFailNa(), { fieldKey: 'air_brakes_pressure' }),
+    radioField('Air brakes — leak test', passFailNa(), { fieldKey: 'air_brakes_leak' }),
+    radioField('Park brake', passFailNa()),
+    radioField('Low-pressure warning', passFailNa(), { fieldKey: 'low_pressure_warning' }),
+    radioField('Brake lines & hoses', passFailNa()),
   ];
 
   // ── Cab / interior ──────────────────────────────────────────────────────
   const interiorFields = [
-    radioField('Seatbelts', passFailNa(), { required: true }),
-    radioField('Horn', passFailNa(), { required: true }),
-    radioField('Reversing alarm / camera', passFailNa(), { required: true, fieldKey: 'reversing_alarm_camera' }),
-    radioField('Steering play', passFailNa(), { required: true }),
-    radioField('Dashboard warning lights', passFailNa(), { required: true }),
-    radioField('Gauges & instruments', passFailNa(), { required: true }),
-    radioField('Air conditioning / heating', passFailNa(), { required: true }),
+    radioField('Seatbelts', passFailNa()),
+    radioField('Horn', passFailNa()),
+    radioField('Reversing alarm / camera', passFailNa(), { fieldKey: 'reversing_alarm_camera' }),
+    radioField('Steering play', passFailNa()),
+    radioField('Dashboard warning lights', passFailNa()),
+    radioField('Gauges & instruments', passFailNa()),
+    radioField('Air conditioning / heating', passFailNa()),
   ];
 
   // ── Coupling & load (trailer) ───────────────────────────────────────────
   const couplingFields = [
-    radioField('Coupling / tow connection secure', passFailNa(), { required: true, fieldKey: 'coupling_connection' }),
-    radioField('Air & electrical lines connected', passFailNa(), { required: true, fieldKey: 'air_electrical_lines' }),
-    radioField('Trailer brakes operational', passFailNa(), { required: true }),
-    radioField('Load restraint equipment', passFailNa(), { required: true }),
-    radioField('Load distribution & securing', passFailNa(), { required: true, fieldKey: 'load_securing' }),
+    radioField('Coupling / tow connection secure', passFailNa(), { fieldKey: 'coupling_connection' }),
+    radioField('Air & electrical lines connected', passFailNa(), { fieldKey: 'air_electrical_lines' }),
+    radioField('Trailer brakes operational', passFailNa()),
+    radioField('Load restraint equipment', passFailNa()),
+    radioField('Load distribution & securing', passFailNa(), { fieldKey: 'load_securing' }),
   ];
 
   // ── Safety equipment ────────────────────────────────────────────────────
   const safetyFields = [
-    radioField('Fire extinguisher (charged & accessible)', passFailNa(), { required: true, fieldKey: 'fire_extinguisher' }),
-    radioField('First aid kit', passFailNa(), { required: true }),
-    radioField('Warning triangle / hazard equipment', passFailNa(), { required: true, fieldKey: 'warning_triangle' }),
-    radioField('Spill kit', passFailNa(), { required: true }),
+    radioField('Fire extinguisher (charged & accessible)', passFailNa(), { fieldKey: 'fire_extinguisher' }),
+    radioField('First aid kit', passFailNa()),
+    radioField('Warning triangle / hazard equipment', passFailNa(), { fieldKey: 'warning_triangle' }),
+    radioField('Spill kit', passFailNa()),
   ];
 
   // ── Sign-off ────────────────────────────────────────────────────────────
   const signoffFields = [
     textareaField('Faults / comments', { placeholder: 'Describe any faults or issues observed...', fieldKey: 'faults_comments' }),
     imageField('Photos', { multiple: true }),
-    toggleField('Safe to operate', { required: true, fieldKey: 'safe_to_operate' }),
-    signatureField('Operator signature', { required: true, fieldKey: 'signature' }),
+    toggleField('Safe to operate', { fieldKey: 'safe_to_operate' }),
+    signatureField('Operator signature', { fieldKey: 'signature' }),
   ];
 
   return {
@@ -382,61 +381,60 @@ function buildHeavyVehicleForm() {
 
 function buildPlantExcavatorForm() {
   const headerFields = [
-    textField('Unit Number', { required: true, placeholder: 'e.g. EX-005' }),
-    textField('Operator', { required: true, placeholder: 'Full name' }),
-    datetimeField('Date & Time', { required: true }),
-    numberField('Engine Hours', { required: true, placeholder: '0', min: 0 }),
+    textField('Unit Number', { placeholder: 'e.g. EX-005' }),
+    datetimeField('Date & Time'),
+    numberField('Engine Hours', { placeholder: '0', min: 0 }),
   ];
 
   // ── Engine & fluids ─────────────────────────────────────────────────────
   const engineFields = [
-    radioField('Engine oil level', passFailNa(), { required: true }),
-    radioField('Coolant level', passFailNa(), { required: true }),
-    radioField('Hydraulic fluid level', passFailNa(), { required: true }),
-    radioField('Fuel level sufficient', passFailNa(), { required: true }),
-    radioField('No visible leaks', passFailNa(), { required: true }),
-    radioField('Air filter / pre-cleaner', passFailNa(), { required: true, fieldKey: 'air_filter' }),
-    radioField('Dashboard gauges normal', passFailNa(), { required: true }),
+    radioField('Engine oil level', passFailNa()),
+    radioField('Coolant level', passFailNa()),
+    radioField('Hydraulic fluid level', passFailNa()),
+    radioField('Fuel level sufficient', passFailNa()),
+    radioField('No visible leaks', passFailNa()),
+    radioField('Air filter / pre-cleaner', passFailNa(), { fieldKey: 'air_filter' }),
+    radioField('Dashboard gauges normal', passFailNa()),
   ];
 
   // ── Undercarriage & structure ───────────────────────────────────────────
   const undercarriageFields = [
-    radioField('Tracks / tyres & undercarriage', passFailNa(), { required: true }),
-    radioField('Track tension & alignment', passFailNa(), { required: true }),
-    radioField('Chassis & frame condition', passFailNa(), { required: true }),
-    radioField('Swing bearing & bolts', passFailNa(), { required: true }),
-    radioField('Ground-engaging tools (GET)', passFailNa(), { required: true, fieldKey: 'ground_engaging_tools' }),
+    radioField('Tracks / tyres & undercarriage', passFailNa()),
+    radioField('Track tension & alignment', passFailNa()),
+    radioField('Chassis & frame condition', passFailNa()),
+    radioField('Swing bearing & bolts', passFailNa()),
+    radioField('Ground-engaging tools (GET)', passFailNa(), { fieldKey: 'ground_engaging_tools' }),
   ];
 
   // ── Hydraulics & boom ───────────────────────────────────────────────────
   const hydraulicFields = [
-    radioField('Hydraulic hoses & rams', passFailNa(), { required: true }),
-    radioField('Boom & arm condition', passFailNa(), { required: true }),
-    radioField('Attachment / bucket pins secure', passFailNa(), { required: true }),
-    radioField('Quick hitch / coupler', passFailNa(), { required: true }),
-    radioField('Cylinder pins & bushes', passFailNa(), { required: true }),
-    radioField('Hydraulic controls function', passFailNa(), { required: true }),
+    radioField('Hydraulic hoses & rams', passFailNa()),
+    radioField('Boom & arm condition', passFailNa()),
+    radioField('Attachment / bucket pins secure', passFailNa()),
+    radioField('Quick hitch / coupler', passFailNa()),
+    radioField('Cylinder pins & bushes', passFailNa()),
+    radioField('Hydraulic controls function', passFailNa()),
   ];
 
   // ── Cab & safety ────────────────────────────────────────────────────────
   const cabFields = [
-    radioField('ROPS / FOPS structure', passFailNa(), { required: true, fieldKey: 'rops_fops' }),
-    radioField('Cabin condition & glass', passFailNa(), { required: true }),
-    radioField('Seatbelt', passFailNa(), { required: true }),
-    radioField('Mirrors & visibility', passFailNa(), { required: true }),
-    radioField('Horn', passFailNa(), { required: true }),
-    radioField('Reversing alarm / camera', passFailNa(), { required: true, fieldKey: 'reversing_alarm' }),
-    radioField('Lights & beacon', passFailNa(), { required: true }),
-    radioField('Guards & safety devices', passFailNa(), { required: true }),
-    radioField('Fire extinguisher (charged & accessible)', passFailNa(), { required: true, fieldKey: 'fire_extinguisher' }),
+    radioField('ROPS / FOPS structure', passFailNa(), { fieldKey: 'rops_fops' }),
+    radioField('Cabin condition & glass', passFailNa()),
+    radioField('Seatbelt', passFailNa()),
+    radioField('Mirrors & visibility', passFailNa()),
+    radioField('Horn', passFailNa()),
+    radioField('Reversing alarm / camera', passFailNa(), { fieldKey: 'reversing_alarm' }),
+    radioField('Lights & beacon', passFailNa()),
+    radioField('Guards & safety devices', passFailNa()),
+    radioField('Fire extinguisher (charged & accessible)', passFailNa(), { fieldKey: 'fire_extinguisher' }),
   ];
 
   // ── Sign-off ────────────────────────────────────────────────────────────
   const signoffFields = [
     textareaField('Faults / comments', { placeholder: 'Describe any faults or issues observed...', fieldKey: 'faults_comments' }),
     imageField('Photos', { multiple: true }),
-    toggleField('Safe to operate', { required: true, fieldKey: 'safe_to_operate' }),
-    signatureField('Operator signature', { required: true, fieldKey: 'signature' }),
+    toggleField('Safe to operate', { fieldKey: 'safe_to_operate' }),
+    signatureField('Operator signature', { fieldKey: 'signature' }),
   ];
 
   return {
@@ -561,20 +559,25 @@ function buildDriverWellnessForm() {
         briefing_received: ['no'],
       } as Record<string, string[]>,
       severityByField: {
-        fatigue_level: 'critical' as SeverityValue,
-        alcohol_consumed: 'critical' as SeverityValue,
-        drugs_medication: 'critical' as SeverityValue,
-        vision_hearing: 'critical' as SeverityValue,
-        physical_fitness: 'critical' as SeverityValue,
-        sleep_hours: 'non_critical' as SeverityValue,
-        medical_condition: 'non_critical' as SeverityValue,
-        mental_wellbeing: 'non_critical' as SeverityValue,
-        ppe_worn: 'non_critical' as SeverityValue,
-        briefing_received: 'non_critical' as SeverityValue,
+        fatigue_level: 'high' as SeverityValue,
+        alcohol_consumed: 'high' as SeverityValue,
+        drugs_medication: 'high' as SeverityValue,
+        vision_hearing: 'high' as SeverityValue,
+        physical_fitness: 'high' as SeverityValue,
+        sleep_hours: 'low' as SeverityValue,
+        medical_condition: 'medium' as SeverityValue,
+        mental_wellbeing: 'medium' as SeverityValue,
+        ppe_worn: 'medium' as SeverityValue,
+        briefing_received: 'low' as SeverityValue,
       } as Record<string, SeverityValue>,
     },
   };
 }
+
+// ── schema version ───────────────────────────────────────────────────────────
+// Bump this whenever template schemas change so the auto-update mechanism
+// detects stale forms and re-publishes them.
+export const PRESTART_TEMPLATE_SCHEMA_VERSION = 2;
 
 // ── public API ───────────────────────────────────────────────────────────────
 
@@ -628,7 +631,7 @@ const BAD_OPTION_VALUES = new Set([
   'unsafe', 'faulty', 'poor', 'bad', 'leaking', 'broken', 'low',
 ]);
 
-/** Items whose failure is safety-critical → seeded with `critical` severity. */
+/** Items whose failure is safety-critical → seeded with `high` severity. */
 const CRITICAL_LABEL_RE =
   /\b(brake|steering|tyre|tire|seat\s?belt|coupling|tow|wheel|suspension|emergency|fire|hydraulic|rops|fops|horn)\b/i;
 
@@ -641,7 +644,7 @@ export interface DerivedDefectSettings {
 
 /**
  * Derive default defect settings from a template: for every choice item that
- * has a "bad" option (e.g. Fail), mark that value as a defect, with critical
+ * has a "bad" option (e.g. Fail), mark that value as a defect, with high
  * severity for safety-critical items.
  */
 export function deriveDefectSettingsFromTemplate(
@@ -667,8 +670,8 @@ export function deriveDefectSettingsFromTemplate(
 
       defectAnswers[field.fieldKey] = bad;
       severityByField[field.fieldKey] = CRITICAL_LABEL_RE.test(field.label || '')
-        ? 'critical'
-        : 'non_critical';
+        ? 'high'
+        : 'low';
     }
   };
 

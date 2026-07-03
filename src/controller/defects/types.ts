@@ -12,7 +12,7 @@ export const DEFECT_PRIORITIES = ['high', 'medium', 'low'] as const;
 export type DefectPriority = (typeof DEFECT_PRIORITIES)[number];
 
 /** Defect severity values. */
-export const DEFECT_SEVERITIES = ['critical', 'non_critical'] as const;
+export const DEFECT_SEVERITIES = ['high', 'medium', 'low'] as const;
 export type DefectSeverity = (typeof DEFECT_SEVERITIES)[number];
 
 /** File attachment on a defect. */
@@ -70,6 +70,8 @@ export interface CreateDefectInput {
   priority: string;
   severity?: string;
   status?: string;
+  source?: string; // 'manual' | 'fault' | 'prestart_inspection'
+  faultId?: string; // links back to originating fault
   attachments?: Array<{
     url: string;
     filename: string;

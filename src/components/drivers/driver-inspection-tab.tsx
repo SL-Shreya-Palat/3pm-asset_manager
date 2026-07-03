@@ -61,7 +61,7 @@ interface InspectionDefect {
   fieldKey: string;
   label: string;
   answer: string | string[];
-  severity: 'critical' | 'non_critical';
+  severity: 'high' | 'medium' | 'low';
 }
 
 interface InspectionSubmission {
@@ -225,7 +225,7 @@ export function DriverInspectionTab({ driverId }: { driverId: string }) {
                             className={cn(
                               'rounded-lg border p-3 text-sm',
                               isDefect
-                                ? defect?.severity === 'critical'
+                                ? defect?.severity === 'high'
                                   ? 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950'
                                   : 'border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950'
                                 : 'bg-card',
@@ -240,10 +240,10 @@ export function DriverInspectionTab({ driverId }: { driverId: string }) {
                               </p>
                               {isDefect && defect && (
                                 <Badge
-                                  variant={defect.severity === 'critical' ? 'destructive' : 'warning'}
+                                  variant={defect.severity === 'high' ? 'destructive' : 'warning'}
                                   className="text-[10px] px-1.5 py-0"
                                 >
-                                  {defect.severity === 'critical' ? 'Critical' : 'Concern'}
+                                  {defect.severity === 'high' ? 'High' : defect.severity === 'medium' ? 'Medium' : 'Low'}
                                 </Badge>
                               )}
                             </div>
@@ -266,10 +266,10 @@ export function DriverInspectionTab({ driverId }: { driverId: string }) {
                         return (
                           <div key={i} className="flex items-center gap-2 text-sm">
                             <Badge
-                              variant={d.severity === 'critical' ? 'destructive' : 'warning'}
+                              variant={d.severity === 'high' ? 'destructive' : d.severity === 'medium' ? 'warning' : 'outline'}
                               className="text-[10px] px-1.5 py-0 shrink-0"
                             >
-                              {d.severity === 'critical' ? 'Critical' : 'Non-critical'}
+                              {d.severity === 'high' ? 'High' : d.severity === 'medium' ? 'Medium' : 'Low'}
                             </Badge>
                             <span className="text-foreground">
                               {d.label} — {VALUE_LABELS[String(answerStr)] || answerStr}

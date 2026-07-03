@@ -1,11 +1,12 @@
 /**
  * Fault validation & serialization utilities.
+ *
+ * Faults are now stored in the defects collection with source='fault'.
+ * This module maps between the fault API format and the defect document format.
  */
 import { isNonEmptyString, isValidObjectId, isEnumMember } from '@/lib/validation/commonValidators';
-import { getCountersCollection } from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
 import {
-  FAULT_STATUSES,
   FAULT_PRIORITIES,
   FAULT_CATEGORIES,
   REPORTED_BY_TYPES,
@@ -17,6 +18,26 @@ export interface ValidationResult {
   errors: Record<string, string>;
 }
 
+// ─── Status mapping ──────────────────────────────────────────────────────────
+
+/** Map fault status → defect status (for writes). */
+export const FAULT_TO_DEFECT_STATUS: Record<string, string> = {
+  open: 'new',
+  in_progress: 'in_progress',
+  resolved: 'corrected',
+  wont_fix: 'no_correction_needed',
+};
+
+/** Map defect status → fault status (for reads). */
+export const DEFECT_TO_FAULT_STATUS: Record<string, string> = {
+  new: 'open',
+  in_progress: 'in_progress',
+  corrected: 'resolved',
+  no_correction_needed: 'wont_fix',
+};
+
+// ─── Validation ──────────────────────────────────────────────────────────────
+
 /** Validate create-fault input. */
 export function validateCreateFaultInput(input: CreateFaultInput): ValidationResult {
   const errors: Record<string, string> = {};
@@ -27,9 +48,7 @@ export function validateCreateFaultInput(input: CreateFaultInput): ValidationRes
     errors.title = 'Fault title must be at most 200 characters';
   }
 
-  if (!isNonEmptyString(input.description)) {
-    errors.description = 'Description is required';
-  } else if (input.description.trim().length > 2000) {
+  if (input.description && input.description.trim().length > 2000) {
     errors.description = 'Description must be at most 2000 characters';
   }
 
@@ -51,18 +70,26 @@ export function validateCreateFaultInput(input: CreateFaultInput): ValidationRes
     errors.reportedById = 'Reporter is required';
   }
 
-  if (!isEnumMember(input.category, FAULT_CATEGORIES)) {
+  if (input.category && !isEnumMember(input.category, FAULT_CATEGORIES)) {
     errors.category = `Category must be one of: ${FAULT_CATEGORIES.join(', ')}`;
   }
 
-  if (!isEnumMember(input.priority, FAULT_PRIORITIES)) {
+  if (input.priority && !isEnumMember(input.priority, FAULT_PRIORITIES)) {
     errors.priority = `Priority must be one of: ${FAULT_PRIORITIES.join(', ')}`;
   }
 
   return { valid: Object.keys(errors).length === 0, errors };
 }
 
-/** Serialize a fault document for API response. */
+// ─── Serialization ───────────────────────────────────────────────────────────
+
+/**
+ * Serialize a defect document (source='fault') into the fault API response
+ * format expected by the faults page.
+ *
+ * Field mapping: defectNumber→faultNumber, name→title, comment→description,
+ * date→reportedAt, status mapped via DEFECT_TO_FAULT_STATUS.
+ */
 export function serializeFault(
   doc: Record<string, unknown>,
   extra?: { assetName?: string; reportedByName?: string; teamNames?: string[] },
@@ -71,21 +98,23 @@ export function serializeFault(
     ? (doc.teamIds as ObjectId[]).map((id) => id.toString())
     : [];
 
+  const rawStatus = String(doc.status || 'new');
+
   return {
     id: doc._id?.toString(),
-    faultNumber: doc.faultNumber,
-    title: doc.title,
-    description: doc.description,
-    reportedAt: doc.reportedAt ? (doc.reportedAt as Date).toISOString() : null,
+    faultNumber: doc.defectNumber,
+    title: doc.name,
+    description: doc.comment,
+    reportedAt: doc.date ? (doc.date as Date).toISOString() : null,
     assetId: doc.assetId?.toString(),
-    assetName: extra?.assetName ?? '',
-    reportedByType: doc.reportedByType,
+    assetName: extra?.assetName ?? (doc.assetName as string) ?? '',
+    reportedByType: doc.reportedByType ?? 'member',
     reportedById: doc.reportedById ? (doc.reportedById as ObjectId).toString() : null,
     reportedByName: extra?.reportedByName ?? '',
-    category: doc.category,
+    category: doc.category ?? 'other',
     priority: doc.priority,
     severity: doc.severity,
-    status: doc.status,
+    status: DEFECT_TO_FAULT_STATUS[rawStatus] || rawStatus,
     meterType: doc.meterType ?? null,
     meterReading: doc.meterReading ?? null,
     takeOutOfService: doc.takeOutOfService ?? false,
@@ -107,16 +136,4 @@ export function serializeFault(
     updatedAt: doc.updatedAt ? (doc.updatedAt as Date).toISOString() : null,
     isArchived: doc.isArchived ?? false,
   };
-}
-
-/** Generate the next fault number (FLT-0001) using the atomic counter. */
-export async function generateFaultNumber(tenantId: string): Promise<string> {
-  const counters = await getCountersCollection();
-  const result = await counters.findOneAndUpdate(
-    { _id: `fault_${tenantId}` as unknown as ObjectId },
-    { $inc: { seq: 1 } },
-    { upsert: true, returnDocument: 'after' },
-  );
-  const seq = (result?.seq as number) || 1;
-  return `FLT-${String(seq).padStart(4, '0')}`;
 }

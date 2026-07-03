@@ -73,7 +73,7 @@ export interface DefectRow {
   driverId?: string | null;
   driverName?: string | null;
   priority: 'high' | 'medium' | 'low';
-  severity: 'critical' | 'non_critical';
+  severity: 'high' | 'medium' | 'low';
   status: 'new' | 'in_progress' | 'corrected' | 'no_correction_needed';
   teamIds: string[];
   teamNames: string[];

@@ -142,7 +142,8 @@ export default function AssetDetailPage() {
     setFormsLoading(true);
     try {
       const res = await axios.get('/api/forms?includeSchema=false', { withCredentials: true });
-      setFormsList(res.data.data?.items || []);
+      const allForms = res.data.data?.items || [];
+      setFormsList(allForms.filter((f: { title: string }) => !f.title?.toLowerCase().includes('driver wellness')));
     } catch { setFormsList([]); }
     finally { setFormsLoading(false); }
   }, []);

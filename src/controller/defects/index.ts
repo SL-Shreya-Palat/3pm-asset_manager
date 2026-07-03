@@ -19,7 +19,7 @@ import {
 
 export async function getAllDefects(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; status?: string; priority?: string; severity?: string; teamId?: string; assetId?: string },
+  options: { page?: number; limit?: number; search?: string; status?: string; priority?: string; severity?: string; teamId?: string; assetId?: string; source?: string },
 ) {
   const collection = await getDefectsCollection();
   const page = Math.max(1, options.page || 1);
@@ -43,6 +43,15 @@ export async function getAllDefects(
 
   if (options.severity) {
     filter.severity = options.severity;
+  }
+
+  if (options.source) {
+    if (options.source === 'manual') {
+      // 'manual' means source is absent, null, or explicitly 'manual'
+      filter.source = { $nin: ['fault', 'prestart_inspection'] };
+    } else {
+      filter.source = options.source;
+    }
   }
 
   // Filter by team: use direct teamIds array on defect documents
@@ -110,7 +119,7 @@ export async function getDefectSummary(tenantId: string) {
       col.countDocuments({ ...base, status: 'in_progress' }),
       col.countDocuments({ ...base, status: 'corrected' }),
       col.countDocuments({ ...base, status: 'no_correction_needed' }),
-      col.countDocuments({ ...base, status: { $in: ['new', 'in_progress'] }, severity: 'critical' }),
+      col.countDocuments({ ...base, status: { $in: ['new', 'in_progress'] }, severity: { $in: ['high', 'critical'] } }),
       assetsCol.countDocuments({ tenantId: tenantOid, status: 'out_of_service', isArchived: { $ne: true } }),
     ]);
 
@@ -185,7 +194,7 @@ export async function getExceptionsByAsset(
           criticalOpenCount: {
             $sum: {
               $cond: [
-                { $and: [{ $eq: ['$severity', 'critical'] }, { $in: ['$status', openStatuses] }] },
+                { $and: [{ $in: ['$severity', ['high', 'critical']] }, { $in: ['$status', openStatuses] }] },
                 1,
                 0,
               ],
@@ -293,14 +302,16 @@ export async function createDefect(
     defectNumber,
     name: input.name.trim(),
     date: new Date(input.date),
-    comment: input.comment.trim(),
+    comment: input.comment?.trim() || '',
     assetId: ObjectId.createFromHexString(input.assetId),
     assetName,
     driverId,
     driverName,
     priority: input.priority,
-    severity: input.severity || (input.priority === 'high' ? 'critical' : 'non_critical'),
+    severity: input.severity || input.priority || 'low',
     status: input.status || 'new',
+    source: input.source || 'manual',
+    faultId: input.faultId ? ObjectId.createFromHexString(input.faultId) : null,
     attachments: (input.attachments || []).map((a) => ({
       url: a.url,
       filename: a.filename,
@@ -354,7 +365,7 @@ export async function updateDefect(
   if (input.comment !== undefined) $set.comment = input.comment.trim();
   if (input.priority !== undefined) {
     $set.priority = input.priority;
-    $set.severity = input.priority === 'high' ? 'critical' : 'non_critical';
+    $set.severity = input.priority;
   }
   if (input.status !== undefined) $set.status = input.status;
 

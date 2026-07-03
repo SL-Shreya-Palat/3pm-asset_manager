@@ -1,9 +1,13 @@
 /**
  * Faults controller — CRUD operations for manually-reported faults.
+ *
+ * Faults are now stored in the **defects** collection with `source: 'fault'`.
+ * This controller translates between the fault API format and the defect
+ * document format so the faults UI continues to work unchanged.
  */
 import { ObjectId } from 'mongodb';
 import {
-  getFaultsCollection,
+  getDefectsCollection,
   getAssetsCollection,
   getDriversCollection,
   getTenantMembersCollection,
@@ -14,8 +18,9 @@ import { FAULT_STATUSES } from './types';
 import {
   validateCreateFaultInput,
   serializeFault,
-  generateFaultNumber,
+  FAULT_TO_DEFECT_STATUS,
 } from './utils';
+import { generateDefectNumber } from '@/controller/defects/utils';
 import { notifyTenantManagers } from '@/controller/notifications';
 
 // ── Helpers — resolve names on READ ─────────────────────────────────────────
@@ -92,7 +97,7 @@ export async function getAllFaults(
     assetId?: string;
   },
 ) {
-  const collection = await getFaultsCollection();
+  const collection = await getDefectsCollection();
   const page = Math.max(1, options.page || 1);
   const limit = Math.min(100, Math.max(1, options.limit || 25));
   const skip = (page - 1) * limit;
@@ -102,9 +107,13 @@ export async function getAllFaults(
   const filter: Record<string, unknown> = {
     tenantId: tenantOid,
     isArchived: { $ne: true },
+    source: 'fault',
   };
 
-  if (options.status) filter.status = options.status;
+  // Map fault status → defect status for the query
+  if (options.status) {
+    filter.status = FAULT_TO_DEFECT_STATUS[options.status] || options.status;
+  }
   if (options.category) filter.category = options.category;
   if (options.priority) filter.priority = options.priority;
   if (options.severity) filter.severity = options.severity;
@@ -120,8 +129,8 @@ export async function getAllFaults(
   if (options.search) {
     const regex = { $regex: options.search, $options: 'i' };
     filter.$or = [
-      { faultNumber: regex },
-      { title: regex },
+      { defectNumber: regex },
+      { name: regex },
     ];
   }
 
@@ -132,10 +141,12 @@ export async function getAllFaults(
 
   // Resolve names on read
   const assetIds = [...new Map(items.map((i) => [(i.assetId as ObjectId).toString(), i.assetId as ObjectId])).values()];
-  const reporters = items.map((i) => ({
-    reportedByType: i.reportedByType as string,
-    reportedById: i.reportedById as ObjectId,
-  }));
+  const reporters = items
+    .filter((i) => i.reportedById)
+    .map((i) => ({
+      reportedByType: (i.reportedByType as string) || 'member',
+      reportedById: i.reportedById as ObjectId,
+    }));
 
   const [assetNameMap, reporterNameMap, teamNameMap] = await Promise.all([
     resolveAssetNames(tenantOid, assetIds),
@@ -160,7 +171,9 @@ export async function getAllFaults(
       const teamNames = itemTeamIds.map((id) => teamNameMap.get(id)).filter(Boolean) as string[];
       return serializeFault(item as unknown as Record<string, unknown>, {
         assetName: assetNameMap.get((item.assetId as ObjectId).toString()),
-        reportedByName: reporterNameMap.get((item.reportedById as ObjectId).toString()),
+        reportedByName: item.reportedById
+          ? reporterNameMap.get((item.reportedById as ObjectId).toString())
+          : undefined,
         teamNames,
       });
     }),
@@ -171,25 +184,30 @@ export async function getAllFaults(
 // ─── Get by ID ───────────────────────────────────────────────────────────────
 
 export async function getFaultById(tenantId: string, id: string) {
-  const collection = await getFaultsCollection();
+  const collection = await getDefectsCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
   const doc = await collection.findOne({
     _id: ObjectId.createFromHexString(id),
     tenantId: tenantOid,
     isArchived: { $ne: true },
+    source: 'fault',
   });
 
   if (!doc) return null;
 
   // Resolve names
   const assetNameMap = await resolveAssetNames(tenantOid, [doc.assetId as ObjectId]);
-  const reporterNameMap = await resolveReporterNames(tenantOid, [
-    { reportedByType: doc.reportedByType as string, reportedById: doc.reportedById as ObjectId },
-  ]);
+  const reporterNameMap = doc.reportedById
+    ? await resolveReporterNames(tenantOid, [
+        { reportedByType: (doc.reportedByType as string) || 'member', reportedById: doc.reportedById as ObjectId },
+      ])
+    : new Map<string, string>();
 
   return serializeFault(doc as unknown as Record<string, unknown>, {
     assetName: assetNameMap.get((doc.assetId as ObjectId).toString()),
-    reportedByName: reporterNameMap.get((doc.reportedById as ObjectId).toString()),
+    reportedByName: doc.reportedById
+      ? reporterNameMap.get((doc.reportedById as ObjectId).toString())
+      : undefined,
   });
 }
 
@@ -205,28 +223,50 @@ export async function createFault(
     return { data: null, error: validation.errors };
   }
 
-  const collection = await getFaultsCollection();
+  const collection = await getDefectsCollection();
   const now = new Date();
   const tenantOid = ObjectId.createFromHexString(tenantId);
   const userOid = ObjectId.createFromHexString(userId);
 
-  const faultNumber = await generateFaultNumber(tenantId);
+  // Use the defect number counter (DF-xxxx)
+  const defectNumber = await generateDefectNumber(tenantId);
 
-  const severity = input.severity || (input.priority === 'high' ? 'critical' : 'non_critical');
+  const priority = input.priority || 'medium';
+  const severity = input.severity || priority;
 
+  // Resolve asset name for denormalized storage
+  let assetName = '';
+  try {
+    const assetsCol = await getAssetsCollection();
+    const asset = await assetsCol.findOne({
+      _id: ObjectId.createFromHexString(input.assetId),
+      tenantId: tenantOid,
+    });
+    assetName = (asset?.name as string) || '';
+  } catch {
+    // Silent — assetName stays empty
+  }
+
+  // Build defect document with fault-specific extra fields
   const doc = {
     tenantId: tenantOid,
-    faultNumber,
-    title: input.title.trim(),
-    description: input.description.trim(),
-    reportedAt: new Date(input.reportedAt),
+    defectNumber,
+    // Fault → Defect field mapping
+    name: input.title.trim(),                        // title → name
+    date: new Date(input.reportedAt),                // reportedAt → date
+    comment: input.description?.trim() || input.title.trim(), // description → comment
     assetId: ObjectId.createFromHexString(input.assetId),
-    reportedByType: input.reportedByType,
-    reportedById: ObjectId.createFromHexString(input.reportedById),
-    category: input.category,
-    priority: input.priority,
+    assetName,
+    driverId: null as ObjectId | null,
+    driverName: null as string | null,
+    priority,
     severity,
-    status: 'open' as const,
+    status: 'new' as const,                          // fault 'open' → defect 'new'
+    source: 'fault' as const,
+    // Fault-specific fields stored as extra data on the defect doc
+    reportedByType: input.reportedByType || 'member',
+    reportedById: ObjectId.createFromHexString(input.reportedById),
+    category: input.category || 'other',
     meterType: input.meterType || null,
     meterReading: input.meterReading ?? null,
     takeOutOfService: input.takeOutOfService ?? false,
@@ -265,13 +305,13 @@ export async function createFault(
   // Resolve names for the response
   const assetNameMap = await resolveAssetNames(tenantOid, [ObjectId.createFromHexString(input.assetId)]);
   const reporterNameMap = await resolveReporterNames(tenantOid, [
-    { reportedByType: input.reportedByType, reportedById: ObjectId.createFromHexString(input.reportedById) },
+    { reportedByType: (input.reportedByType ?? 'member') as string, reportedById: ObjectId.createFromHexString(input.reportedById) },
   ]);
 
   // Notify managers (best-effort)
   await notifyTenantManagers(tenantId, {
     type: 'fault_reported',
-    title: `Fault ${faultNumber} reported`,
+    title: `Fault ${defectNumber} reported`,
     body: `${assetNameMap.get(input.assetId) || 'Asset'} — ${input.title.trim()}${doc.takeOutOfService ? ' (asset grounded)' : ''}`,
     link: '/maintenance/faults',
     entityType: 'fault',
@@ -295,7 +335,7 @@ export async function updateFault(
   id: string,
   input: UpdateFaultInput,
 ) {
-  const collection = await getFaultsCollection();
+  const collection = await getDefectsCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
   const oid = ObjectId.createFromHexString(id);
 
@@ -303,6 +343,7 @@ export async function updateFault(
     _id: oid,
     tenantId: tenantOid,
     isArchived: { $ne: true },
+    source: 'fault',
   });
   if (!existing) return { data: null, error: 'Fault not found' };
 
@@ -311,22 +352,37 @@ export async function updateFault(
     updatedAt: new Date(),
   };
 
-  if (input.title !== undefined) $set.title = input.title.trim();
-  if (input.description !== undefined) $set.description = input.description.trim();
-  if (input.reportedAt !== undefined) $set.reportedAt = new Date(input.reportedAt);
+  // Map fault fields → defect fields
+  if (input.title !== undefined) $set.name = input.title.trim();
+  if (input.description !== undefined) $set.comment = input.description.trim();
+  if (input.reportedAt !== undefined) $set.date = new Date(input.reportedAt);
   if (input.category !== undefined) $set.category = input.category;
   if (input.priority !== undefined) {
     $set.priority = input.priority;
-    $set.severity = input.priority === 'high' ? 'critical' : 'non_critical';
+    $set.severity = input.priority;
   }
   if (input.severity !== undefined) $set.severity = input.severity;
-  if (input.status !== undefined) $set.status = input.status;
+  // Map fault status → defect status
+  if (input.status !== undefined) {
+    $set.status = FAULT_TO_DEFECT_STATUS[input.status] || input.status;
+  }
   if (input.meterType !== undefined) $set.meterType = input.meterType || null;
   if (input.meterReading !== undefined) $set.meterReading = input.meterReading ?? null;
   if (input.takeOutOfService !== undefined) $set.takeOutOfService = input.takeOutOfService;
 
   if (input.assetId !== undefined) {
     $set.assetId = ObjectId.createFromHexString(input.assetId);
+    // Re-resolve asset name
+    try {
+      const assetsCol = await getAssetsCollection();
+      const asset = await assetsCol.findOne({
+        _id: ObjectId.createFromHexString(input.assetId),
+        tenantId: tenantOid,
+      });
+      $set.assetName = (asset?.name as string) || '';
+    } catch {
+      $set.assetName = '';
+    }
   }
 
   if (input.reportedByType !== undefined) $set.reportedByType = input.reportedByType;
@@ -352,14 +408,18 @@ export async function updateFault(
 
   // Resolve names for the response
   const assetNameMap = await resolveAssetNames(tenantOid, [updated.assetId as ObjectId]);
-  const reporterNameMap = await resolveReporterNames(tenantOid, [
-    { reportedByType: updated.reportedByType as string, reportedById: updated.reportedById as ObjectId },
-  ]);
+  const reporterNameMap = updated.reportedById
+    ? await resolveReporterNames(tenantOid, [
+        { reportedByType: (updated.reportedByType as string) || 'member', reportedById: updated.reportedById as ObjectId },
+      ])
+    : new Map<string, string>();
 
   return {
     data: serializeFault(updated as unknown as Record<string, unknown>, {
       assetName: assetNameMap.get((updated.assetId as ObjectId).toString()),
-      reportedByName: reporterNameMap.get((updated.reportedById as ObjectId).toString()),
+      reportedByName: updated.reportedById
+        ? reporterNameMap.get((updated.reportedById as ObjectId).toString())
+        : undefined,
     }),
     error: null,
   };
@@ -368,20 +428,27 @@ export async function updateFault(
 // ─── Delete (soft) ───────────────────────────────────────────────────────────
 
 export async function deleteFault(tenantId: string, userId: string, id: string) {
-  const collection = await getFaultsCollection();
+  const collection = await getDefectsCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const faultOid = ObjectId.createFromHexString(id);
+  const userOid = ObjectId.createFromHexString(userId);
+  const now = new Date();
+
+  // Since faults ARE defects now, just soft-delete the defect document
   const result = await collection.updateOne(
     {
-      _id: ObjectId.createFromHexString(id),
-      tenantId: ObjectId.createFromHexString(tenantId),
+      _id: faultOid,
+      tenantId: tenantOid,
       isArchived: { $ne: true },
+      source: 'fault',
     },
     {
       $set: {
         isArchived: true,
-        archivedAt: new Date(),
-        archivedBy: ObjectId.createFromHexString(userId),
-        updatedBy: ObjectId.createFromHexString(userId),
-        updatedAt: new Date(),
+        archivedAt: now,
+        archivedBy: userOid,
+        updatedBy: userOid,
+        updatedAt: now,
       },
     },
   );
@@ -403,19 +470,23 @@ export async function bulkUpdateFaultStatus(
     return { data: null, error: `Status must be one of: ${FAULT_STATUSES.join(', ')}` };
   }
 
-  const collection = await getFaultsCollection();
+  const collection = await getDefectsCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
   const now = new Date();
+
+  // Map fault status → defect status before persisting
+  const defectStatus = FAULT_TO_DEFECT_STATUS[status] || status;
 
   const result = await collection.updateMany(
     {
       _id: { $in: ids.map((id) => ObjectId.createFromHexString(id)) },
       tenantId: tenantOid,
       isArchived: { $ne: true },
+      source: 'fault',
     },
     {
       $set: {
-        status,
+        status: defectStatus,
         updatedBy: ObjectId.createFromHexString(userId),
         updatedAt: now,
       },

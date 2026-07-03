@@ -26,6 +26,15 @@ function isEligible(type: string): type is EligibleFieldType {
   return (ELIGIBLE_FIELD_TYPES as readonly string[]).includes(type);
 }
 
+/** Map legacy severity values (critical / non_critical) to the new high/medium/low scale. */
+function migrateSeverity(value: string | undefined): SeverityValue {
+  if (!value) return 'low';
+  if (value === 'critical') return 'high';
+  if (value === 'non_critical') return 'low';
+  if ((SEVERITY_VALUES as readonly string[]).includes(value)) return value as SeverityValue;
+  return 'low';
+}
+
 /**
  * Flatten pages → fields, recursing into field groups.
  * Returns only eligible (choice-based) fields.
@@ -67,7 +76,7 @@ function extractEligibleFields(pages: any[]): EligibleField[] {
         page: pageTitle,
         options,
         selectedDefectValues: [],
-        severity: 'non_critical',
+        severity: 'low',
         outOfService: false,
         ignored: false,
       });
@@ -154,7 +163,7 @@ export async function getDefectSettings(
   if (saved) {
     for (const field of eligible) {
       field.selectedDefectValues = saved.defectAnswers[field.fieldKey] || [];
-      field.severity = saved.severityByField?.[field.fieldKey] || 'non_critical';
+      field.severity = migrateSeverity(saved.severityByField?.[field.fieldKey]);
       field.outOfService = saved.outOfServiceByField?.[field.fieldKey] || false;
       field.ignored = saved.ignoredByField?.[field.fieldKey] || false;
     }
@@ -195,7 +204,7 @@ export async function upsertDefectSettings(
   if (input.severityByField) {
     for (const [key, sev] of Object.entries(input.severityByField)) {
       if (!(SEVERITY_VALUES as readonly string[]).includes(sev)) {
-        return { data: null, error: `severityByField["${key}"] must be "critical" or "non_critical"` };
+        return { data: null, error: `severityByField["${key}"] must be "high", "medium", or "low"` };
       }
     }
   }
