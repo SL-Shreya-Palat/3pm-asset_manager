@@ -111,6 +111,8 @@ export default function DriverDetailPage() {
     setInspectDialogOpen(true);
     setInspectLoading(true);
     try {
+      // Auto-seed pre-start forms (idempotent — skips if already seeded)
+      await axios.post('/api/forms/seed-prestart', {}, { withCredentials: true }).catch(() => {});
       const res = await axios.get('/api/forms?status=published&includeSchema=false', { withCredentials: true });
       const allForms = res.data?.data?.items || [];
       const wellness = allForms

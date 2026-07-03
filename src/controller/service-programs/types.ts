@@ -16,7 +16,7 @@ export const TIME_UNITS = ['minutes', 'hours', 'days', 'weeks', 'months', 'years
 export type TimeUnit = (typeof TIME_UNITS)[number];
 
 /** Ends type for repeat intervals. */
-export const ENDS_TYPES = ['never', 'on', 'after'] as const;
+export const ENDS_TYPES = ['never', 'on', 'after', 'meter_reading'] as const;
 export type EndsType = (typeof ENDS_TYPES)[number];
 
 /** Reminder notification channels. */
@@ -49,6 +49,8 @@ export interface IntervalEnds {
   date?: Date;
   /** For 'after': the number of occurrences. */
   occurrences?: number;
+  /** For 'meter_reading': the odometer value in km at which the schedule ends. */
+  meterReading?: number;
 }
 
 /** One-time condition mode. */
@@ -148,7 +150,7 @@ export interface CreateServiceProgramInput {
     mileage?: { enabled: boolean; every: number };
     engineHours?: { enabled: boolean; every: number };
     calendar?: { enabled: boolean; every: number; unit: string };
-    ends?: { type: string; date?: string; occurrences?: number };
+    ends?: { type: string; date?: string; occurrences?: number; meterReading?: number };
     dueMileage?: { enabled: boolean; mode: string; value: number };
     dueEngineHours?: { enabled: boolean; mode: string; value: number };
     dueOnDate?: { enabled: boolean; date?: string };
@@ -178,7 +180,7 @@ export interface ServiceProgramResponse {
     mileage?: { enabled: boolean; every: number };
     engineHours?: { enabled: boolean; every: number };
     calendar?: { enabled: boolean; every: number; unit: string };
-    ends?: { type: string; date?: string; occurrences?: number };
+    ends?: { type: string; date?: string; occurrences?: number; meterReading?: number };
     dueMileage?: { enabled: boolean; mode: string; value: number };
     dueEngineHours?: { enabled: boolean; mode: string; value: number };
     dueOnDate?: { enabled: boolean; date?: string };

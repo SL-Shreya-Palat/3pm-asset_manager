@@ -121,7 +121,7 @@ export function AttachmentUploader({
       {files.map((f, idx) => (
         <div
           key={idx}
-          className="flex items-center gap-3 rounded-lg border border-border bg-card shadow-sm px-3 py-2.5"
+          className="flex items-center gap-3 rounded-md border border-border bg-card shadow-xs px-3 py-2.5"
         >
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400">
             <FileText className="h-4 w-4" />
@@ -167,10 +167,10 @@ export function AttachmentUploader({
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-8 cursor-pointer transition-colors ${
+          className={`flex flex-col items-center justify-center rounded-md border-2 border-dashed px-6 py-8 cursor-pointer transition-all ${
             dragging
-              ? 'border-primary bg-primary/5'
-              : 'border-muted-foreground/25 hover:border-primary/50'
+              ? 'border-primary bg-primary/10 scale-[1.01]'
+              : 'border-muted-foreground/30 hover:border-primary hover:bg-primary/5'
           }`}
         >
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted mb-3">

@@ -21,8 +21,9 @@ export async function GET(request: NextRequest) {
   const severity = searchParams.get('severity') || undefined;
   const teamId = searchParams.get('teamId') || undefined;
   const assetId = searchParams.get('assetId') || undefined;
+  const source = searchParams.get('source') || undefined;
 
-  const result = await getAllDefects(user.currentTenantId, { page, limit, search, status, priority, severity, teamId, assetId });
+  const result = await getAllDefects(user.currentTenantId, { page, limit, search, status, priority, severity, teamId, assetId, source });
   return NextResponse.json({ data: result, error: null });
 }
 

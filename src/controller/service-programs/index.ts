@@ -65,6 +65,7 @@ function buildIntervalDoc(input: CreateServiceProgramInput['interval']) {
       const ends: Record<string, unknown> = { type: input.ends.type || 'never' };
       if (input.ends.type === 'on' && input.ends.date) ends.date = new Date(input.ends.date);
       if (input.ends.type === 'after' && input.ends.occurrences) ends.occurrences = input.ends.occurrences;
+      if (input.ends.type === 'meter_reading' && input.ends.meterReading) ends.meterReading = input.ends.meterReading;
       doc.ends = ends;
     }
   }

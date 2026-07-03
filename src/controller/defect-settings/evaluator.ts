@@ -89,7 +89,7 @@ export function evaluateDefects(
         fieldKey,
         label: labelByFieldKey.get(fieldKey) || fieldKey,
         answer: Array.isArray(answer) ? answer.map(String) : String(answer),
-        severity: severityByField[fieldKey] || 'non_critical',
+        severity: severityByField[fieldKey] || 'low',
       });
     }
   }

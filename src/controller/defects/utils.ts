@@ -31,9 +31,7 @@ export function validateCreateDefectInput(input: CreateDefectInput): ValidationR
     errors.date = 'Date must be a valid date';
   }
 
-  if (!isNonEmptyString(input.comment)) {
-    errors.comment = 'Comment is required';
-  } else if (input.comment.trim().length > 2000) {
+  if (input.comment && input.comment.trim().length > 2000) {
     errors.comment = 'Comment must be at most 2000 characters';
   }
 

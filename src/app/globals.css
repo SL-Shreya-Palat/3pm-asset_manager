@@ -5,8 +5,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -32,6 +32,18 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  /* Primary shade variants — use these instead of orange-* (e.g. bg-primary-50, text-primary-600) */
+  --color-primary-50: var(--primary-50);
+  --color-primary-100: var(--primary-100);
+  --color-primary-200: var(--primary-200);
+  --color-primary-300: var(--primary-300);
+  --color-primary-400: var(--primary-400);
+  --color-primary-500: var(--primary-500);
+  --color-primary-600: var(--primary-600);
+  --color-primary-700: var(--primary-700);
+  --color-primary-800: var(--primary-800);
+  --color-primary-900: var(--primary-900);
+  --color-primary-950: var(--primary-950);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -44,86 +56,111 @@
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0.015 60);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0.015 60);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0.015 60);
-  --primary: oklch(0.646 0.222 41);
-  --primary-foreground: oklch(0.98 0.016 60);
-  --secondary: oklch(0.967 0.003 60);
-  --secondary-foreground: oklch(0.21 0.02 60);
-  --muted: oklch(0.967 0.003 60);
-  --muted-foreground: oklch(0.551 0.02 60);
-  --accent: oklch(0.967 0.003 60);
-  --accent-foreground: oklch(0.21 0.02 60);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.932 0.007 60);
-  --input: oklch(0.932 0.007 60);
-  --ring: oklch(0.646 0.222 41);
-  --chart-1: oklch(0.646 0.222 41);
-  --chart-2: oklch(0.6 0.118 184.714);
-  --chart-3: oklch(0.398 0.07 60);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0.005 60);
-  --sidebar-foreground: oklch(0.145 0.015 60);
-  --sidebar-primary: oklch(0.646 0.222 41);
-  --sidebar-primary-foreground: oklch(0.98 0.016 60);
-  --sidebar-accent: oklch(0.967 0.003 60);
-  --sidebar-accent-foreground: oklch(0.21 0.02 60);
-  --sidebar-border: oklch(0.932 0.007 60);
-  --sidebar-ring: oklch(0.646 0.222 41);
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  /* Brand orange (kept). --primary === --primary-500 so component classes
+     using primary-400 (hover) / primary-500 (focus) stay in-family. */
+  --primary: #ea580c;
+  --primary-foreground: #ffffff;
+  /* Primary shades — use these instead of orange-* (e.g. bg-primary-50, text-primary-600) */
+  --primary-50: #fff7ed;
+  --primary-100: #ffedd5;
+  --primary-200: #fed7aa;
+  --primary-300: #fdba74;
+  --primary-400: #f97316;
+  --primary-500: #ea580c;
+  --primary-600: #d24a08;
+  --primary-700: #b23c0a;
+  --primary-800: #8f3111;
+  --primary-900: #742a13;
+  --primary-950: #431407;
+  --secondary: #f8fafc;
+  --secondary-foreground: #0f172a;
+  --muted: #f8fafc;
+  --muted-foreground: #64748b;
+  --accent: #f8fafc;
+  --accent-foreground: #0f172a;
+  --destructive: #dc2626;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #cbd5e1;
+  --chart-1: #ea580c;
+  --chart-2: #06b6d4;
+  --chart-3: #8b5cf6;
+  --chart-4: #3b82f6;
+  --chart-5: #f59e0b;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0f172a;
+  --sidebar-primary: #ea580c;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e2e8f0;
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #cbd5e1;
 }
 
 .dark {
-  --background: oklch(0.145 0.015 60);
-  --foreground: oklch(0.985 0.005 60);
-  --card: oklch(0.205 0.02 60);
-  --card-foreground: oklch(0.985 0.005 60);
-  --popover: oklch(0.205 0.02 60);
-  --popover-foreground: oklch(0.985 0.005 60);
-  --primary: oklch(0.75 0.183 55);
-  --primary-foreground: oklch(0.21 0.02 60);
-  --secondary: oklch(0.269 0.025 60);
-  --secondary-foreground: oklch(0.985 0.005 60);
-  --muted: oklch(0.269 0.025 60);
-  --muted-foreground: oklch(0.705 0.015 60);
-  --accent: oklch(0.269 0.025 60);
-  --accent-foreground: oklch(0.985 0.005 60);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(0.269 0.025 60);
-  --input: oklch(0.269 0.025 60);
-  --ring: oklch(0.75 0.183 55);
-  --chart-1: oklch(0.75 0.183 55);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0.02 60);
-  --sidebar-foreground: oklch(0.985 0.005 60);
-  --sidebar-primary: oklch(0.75 0.183 55);
-  --sidebar-primary-foreground: oklch(0.21 0.02 60);
-  --sidebar-accent: oklch(0.269 0.025 60);
-  --sidebar-accent-foreground: oklch(0.985 0.005 60);
-  --sidebar-border: oklch(0.269 0.025 60);
-  --sidebar-ring: oklch(0.75 0.183 55);
+  --background: #0f172a;
+  --foreground: #f8fafc;
+  --card: #1e293b;
+  --card-foreground: #f8fafc;
+  --popover: #1e293b;
+  --popover-foreground: #f8fafc;
+  --primary: #ea580c;
+  --primary-foreground: #ffffff;
+  --primary-50: #fff7ed;
+  --primary-100: #ffedd5;
+  --primary-200: #fed7aa;
+  --primary-300: #fdba74;
+  --primary-400: #f97316;
+  --primary-500: #ea580c;
+  --primary-600: #d24a08;
+  --primary-700: #b23c0a;
+  --primary-800: #8f3111;
+  --primary-900: #742a13;
+  --primary-950: #431407;
+  --secondary: #334155;
+  --secondary-foreground: #f8fafc;
+  --muted: #334155;
+  --muted-foreground: #cbd5e1;
+  --accent: #334155;
+  --accent-foreground: #f8fafc;
+  --destructive: #dc2626;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.15);
+  --ring: #64748b;
+  --chart-1: #fb8b3d;
+  --chart-2: #34d399;
+  --chart-3: #a78bfa;
+  --chart-4: #60a5fa;
+  --chart-5: #fbbf24;
+  --sidebar: #1e293b;
+  --sidebar-foreground: #f8fafc;
+  --sidebar-primary: #ea580c;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #334155;
+  --sidebar-accent-foreground: #f8fafc;
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: #64748b;
 }
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-gray-700;
   }
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar — matches construction-portal */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -131,18 +168,72 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: oklch(0.7 0.05 60);
-  border-radius: 4px;
+  background: #d1d5db;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  transition: background 0.2s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.6 0.05 60);
+  background: var(--primary);
+  background-clip: padding-box;
 }
 
 .dark ::-webkit-scrollbar-thumb {
-  background: oklch(0.4 0.03 60);
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.5 0.03 60);
+  background: var(--primary);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db transparent;
+}
+
+.dark * {
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+/* Animated brand wordmark — a slow warm gradient sheen sweeping across the app
+   name in the sidebar. Base + glint are orange to match the brand. Falls back
+   to a static gradient when the user prefers reduced motion. */
+@keyframes brandSheen {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
+.brand-wordmark {
+  background-image: linear-gradient(
+    105deg,
+    var(--primary) 0%,
+    var(--primary) 42%,
+    #fb923c 48%,
+    #fed7aa 50%,
+    #fb923c 52%,
+    var(--primary) 58%,
+    var(--primary) 100%
+  );
+  background-size: 300% auto;
+  background-position: 100% 50%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: brandSheen 2.4s ease-out 0.4s 1 both;
+  filter: drop-shadow(0 1px 0 rgb(0 0 0 / 0.18));
+  -webkit-font-smoothing: subpixel-antialiased;
+  text-rendering: geometricPrecision;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-wordmark {
+    animation: none;
+  }
 }

@@ -218,7 +218,7 @@ function InspectionDetailDialog({ id, onClose }: { id: string | null; onClose: (
                   {record.defects.map((d, i) => (
                     <div key={i} className="flex items-center justify-between rounded border px-3 py-1.5">
                       <span>{d.label} — <span className="text-red-600">{Array.isArray(d.answer) ? d.answer.join(', ') : d.answer}</span></span>
-                      <Badge variant={d.severity === 'critical' ? 'destructive' : 'outline'}>{d.severity}</Badge>
+                      <Badge variant={d.severity === 'high' ? 'destructive' : d.severity === 'medium' ? 'warning' : 'outline'}>{d.severity}</Badge>
                     </div>
                   ))}
                 </div>

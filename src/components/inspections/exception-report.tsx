@@ -145,8 +145,9 @@ export function ExceptionReport() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All severities</SelectItem>
-              <SelectItem value="critical">Critical</SelectItem>
-              <SelectItem value="non_critical">Non-Critical</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+              <SelectItem value="medium">Medium</SelectItem>
+              <SelectItem value="low">Low</SelectItem>
             </SelectContent>
           </Select>
           <SearchInput value={search} onChange={setSearch} placeholder="Search asset, defect, operator..." className="w-[240px]" />
@@ -307,11 +308,11 @@ function AssetTile({ group, onCreateWO }: { group: AssetGroup; onCreateWO: (d: D
 }
 
 function ExceptionRow({ defect: d, onCreateWO }: { defect: DefectRow; onCreateWO: () => void }) {
-  const critical = d.severity === 'critical';
+  const isHigh = d.severity === 'high';
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-muted/30">
       <span
-        className={cn('h-2 w-2 shrink-0 rounded-full', critical ? 'bg-red-500' : 'bg-amber-400')}
+        className={cn('h-2 w-2 shrink-0 rounded-full', isHigh ? 'bg-red-500' : d.severity === 'medium' ? 'bg-amber-400' : 'bg-slate-400')}
         aria-hidden
       />
       <div className="min-w-0 flex-1">

@@ -3,7 +3,7 @@
  */
 import { ObjectId } from 'mongodb';
 
-export const SEVERITY_VALUES = ['critical', 'non_critical'] as const;
+export const SEVERITY_VALUES = ['high', 'medium', 'low'] as const;
 export type SeverityValue = (typeof SEVERITY_VALUES)[number];
 
 /** Eligible field types that can generate defects. */
@@ -20,7 +20,7 @@ export interface DefectSettingsDocument {
   formVersion: number;
   /** fieldKey → answer value(s) that mean a defect. */
   defectAnswers: Record<string, string[]>;
-  /** Optional severity override per field. Defaults to "non_critical". */
+  /** Optional severity override per field. Defaults to "low". */
   severityByField?: Record<string, SeverityValue>;
   /** fieldKey → true when a flagged answer on this field takes the asset Out of Service. */
   outOfServiceByField?: Record<string, boolean>;

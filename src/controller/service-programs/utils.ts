@@ -75,6 +75,11 @@ export function validateCreateServiceProgramInput(input: CreateServiceProgramInp
             errors['interval.ends.occurrences'] = 'Occurrences must be a positive number';
           }
         }
+        if (iv.ends.type === 'meter_reading' && iv.ends.meterReading !== undefined) {
+          if (typeof iv.ends.meterReading !== 'number' || iv.ends.meterReading <= 0) {
+            errors['interval.ends.meterReading'] = 'Meter reading must be a positive number';
+          }
+        }
       }
     }
 
@@ -153,6 +158,7 @@ export function serializeServiceProgram(doc: Record<string, unknown>): Record<st
           ? (ends.date instanceof Date ? ends.date.toISOString() : ends.date)
           : undefined,
         occurrences: ends.occurrences ?? undefined,
+        meterReading: ends.meterReading ?? undefined,
       };
     }
 

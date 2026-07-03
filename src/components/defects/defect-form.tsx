@@ -106,7 +106,6 @@ export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) 
     const errors: Record<string, string> = {};
     if (!name.trim()) errors.name = 'Defect name is required';
     if (!date) errors.date = 'Date is required';
-    if (!comment.trim()) errors.comment = 'Comment is required';
     if (!assetId) errors.assetId = 'Asset is required';
     if (!priority) errors.priority = 'Severity is required';
 
@@ -183,7 +182,7 @@ export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) 
 
           {/* Comment */}
           <div>
-            <Label>Comment <span className="text-destructive">*</span></Label>
+            <Label>Comment</Label>
             <Textarea
               value={comment}
               onChange={(e) => { setComment(e.target.value); clearFieldError('comment'); }}

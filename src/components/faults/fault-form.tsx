@@ -19,10 +19,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { FaultRow, LookupOption } from './types';
+import { useAuth } from '@/hooks/useAuth';
 
 interface UserLookup {
   id: string;
   name: string;
+  email: string;
 }
 
 interface FaultFormProps {
@@ -32,7 +34,13 @@ interface FaultFormProps {
   onSaved: () => void;
 }
 
+function getTodayDateString(): string {
+  const d = new Date();
+  return d.toISOString().split('T')[0];
+}
+
 export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
+  const { user } = useAuth();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -40,12 +48,9 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
   // Form fields
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [reportedAt, setReportedAt] = useState('');
+  const [reportedAt, setReportedAt] = useState(getTodayDateString());
   const [assetId, setAssetId] = useState('');
-  const [reportedByType, setReportedByType] = useState<string>('member');
   const [reportedById, setReportedById] = useState('');
-  const [category, setCategory] = useState('');
-  const [priority, setPriority] = useState('');
   const [status, setStatus] = useState('open');
   const [meterType, setMeterType] = useState('');
   const [meterReading, setMeterReading] = useState('');
@@ -54,15 +59,13 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
 
   // Lookup data
   const [assets, setAssets] = useState<LookupOption[]>([]);
-  const [drivers, setDrivers] = useState<LookupOption[]>([]);
   const [members, setMembers] = useState<UserLookup[]>([]);
 
   // Fetch lookup data
   const fetchLookups = useCallback(async () => {
     try {
-      const [assetsRes, driversRes, usersRes] = await Promise.all([
+      const [assetsRes, usersRes] = await Promise.all([
         axios.get('/api/assets?limit=100', { withCredentials: true }),
-        axios.get('/api/drivers?limit=100', { withCredentials: true }),
         axios.get('/api/users?limit=100', { withCredentials: true }),
       ]);
 
@@ -72,21 +75,27 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
         name: i.name as string,
       })));
 
-      const driverItems = driversRes.data.data?.items || driversRes.data.data || [];
-      setDrivers(driverItems.map((i: Record<string, unknown>) => ({
-        id: i.id as string,
-        name: `${(i.firstName as string) || ''} ${(i.lastName as string) || ''}`.trim() || (i.email as string) || '',
-      })));
-
       const userItems = usersRes.data.data?.items || usersRes.data.data || [];
-      setMembers(userItems.map((i: Record<string, unknown>) => ({
+      const mappedMembers = userItems.map((i: Record<string, unknown>) => ({
         id: i.id as string,
         name: (i.name as string) || `${(i.firstName as string) || ''} ${(i.lastName as string) || ''}`.trim() || (i.email as string) || '',
-      })));
+        email: (i.email as string) || '',
+      }));
+      setMembers(mappedMembers);
+
+      // Pre-populate reportedById with logged-in user on create
+      if (mode === 'create' && user?.email) {
+        const match = mappedMembers.find(
+          (m: UserLookup) => m.email.toLowerCase() === user.email.toLowerCase(),
+        );
+        if (match) {
+          setReportedById(match.id);
+        }
+      }
     } catch {
       // Silent
     }
-  }, []);
+  }, [mode, user?.email]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchLookups(); }, [fetchLookups]);
 
@@ -97,10 +106,7 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
       setDescription(fault.description || '');
       setReportedAt(fault.reportedAt ? fault.reportedAt.split('T')[0] : '');
       setAssetId(fault.assetId || '');
-      setReportedByType(fault.reportedByType || 'member');
       setReportedById(fault.reportedById || '');
-      setCategory(fault.category || '');
-      setPriority(fault.priority || '');
       setStatus(fault.status || 'open');
       setMeterType(fault.meterType || '');
       setMeterReading(fault.meterReading != null ? String(fault.meterReading) : '');
@@ -129,12 +135,9 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
 
     const errors: Record<string, string> = {};
     if (!title.trim()) errors.title = 'Title is required';
-    if (!description.trim()) errors.description = 'Description is required';
     if (!reportedAt) errors.reportedAt = 'Reported date is required';
     if (!assetId) errors.assetId = 'Asset is required';
     if (!reportedById) errors.reportedById = 'Reporter is required';
-    if (!category) errors.category = 'Category is required';
-    if (!priority) errors.priority = 'Severity is required';
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -146,10 +149,8 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
       description: description.trim(),
       reportedAt,
       assetId,
-      reportedByType,
+      reportedByType: 'member',
       reportedById,
-      category,
-      priority,
       meterType: meterType || undefined,
       meterReading: meterReading ? Number(meterReading) : undefined,
       takeOutOfService,
@@ -187,9 +188,7 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
     }
   };
 
-  const reporterOptions = reportedByType === 'driver'
-    ? drivers.map((d) => ({ label: d.name, value: d.id }))
-    : members.map((m) => ({ label: m.name, value: m.id }));
+  const reporterOptions = members.map((m) => ({ label: m.name, value: m.id }));
 
   return (
     <div className="flex flex-col h-full">
@@ -221,7 +220,7 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
 
           {/* Description */}
           <div>
-            <Label>Description <span className="text-destructive">*</span></Label>
+            <Label>Description</Label>
             <Textarea
               value={description}
               onChange={(e) => { setDescription(e.target.value); clearFieldError('description'); }}
@@ -257,83 +256,19 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
             />
           </div>
 
-          {/* Reporter Type + Reported By */}
-          <div className="grid grid-cols-2 gap-4">
-            <SearchableSelect
-              label="Reporter Type"
-              required
-              options={[
-                { label: 'Team Member', value: 'member' },
-                { label: 'Driver', value: 'driver' },
-              ]}
-              value={reportedByType}
-              onValueChange={(val) => {
-                if (val) {
-                  setReportedByType(val);
-                  setReportedById('');
-                }
-              }}
-              placeholder="Select reporter type"
-              searchPlaceholder="Search..."
-              emptyMessage="No options found"
-              isClearable={false}
-            />
-            <SearchableSelect
-              label="Reported By"
-              required
-              options={reporterOptions}
-              value={reportedById || null}
-              onValueChange={(val) => { setReportedById(val || ''); clearFieldError('reportedById'); }}
-              placeholder={`Select ${reportedByType === 'driver' ? 'driver' : 'member'}`}
-              searchPlaceholder="Search..."
-              emptyMessage="No options found"
-              error={fieldErrors.reportedById}
-              isClearable
-            />
-          </div>
-
-          {/* Category + Severity */}
-          <div className="grid grid-cols-2 gap-4">
-            <SearchableSelect
-              label="Category"
-              required
-              options={[
-                { label: 'Mechanical', value: 'mechanical' },
-                { label: 'Electrical', value: 'electrical' },
-                { label: 'Hydraulic', value: 'hydraulic' },
-                { label: 'Body', value: 'body' },
-                { label: 'Tyres', value: 'tyres' },
-                { label: 'Safety', value: 'safety' },
-                { label: 'Other', value: 'other' },
-              ]}
-              value={category || null}
-              onValueChange={(val) => { setCategory(val || ''); clearFieldError('category'); }}
-              placeholder="Select category"
-              searchPlaceholder="Search..."
-              emptyMessage="No options found"
-              error={fieldErrors.category}
-              isClearable={false}
-            />
-            <div>
-              <Label className="mb-1.5 block">
-                Severity <span className="text-destructive">*</span>
-              </Label>
-              <Select
-                value={priority || undefined}
-                onValueChange={(val) => { setPriority(val); clearFieldError('priority'); }}
-              >
-                <SelectTrigger className={fieldErrors.priority ? 'border-destructive' : ''}>
-                  <SelectValue placeholder="Select severity" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
-                </SelectContent>
-              </Select>
-              {fieldErrors.priority && <p className="text-sm text-destructive mt-1">{fieldErrors.priority}</p>}
-            </div>
-          </div>
+          {/* Reported By */}
+          <SearchableSelect
+            label="Reported By"
+            required
+            options={reporterOptions}
+            value={reportedById || null}
+            onValueChange={(val) => { setReportedById(val || ''); clearFieldError('reportedById'); }}
+            placeholder="Select member"
+            searchPlaceholder="Search..."
+            emptyMessage="No options found"
+            error={fieldErrors.reportedById}
+            isClearable
+          />
 
           {/* Status (edit mode only) */}
           {mode === 'edit' && (

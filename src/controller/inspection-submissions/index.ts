@@ -258,7 +258,7 @@ export async function processInspectionSubmission(
         // Operator = whoever performed the inspection (shown as "Operator" in the UI).
         driverId: operatorId,
         driverName: inspectorName,
-        priority: defect.severity === 'critical' ? 'high' : 'medium',
+        priority: defect.severity,
         severity: defect.severity,
         status: 'new',
         attachments: [],

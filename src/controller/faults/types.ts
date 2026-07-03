@@ -15,7 +15,7 @@ export const FAULT_PRIORITIES = ['high', 'medium', 'low'] as const;
 export type FaultPriority = (typeof FAULT_PRIORITIES)[number];
 
 /** Fault severity values. */
-export const FAULT_SEVERITIES = ['critical', 'non_critical'] as const;
+export const FAULT_SEVERITIES = ['high', 'medium', 'low'] as const;
 export type FaultSeverity = (typeof FAULT_SEVERITIES)[number];
 
 /** Fault category values. */
@@ -94,10 +94,10 @@ export interface CreateFaultInput {
   description: string;
   reportedAt: string; // ISO date string
   assetId: string;
-  reportedByType: string;
+  reportedByType?: string;
   reportedById: string;
-  category: string;
-  priority: string;
+  category?: string;
+  priority?: string;
   severity?: string;
   meterType?: string;
   meterReading?: number;

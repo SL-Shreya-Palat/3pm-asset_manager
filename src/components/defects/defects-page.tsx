@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   Plus,
   Pencil,
   Trash2,
   Eye,
-  AlertTriangle,
+  Zap,
   Wrench,
   ClipboardCheck,
   PenLine,
@@ -35,7 +36,6 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
@@ -53,6 +53,7 @@ import {
 } from './types';
 
 export function DefectsPage() {
+  const router = useRouter();
   const [defects, setDefects] = useState<DefectRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1, limit: 25, total: 0, hasMore: false,
@@ -98,6 +99,16 @@ export function DefectsPage() {
         { label: 'Low', value: 'low' },
       ],
     },
+    {
+      columnKey: 'source',
+      label: 'Type',
+      type: 'select',
+      options: [
+        { label: 'Inspection', value: 'prestart_inspection' },
+        { label: 'Fault', value: 'fault' },
+        { label: 'Manual', value: 'manual' },
+      ],
+    },
   ], [teams]);
 
   // Table features
@@ -115,10 +126,6 @@ export function DefectsPage() {
   // Work-order panel state (raise a correction WO from a defect)
   const [woPanelOpen, setWoPanelOpen] = useState(false);
   const [woDefect, setWoDefect] = useState<DefectRow | null>(null);
-
-  // View dialog
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [viewDefect, setViewDefect] = useState<DefectRow | null>(null);
 
   // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -163,6 +170,9 @@ export function DefectsPage() {
       const selectedTeams = (filters.teamId as string[]) ?? [];
       if (selectedTeams.length > 0) params.set('teamId', selectedTeams[0]);
 
+      const selectedSource = (filters.source as string[]) ?? [];
+      if (selectedSource.length > 0) params.set('source', selectedSource[0]);
+
       const res = await axios.get(`/api/defects?${params.toString()}`, { withCredentials: true });
       const data = res.data.data;
       setDefects(data.items || []);
@@ -190,12 +200,11 @@ export function DefectsPage() {
     fetchDefects(panelMode === 'create' ? 1 : pagination.page);
   };
 
-  // View dialog
-  const handleOpenView = (defect: DefectRow) => { setViewDefect(defect); setViewDialogOpen(true); };
+  // Navigate to detail page
+  const handleOpenView = (defect: DefectRow) => { router.push(`/maintenance/defects/${defect.id}`); };
 
   // Work order panel — raise a correction WO for a defect
   const handleOpenCreateWO = (defect: DefectRow) => {
-    setViewDialogOpen(false);
     setWoDefect(defect);
     setWoPanelOpen(true);
   };
@@ -226,7 +235,11 @@ export function DefectsPage() {
       pinned: true,
       sortable: true,
       render: (defect) => {
-        const isInspection = defect.source === 'prestart_inspection';
+        const sourceConfig = defect.source === 'prestart_inspection'
+          ? { icon: <ClipboardCheck className="h-4 w-4" />, label: 'From Inspection', classes: 'bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400' }
+          : defect.source === 'fault'
+            ? { icon: <Zap className="h-4 w-4" />, label: 'From Fault', classes: 'bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' }
+            : { icon: <PenLine className="h-4 w-4" />, label: 'Manually Created', classes: 'bg-destructive/10 text-destructive' };
         return (
           <TooltipProvider delayDuration={300}>
             <Tooltip>
@@ -234,19 +247,15 @@ export function DefectsPage() {
                 <div className="flex items-center gap-3">
                   <div className={cn(
                     'flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
-                    isInspection
-                      ? 'bg-blue-100 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400'
-                      : 'bg-destructive/10 text-destructive',
+                    sourceConfig.classes,
                   )}>
-                    {isInspection
-                      ? <ClipboardCheck className="h-4 w-4" />
-                      : <PenLine className="h-4 w-4" />}
+                    {sourceConfig.icon}
                   </div>
                   <span className="font-medium text-foreground font-mono text-sm">{defect.defectNumber}</span>
                 </div>
               </TooltipTrigger>
               <TooltipContent>
-                {isInspection ? 'From Pre-Start Inspection' : 'Manually Created'}
+                {sourceConfig.label}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -271,18 +280,21 @@ export function DefectsPage() {
       label: 'Defect Name',
       sortable: true,
       render: (defect) => {
-        const isInspection = defect.source === 'prestart_inspection';
+        const sourceBadge = defect.source === 'prestart_inspection'
+          ? { label: 'Inspection', classes: 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400' }
+          : defect.source === 'fault'
+            ? { label: 'Fault', classes: 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' }
+            : { label: 'Manual', classes: 'bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300' };
         return (
-          <TooltipProvider delayDuration={300}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="text-foreground">{defect.name}</span>
-              </TooltipTrigger>
-              <TooltipContent>
-                Source: {isInspection ? 'Pre-Start Inspection' : 'Manual'}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <div className="flex items-center gap-2">
+            <span className="text-foreground truncate">{defect.name}</span>
+            <span className={cn(
+              'inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase shrink-0',
+              sourceBadge.classes,
+            )}>
+              {sourceBadge.label}
+            </span>
+          </div>
         );
       },
     },
@@ -491,30 +503,6 @@ export function DefectsPage() {
         )}
       </div>
 
-      {/* View Defect Dialog */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{viewDefect?.defectNumber || 'Defect Details'}</DialogTitle>
-            <DialogDescription>Defect overview.</DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto py-4">
-            {viewDefect && <ViewDefectContent defect={viewDefect} />}
-          </div>
-          <DialogFooter>
-            {viewDefect && !viewDefect.workOrderNumber && (
-              <Button onClick={() => handleOpenCreateWO(viewDefect)}>
-                <Wrench className="h-4 w-4 mr-1" /> Create Work Order
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => { setViewDialogOpen(false); if (viewDefect) handleOpenEdit(viewDefect); }}>
-              <Pencil className="h-4 w-4 mr-1" /> Edit
-            </Button>
-            <Button variant="outline" onClick={() => setViewDialogOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Delete Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
@@ -536,93 +524,3 @@ export function DefectsPage() {
   );
 }
 
-/** Read-only view of defect details. */
-function ViewDefectContent({ defect }: { defect: DefectRow }) {
-  return (
-    <div className="space-y-6">
-      {/* Overview */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Overview</h3>
-        <Separator className="mb-4" />
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <ViewField label="Defect Number" value={defect.defectNumber} />
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Status</p>
-              <Badge variant={STATUS_BADGE_VARIANT[defect.status] || 'secondary'} className="mt-0.5">
-                {STATUS_DISPLAY_NAME[defect.status] || defect.status}
-              </Badge>
-            </div>
-          </div>
-          <ViewField label="Name" value={defect.name} />
-          <ViewField label="Date" value={defect.date ? new Date(defect.date).toLocaleDateString() : undefined} />
-          <ViewField label="Comment" value={defect.comment} />
-          {defect.workOrderNumber && (
-            <ViewField label="Work Order" value={defect.workOrderNumber} />
-          )}
-        </div>
-      </div>
-
-      {/* Asset & Driver */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Asset & Driver</h3>
-        <Separator className="mb-4" />
-        <div className="space-y-4">
-          <ViewField label="Asset" value={defect.assetName} />
-          <ViewField label="Driver" value={defect.driverName || undefined} />
-        </div>
-      </div>
-
-      {/* Classification */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Classification</h3>
-        <Separator className="mb-4" />
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Severity</p>
-          <span className={cn(
-            'mt-0.5 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium',
-            SEVERITY_BADGE_CLASSES[defect.priority] || 'bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300',
-          )}>
-            {SEVERITY_DISPLAY_NAME[defect.priority] || defect.priority}
-          </span>
-        </div>
-      </div>
-
-      {/* Attachments */}
-      {defect.attachments.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Attachments</h3>
-          <Separator className="mb-4" />
-          <div className="space-y-2">
-            {defect.attachments.map((att, i) => (
-              <div key={i} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-                <span className="text-sm text-foreground">{att.originalName}</span>
-                <span className="text-xs text-muted-foreground">
-                  {att.size < 1024 * 1024
-                    ? `${(att.size / 1024).toFixed(1)} KB`
-                    : `${(att.size / (1024 * 1024)).toFixed(1)} MB`}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Metadata */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Details</h3>
-        <Separator className="mb-4" />
-        <ViewField label="Created" value={new Date(defect.createdAt).toLocaleString()} />
-      </div>
-    </div>
-  );
-}
-
-function ViewField({ label, value }: { label: string; value?: string }) {
-  return (
-    <div>
-      <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <p className="text-sm text-foreground mt-0.5">{value || '—'}</p>
-    </div>
-  );
-}

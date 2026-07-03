@@ -69,7 +69,7 @@ export function DataTableToolbar<T>({
       {actions}
 
       {/* Table controls — Filters · Columns · Density in one colorful group */}
-      <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-sm">
+      <div className="inline-flex items-center gap-0.5 rounded-sm border border-border bg-card p-0.5 shadow-sm">
         {hasFilters && onFilterChange && (
           <>
             <FiltersControl

@@ -12,9 +12,10 @@ export interface RepeatCalendarCondition {
 }
 
 export interface IntervalEndsRow {
-  type: 'never' | 'on' | 'after';
+  type: 'never' | 'on' | 'after' | 'meter_reading';
   date?: string;
   occurrences?: number;
+  meterReading?: number;
 }
 
 export interface OneTimeConditionRow {

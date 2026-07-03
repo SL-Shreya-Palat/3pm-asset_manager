@@ -62,9 +62,10 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
   const [calendarEvery, setCalendarEvery] = useState('');
   const [calendarUnit, setCalendarUnit] = useState<string>('day');
   // Ends
-  const [endsType, setEndsType] = useState<'never' | 'on' | 'after'>('never');
+  const [endsType, setEndsType] = useState<'never' | 'on' | 'after' | 'meter_reading'>('never');
   const [endsDate, setEndsDate] = useState('');
   const [endsOccurrences, setEndsOccurrences] = useState('');
+  const [endsMeterReading, setEndsMeterReading] = useState('');
   // One-time conditions
   const [dueMileageEnabled, setDueMileageEnabled] = useState(false);
   const [dueMileageMode, setDueMileageMode] = useState<'at' | 'in'>('at');
@@ -162,11 +163,12 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
           if (eng) { setEngineHoursEnabled(eng.enabled); setEngineHoursEvery(eng.every ? String(eng.every) : ''); }
           const cal = iv.calendar as { enabled: boolean; every: number; unit: string } | undefined;
           if (cal) { setCalendarEnabled(cal.enabled); setCalendarEvery(cal.every ? String(cal.every) : ''); setCalendarUnit(cal.unit || 'day'); }
-          const ends = iv.ends as { type: string; date?: string; occurrences?: number } | undefined;
+          const ends = iv.ends as { type: string; date?: string; occurrences?: number; meterReading?: number } | undefined;
           if (ends) {
-            setEndsType((ends.type as 'never' | 'on' | 'after') || 'never');
+            setEndsType((ends.type as 'never' | 'on' | 'after' | 'meter_reading') || 'never');
             if (ends.date) setEndsDate(ends.date.split('T')[0]);
             if (ends.occurrences) setEndsOccurrences(String(ends.occurrences));
+            if (ends.meterReading) setEndsMeterReading(String(ends.meterReading));
           }
         } else {
           const dm = iv.dueMileage as { enabled: boolean; mode: string; value: number } | undefined;
@@ -229,6 +231,7 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
         type: endsType,
         ...(endsType === 'on' ? { date: endsDate || undefined } : {}),
         ...(endsType === 'after' ? { occurrences: endsOccurrences ? parseInt(endsOccurrences, 10) : undefined } : {}),
+        ...(endsType === 'meter_reading' ? { meterReading: endsMeterReading ? parseFloat(endsMeterReading) : undefined } : {}),
       };
     } else {
       intervalPayload.dueMileage = { enabled: dueMileageEnabled, mode: dueMileageMode, value: dueMileageValue ? parseFloat(dueMileageValue) : 0 };
@@ -511,7 +514,7 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
                             onChange={() => setEndsType('on')}
                             className="h-4 w-4 accent-primary"
                           />
-                          <span className="text-sm text-foreground w-10 shrink-0">On</span>
+                          <span className="text-sm text-foreground w-28 shrink-0">On</span>
                           <DateField
                             value={endsDate}
                             onChange={setEndsDate}
@@ -529,7 +532,7 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
                             onChange={() => setEndsType('after')}
                             className="h-4 w-4 accent-primary"
                           />
-                          <span className="text-sm text-foreground w-10 shrink-0">After</span>
+                          <span className="text-sm text-foreground w-28 shrink-0">After</span>
                           <Input
                             type="number"
                             min="1"
@@ -540,6 +543,34 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
                             className="w-20"
                           />
                           <span className="text-sm text-muted-foreground">Occurrences</span>
+                        </div>
+                        {/* Meter Reading */}
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="endsType"
+                            checked={endsType === 'meter_reading'}
+                            onChange={() => setEndsType('meter_reading')}
+                            className="h-4 w-4 accent-primary"
+                          />
+                          <span className="text-sm text-foreground w-28 shrink-0">Meter Reading</span>
+                          <Input
+                            type="number"
+                            min="0"
+                            value={endsMeterReading}
+                            onChange={(e) => setEndsMeterReading(e.target.value)}
+                            disabled={endsType !== 'meter_reading'}
+                            placeholder="0"
+                            className="w-20"
+                          />
+                          <div className="inline-flex rounded-md border border-border overflow-hidden">
+                            <span className={cn(
+                              'px-3 py-1.5 text-xs font-medium',
+                              'bg-primary text-primary-foreground',
+                            )}>
+                              km
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </div>
