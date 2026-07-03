@@ -70,7 +70,6 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
   const [assetSubtype, setAssetSubtype] = useState('');
   const [lastServiceEngineHours, setLastServiceEngineHours] = useState('');
   const [hubometer, setHubometer] = useState('');
-  const [regoWof, setRegoWof] = useState('');
 
   // Photo upload
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -152,11 +151,6 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
       );
       setHubometer(
         initialData.hubometer != null ? String(initialData.hubometer) : '',
-      );
-      setRegoWof(
-        initialData.regoWof
-          ? (initialData.regoWof as string).split('T')[0]
-          : '',
       );
       // Set photo preview from existing data
       const urls = initialData.photoUrls as string[] | undefined;
@@ -373,7 +367,6 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
         ? parseFloat(lastServiceEngineHours)
         : undefined,
       hubometer: hubometer ? parseFloat(hubometer) : undefined,
-      regoWof: regoWof || undefined,
       formIds: Array.from(selectedFormIds),
       serviceProgramIds: Array.from(selectedServiceProgramIds),
     };
@@ -710,9 +703,6 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
                   min={0}
                   className="mt-1.5"
                 />
-              </div>
-              <div>
-                <DateField id="regoWof" label="Rego / WOF" value={regoWof} onChange={setRegoWof} placeholder="Select expiry date" />
               </div>
             </div>
           ),

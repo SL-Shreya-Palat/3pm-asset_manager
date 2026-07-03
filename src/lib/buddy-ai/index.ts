@@ -1,46 +1,21 @@
 /**
- * Buddy AI — Construction Portal AI Agent
+ * Buddy AI — Asset Manager AI Agent
  *
- * Phase 1: Consultant (read-only). Projects + resources only.
- * Phase 2: Workflow mode (create/update) with schema-driven UI.
+ * AI SDK v7 native: streamText agentic loop + RBAC-filtered tool registry
+ * (read tools auto-execute, write tools require in-chat approval) +
+ * multi-thread persistence. See tools/registry.ts to add capabilities.
  */
 
-export type {
-  DropdownOption,
-  UISchema,
-  StructuredResponse,
-  StructuredInput,
-} from "./types";
-
-export { routeWithLLM, type RoutingResult, type WorkflowContext } from "./utils/llm-routing";
-
-export { CREATE_PROJECT_SCHEMA } from "./workflows";
-export type { WorkflowSchema, WorkflowFieldDefinition } from "./workflows";
-
-export {
-  TOOL_PERMISSION_MAP,
-  buildAllowedTools,
-  canAccessTool,
-  type BuddyAIContext,
-} from "./utils/rbac";
-
-export { resolveContext, type ResolveContextUser } from "./utils/context";
-
-export {
-  getOptionsForField,
-  buildResolvedSummary,
-  resolveValueToDisplay,
-} from "./utils/resolve-id-to-label";
-
-export { computeWorkflowProgress } from "./utils/compute-workflow-progress";
-
-export { getFeatureGuide, type GetFeatureGuideResult } from "./tools/get-feature-guide";
-
+export { getModel, isAiConfigured } from "./provider";
 export { buildSystemPrompt } from "./config/system-prompt";
-
 export {
-  orchestrate,
-  type OrchestrateOptions,
-  type OrchestrateResult,
-  type ChatMessage,
-} from "./orchestrate";
+  REGISTRY,
+  defineTool,
+  buildToolset,
+  buildToolApproval,
+  canUseTool,
+  type BuddyToolDef,
+} from "./tools";
+export { resolveContext, type ResolveContextUser } from "./utils/context";
+export type { BuddyAIContext } from "./utils/rbac";
+export { requireBuddyContext } from "./utils/require-context";

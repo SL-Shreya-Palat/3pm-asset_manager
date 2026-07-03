@@ -1,29 +1,37 @@
 /**
  * Buddy AI — Context resolver
  *
- * Resolves user + tenant + permissions into BuddyAIContext.
- * Reuses logic from /api/me/permissions (tenantMember → role → permissions).
+ * Resolves user + tenant + role permissions into BuddyAIContext.
+ * Mirrors the tenantMember → role → permissions logic in auth-helper,
+ * including the owner override (tenant.ownerId always gets full access).
  */
 
 import { ObjectId } from "mongodb";
-import { getTenantMembersCollection, getTenantsCollection } from "@/lib/mongodb";
-import { getRoleById } from "@/controller/roles";
-import { PermissionChecker, type RolePermissions } from "@/lib/permission-helpers";
 import {
-  buildAllowedTools,
-  type BuddyAIContext,
-} from "@/lib/buddy-ai/utils/rbac";
+  getRolesCollection,
+  getTenantMembersCollection,
+  getTenantsCollection,
+} from "@/lib/mongodb";
+import type { Role, RolePermissions } from "@/lib/rbac";
+import type { BuddyAIContext } from "@/lib/buddy-ai/utils/rbac";
 
 export type ResolveContextUser = {
   id: string;
   currentTenantId: string | null;
 };
 
-const DEFAULT_ROLE_PERMISSIONS: RolePermissions = {
-  v: 2,
-  forms: [],
-  m: [],
-  sm: [],
+/** Member without a role sees nothing until a role is assigned. */
+const NO_ACCESS_PERMISSIONS: RolePermissions = {
+  scope: "modules",
+  modules: {},
+  teamScoped: false,
+  mobileOnly: false,
+};
+
+const OWNER_PERMISSIONS: RolePermissions = {
+  scope: "all",
+  teamScoped: false,
+  mobileOnly: false,
 };
 
 /**
@@ -45,12 +53,13 @@ export async function resolveContext(
   }
 
   const tenantId = user.currentTenantId;
+  const tenantObjectId = ObjectId.createFromHexString(tenantId);
   const tenantMembersCollection = await getTenantMembersCollection();
 
   const tenantMemberDoc = await tenantMembersCollection.findOne(
     {
       userId: ObjectId.createFromHexString(user.id),
-      tenantId: ObjectId.createFromHexString(tenantId),
+      tenantId: tenantObjectId,
       isActive: true,
     },
     { projection: { roleId: 1 } }
@@ -60,38 +69,48 @@ export async function resolveContext(
     throw new Error("Tenant membership not found");
   }
 
+  const tenantsCollection = await getTenantsCollection();
+  const tenantDoc = await tenantsCollection.findOne(
+    { _id: tenantObjectId },
+    { projection: { name: 1, ownerId: 1 } }
+  );
+
+  const isOwner = tenantDoc?.ownerId?.toString() === user.id;
   const roleId = tenantMemberDoc.roleId as ObjectId | undefined;
-  const tenantObjectId = ObjectId.createFromHexString(tenantId);
 
-  let rolePermissions: RolePermissions = DEFAULT_ROLE_PERMISSIONS;
-  if (roleId) {
-    const role = await getRoleById(roleId.toString(), tenantObjectId);
-    rolePermissions = role?.permissions ?? DEFAULT_ROLE_PERMISSIONS;
-  }
-
-  const permissionChecker = new PermissionChecker();
-  permissionChecker.initialize(rolePermissions);
-
-  const allowedTools = buildAllowedTools(permissionChecker);
-
-  let tenantName: string | undefined;
-  try {
-    const tenantsCollection = await getTenantsCollection();
-    const tenantDoc = await tenantsCollection.findOne(
-      { _id: tenantObjectId },
-      { projection: { name: 1 } }
-    );
-    tenantName = tenantDoc?.name;
-  } catch {
-    // Optional; ignore
+  let role: Role;
+  if (isOwner) {
+    // Owner always has full access, regardless of the linked role doc.
+    role = {
+      _id: roleId?.toString() ?? "",
+      key: "owner",
+      name: "Owner",
+      permissions: OWNER_PERMISSIONS,
+      isSystem: true,
+    };
+  } else {
+    let roleDoc: Record<string, unknown> | null = null;
+    if (roleId) {
+      const rolesCollection = await getRolesCollection();
+      roleDoc = await rolesCollection.findOne({
+        _id: roleId,
+        tenantId: tenantObjectId,
+      });
+    }
+    role = {
+      _id: roleId?.toString() ?? "",
+      key: (roleDoc?.key as string) ?? "",
+      name: (roleDoc?.name as string) ?? "",
+      permissions:
+        (roleDoc?.permissions as RolePermissions) ?? NO_ACCESS_PERMISSIONS,
+      isSystem: Boolean(roleDoc?.isSystem),
+    };
   }
 
   return {
     userId: user.id,
     tenantId,
-    tenantName,
-    rolePermissions,
-    permissionChecker,
-    allowedTools,
+    tenantName: tenantDoc?.name as string | undefined,
+    role,
   };
 }

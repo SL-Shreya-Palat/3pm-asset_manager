@@ -6,7 +6,7 @@ import axios from 'axios';
 import {
   ArrowLeft, Pencil, Power, Fuel, Info, Wrench,
   Truck, Gauge, Clock, DollarSign, Fingerprint, StickyNote, CalendarClock,
-  Users, ClipboardList, KeyRound, MoreHorizontal,
+  Users, ClipboardList, KeyRound, MoreHorizontal, ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -36,6 +36,7 @@ import { InspectButton } from '@/components/inspections/inspect-button';
 import { AssetFuelTab } from '@/components/fuel/asset-fuel-tab';
 import { AssetServiceTab } from '@/components/assets/asset-service-tab';
 import { AssetMeterTab } from '@/components/assets/asset-meter-tab';
+import { AssetComplianceTab } from '@/components/assets/asset-compliance-tab';
 import { useSyncSubmissions } from '@/hooks/use-sync-submissions';
 
 const ASSET_TABS = [
@@ -43,6 +44,7 @@ const ASSET_TABS = [
   { id: 'service', label: 'Service', icon: Wrench },
   { id: 'meter', label: 'Meter', icon: Gauge },
   { id: 'fuel', label: 'Fuel', icon: Fuel },
+  { id: 'compliance', label: 'Compliance', icon: ShieldCheck },
 ] as const;
 
 type AssetTabId = (typeof ASSET_TABS)[number]['id'];
@@ -427,6 +429,10 @@ export default function AssetDetailPage() {
 
       {activeTab === 'fuel' && (
         <AssetFuelTab assetId={String(params.id)} />
+      )}
+
+      {activeTab === 'compliance' && (
+        <AssetComplianceTab assetId={String(params.id)} />
       )}
 
       {/* Change Team Dialog */}

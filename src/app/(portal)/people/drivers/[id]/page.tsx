@@ -5,10 +5,12 @@ import { useParams, useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   ArrowLeft,
-  Pencil,
+  SquarePen,
+  Trash2,
   User,
   Info,
   ClipboardCheck,
+  FileText,
   Mail,
   Phone,
   Briefcase,
@@ -22,7 +24,16 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
+import { Spinner } from '@/components/ui/spinner';
 import { DetailCard, DetailField } from '@/components/ui/detail-field';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { DriverInspectionTab } from '@/components/drivers/driver-inspection-tab';
 
@@ -42,6 +53,15 @@ export default function DriverDetailPage() {
 
   // Team name
   const [teamName, setTeamName] = useState<string>('');
+
+  // Delete dialog
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  // Inspect dialog
+  const [inspectDialogOpen, setInspectDialogOpen] = useState(false);
+  const [inspectLoading, setInspectLoading] = useState(false);
+  const [inspectForms, setInspectForms] = useState<{ formId: string; title: string }[]>([]);
 
   const fetchDriver = useCallback(async () => {
     try {
@@ -72,6 +92,43 @@ export default function DriverDetailPage() {
       }
     })();
   }, [driver?.teamId]);
+
+  // ── Delete handler ──
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await axios.delete(`/api/drivers/${params.id}`, { withCredentials: true });
+      router.push('/people/drivers');
+    } catch (err) {
+      console.error('Failed to delete driver:', err);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // ── Inspect handler ──
+  const handleOpenInspect = async () => {
+    setInspectDialogOpen(true);
+    setInspectLoading(true);
+    try {
+      const res = await axios.get('/api/forms?status=published&includeSchema=false', { withCredentials: true });
+      const allForms = res.data?.data?.items || [];
+      const wellness = allForms
+        .filter(
+          (f: Record<string, unknown>) =>
+            (f.title || f.formTitle) === 'Driver Wellness Pre-Start Check',
+        )
+        .map((f: Record<string, unknown>) => ({
+          formId: String(f.formId || f.id),
+          title: String(f.title || f.formTitle || 'Untitled form'),
+        }));
+      setInspectForms(wellness);
+    } catch {
+      setInspectForms([]);
+    } finally {
+      setInspectLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -170,10 +227,15 @@ export default function DriverDetailPage() {
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Button onClick={() => router.push(`/people/drivers/${params.id}/edit`)}>
-              <Pencil className="h-4 w-4" />
-              Edit
+          <div className="flex items-center gap-1 shrink-0">
+            <Button variant="ghost" size="icon" onClick={handleOpenInspect} title="Inspect">
+              <ClipboardCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={() => router.push(`/people/drivers/${params.id}/edit`)} title="Edit">
+              <SquarePen className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={() => setDeleteDialogOpen(true)} title="Delete">
+              <Trash2 className="h-5 w-5 text-red-600 dark:text-red-400" />
             </Button>
           </div>
         </div>
@@ -257,6 +319,60 @@ export default function DriverDetailPage() {
       {activeTab === 'inspections' && (
         <DriverInspectionTab driverId={String(params.id)} />
       )}
+
+      {/* Delete Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Driver</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete &quot;{fullName}&quot;? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+              {deleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Inspect Dialog */}
+      <Dialog open={inspectDialogOpen} onOpenChange={setInspectDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Start Inspection</DialogTitle>
+            <DialogDescription>
+              Select a form to inspect {fullName}.
+            </DialogDescription>
+          </DialogHeader>
+
+          {inspectLoading ? (
+            <div className="flex items-center justify-center py-10"><Spinner /></div>
+          ) : inspectForms.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">
+              No inspection forms found. Please seed pre-start forms first.
+            </p>
+          ) : (
+            <div className="space-y-2 py-1 max-h-80 overflow-y-auto">
+              {inspectForms.map((f) => (
+                <button
+                  key={f.formId}
+                  onClick={() => {
+                    setInspectDialogOpen(false);
+                    router.push(`/inspections/fill?driverId=${params.id}&formId=${f.formId}`);
+                  }}
+                  className="w-full flex items-center gap-3 rounded-md border p-3 text-left hover:bg-muted transition-colors"
+                >
+                  <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm font-medium">{f.title}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

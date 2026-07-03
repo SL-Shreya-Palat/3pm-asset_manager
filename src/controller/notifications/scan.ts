@@ -6,12 +6,11 @@
  * deduped helpers, so re-running it (e.g. daily) never spams — a recipient gets at
  * most one alert per (type, entity) per ~20h window until the situation is resolved.
  *
- *   • Service due / overdue  → tenant managers + the asset's assigned driver
- *   • Work order overdue     → tenant managers + the assigned mechanic
- *   • Part low / out of stock → tenant managers (parts at/below their reorder point)
- *
- * (Asset compliance expiry is intentionally NOT here — this app's asset model has no
- *  rego / WOF / CoF expiry fields yet; add those fields first, then a branch here.)
+ *   • Service due / overdue    → tenant managers + the asset's assigned driver
+ *   • Work order overdue       → tenant managers + the assigned mechanic
+ *   • Part low / out of stock  → tenant managers (parts at/below their reorder point)
+ *   • Compliance doc expiring  → tenant managers + the asset's assigned driver
+ *                                (rego / WOF / CoF / RUC / insurance in `documents`)
  */
 import { ObjectId } from 'mongodb';
 import {
@@ -24,6 +23,8 @@ import {
   getPartsCollection,
 } from '@/lib/mongodb';
 import { getAssetServiceStatus } from '@/controller/service-programs/due-status';
+import { listExpiring } from '@/controller/documents';
+import { DOCUMENT_TYPE_LABELS } from '@/constants/documents';
 import { notifyTenantManagersOnce, notifyUsersOnce } from '@/controller/notifications';
 
 /** Resolve the asset's assigned driver to a portal user id (if the driver is a member). */
@@ -166,12 +167,74 @@ async function scanLowStock(tenantId: string): Promise<number> {
   return count;
 }
 
+/** Compliance documents (rego / WOF / CoF / RUC / insurance…) that are expired or
+ *  within their reminder window, for one tenant. Managers (+ the asset's assigned
+ *  driver) get one alert per document per dedupe window until it's renewed. */
+async function scanComplianceExpiry(tenantId: string): Promise<number> {
+  const { items } = await listExpiring(tenantId);
+  if (items.length === 0) return 0;
+
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const assetsCol = await getAssetsCollection();
+
+  // Bulk-resolve asset names + assigned drivers for the asset-scoped docs.
+  const assetIds = [
+    ...new Set(items.filter((d) => d.scope === 'asset' && d.assetId).map((d) => d.assetId as string)),
+  ];
+  const assetMap = new Map<string, { name: string; assignedDriverId?: ObjectId }>();
+  if (assetIds.length) {
+    const assets = await assetsCol
+      .find(
+        { _id: { $in: assetIds.map((id) => ObjectId.createFromHexString(id)) }, tenantId: tenantOid },
+        { projection: { name: 1, assignedDriverId: 1 } },
+      )
+      .toArray();
+    for (const a of assets) {
+      assetMap.set((a._id as ObjectId).toString(), {
+        name: (a.name as string) || 'An asset',
+        assignedDriverId: a.assignedDriverId as ObjectId | undefined,
+      });
+    }
+  }
+
+  let count = 0;
+  for (const doc of items) {
+    const label = DOCUMENT_TYPE_LABELS[doc.docType] || doc.title;
+    const expired = doc.status === 'expired';
+    const asset = doc.assetId ? assetMap.get(doc.assetId) : undefined;
+    const ownerName = asset?.name || 'A record';
+    const days = doc.daysUntilExpiry ?? 0;
+    const when = expired
+      ? `expired ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ago`
+      : days === 0
+        ? 'expires today'
+        : `expires in ${days} day${days === 1 ? '' : 's'}`;
+
+    const payload = {
+      type: expired ? ('document_expired' as const) : ('document_expiring' as const),
+      title: `${expired ? 'Compliance expired' : 'Compliance expiring'}: ${label}`,
+      body: `${ownerName} — ${label} ${when}.`,
+      link: doc.scope === 'asset' && doc.assetId ? `/assets/${doc.assetId}` : '/assets',
+      entityType: 'document',
+      entityId: doc.id,
+    };
+    await notifyTenantManagersOnce(tenantId, payload);
+    if (asset?.assignedDriverId) {
+      const driverUserIds = await resolveDriverUserIds(tenantOid, asset.assignedDriverId);
+      if (driverUserIds.length) await notifyUsersOnce(tenantId, driverUserIds, payload);
+    }
+    count++;
+  }
+  return count;
+}
+
 /** Scan every active tenant for time-based alerts. Safe to run repeatedly (deduped). */
 export async function runNotificationScan(): Promise<{
   tenants: number;
   serviceAlerts: number;
   workOrderAlerts: number;
   lowStockAlerts: number;
+  complianceAlerts: number;
 }> {
   const tenantsCol = await getTenantsCollection();
   const tenants = await tenantsCol
@@ -181,6 +244,7 @@ export async function runNotificationScan(): Promise<{
   let serviceAlerts = 0;
   let workOrderAlerts = 0;
   let lowStockAlerts = 0;
+  let complianceAlerts = 0;
 
   for (const t of tenants) {
     const tenantId = (t._id as ObjectId).toString();
@@ -188,11 +252,12 @@ export async function runNotificationScan(): Promise<{
       serviceAlerts += await scanServiceDue(tenantId);
       workOrderAlerts += await scanWorkOrdersOverdue(tenantId);
       lowStockAlerts += await scanLowStock(tenantId);
+      complianceAlerts += await scanComplianceExpiry(tenantId);
     } catch (err) {
       // One tenant's failure must not stop the rest.
       console.error(`[notifications] scan failed for tenant ${tenantId}:`, err);
     }
   }
 
-  return { tenants: tenants.length, serviceAlerts, workOrderAlerts, lowStockAlerts };
+  return { tenants: tenants.length, serviceAlerts, workOrderAlerts, lowStockAlerts, complianceAlerts };
 }

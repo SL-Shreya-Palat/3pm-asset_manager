@@ -1,58 +1,35 @@
 /**
  * Buddy AI — Thread persistence
  *
- * Manages buddyChatThreads and buddyChatMessages collections.
+ * Multi-thread chat history in `buddyChatThreads`. Each thread doc embeds the
+ * AI SDK UIMessage array verbatim (text + tool parts + approvals), so loading
+ * a thread restores the exact useChat state. Trimmed to the last MAX_MESSAGES
+ * to stay well under Mongo's 16MB document limit.
  */
 
 import { ObjectId } from "mongodb";
-import {
-  getBuddyChatThreadsCollection,
-  getBuddyChatMessagesCollection,
-} from "@/lib/mongodb";
-import type { WorkflowStateType } from "../types";
-import type { WorkflowStatus } from "../state-machine";
+import type { UIMessage } from "ai";
+import { getBuddyChatThreadsCollection } from "@/lib/mongodb";
 
-/** Re-export for consumers */
-export type { WorkflowStateType };
-
-/** Workflow state for create/update flows (stored per thread) */
-export type WorkflowState = {
-  workflow: string;
-  collectedData: Record<string, unknown>;
-  currentStep: string;
-  /** Formal state for transitions (derived from currentStep) */
-  state?: WorkflowStateType;
-  /** High-level workflow status (state machine) */
-  status?: WorkflowStatus;
-  /** Optional fields user chose to add (create_project flow) */
-  pendingOptionalFields?: string[];
-  /** Optional fields user explicitly skipped */
-  skippedFields?: string[];
-  /** Step history for back navigation */
-  stepHistory?: string[];
-  /** Number of createTool failures at confirmation (for retry limit) */
-  createRetryCount?: number;
-  /** Extracted fields from routing, applied when user selects "Chat with AI" */
-  prefillData?: Record<string, unknown>;
-};
+const MAX_MESSAGES = 200;
 
 export type BuddyThread = {
   _id: ObjectId;
   userId: ObjectId;
   tenantId: ObjectId;
   title?: string;
-  workflowState?: WorkflowState;
+  messages?: UIMessage[];
   createdAt: Date;
   updatedAt: Date;
 };
 
-export type BuddyThreadMessage = {
-  _id: ObjectId;
-  threadId: ObjectId;
-  role: "user" | "assistant";
-  content: string;
-  createdAt: Date;
-};
+function ownerFilter(threadId: string, userId: string, tenantId: string) {
+  return {
+    _id: ObjectId.createFromHexString(threadId),
+    userId: ObjectId.createFromHexString(userId),
+    tenantId: ObjectId.createFromHexString(tenantId),
+  };
+}
 
 /**
  * Create a new thread.
@@ -64,27 +41,27 @@ export async function createThread(
 ): Promise<string> {
   const coll = await getBuddyChatThreadsCollection();
   const now = new Date();
-  const doc = {
+  const result = await coll.insertOne({
     userId: ObjectId.createFromHexString(userId),
     tenantId: ObjectId.createFromHexString(tenantId),
     title: title ?? "New chat",
+    messages: [],
     createdAt: now,
     updatedAt: now,
-  };
-  const result = await coll.insertOne(doc);
+  });
   return result.insertedId.toString();
 }
 
 /**
- * List threads for a user in a tenant.
+ * List threads for a user in a tenant (most recent first).
  */
 export async function listThreads(
   userId: string,
   tenantId: string,
-  limit: number = 20
+  limit: number = 30
 ): Promise<Array<{ id: string; title: string; updatedAt: Date }>> {
   const coll = await getBuddyChatThreadsCollection();
-  const cursor = coll
+  const docs = await coll
     .find(
       {
         userId: ObjectId.createFromHexString(userId),
@@ -94,7 +71,7 @@ export async function listThreads(
     )
     .toArray();
 
-  return (await cursor).map((d) => ({
+  return docs.map((d) => ({
     id: (d._id as ObjectId).toString(),
     title: (d.title as string) ?? "New chat",
     updatedAt: d.updatedAt as Date,
@@ -109,75 +86,46 @@ export async function getThread(
   userId: string,
   tenantId: string
 ): Promise<BuddyThread | null> {
+  if (!ObjectId.isValid(threadId)) return null;
   const coll = await getBuddyChatThreadsCollection();
-  const doc = await coll.findOne({
-    _id: ObjectId.createFromHexString(threadId),
-    userId: ObjectId.createFromHexString(userId),
-    tenantId: ObjectId.createFromHexString(tenantId),
-  });
+  const doc = await coll.findOne(ownerFilter(threadId, userId, tenantId));
   return doc as BuddyThread | null;
 }
 
 /**
- * Get messages for a thread.
+ * Load a thread's UIMessage history (ownership-checked). Null if not found.
  */
 export async function getThreadMessages(
   threadId: string,
   userId: string,
   tenantId: string
-): Promise<Array<{ id: string; role: "user" | "assistant"; content: string; createdAt: string }>> {
+): Promise<UIMessage[] | null> {
   const thread = await getThread(threadId, userId, tenantId);
-  if (!thread) return [];
-
-  const coll = await getBuddyChatMessagesCollection();
-  const docs = await coll
-    .find(
-      { threadId: ObjectId.createFromHexString(threadId) },
-      { projection: { _id: 1, role: 1, content: 1, createdAt: 1 }, sort: { createdAt: 1 } }
-    )
-    .toArray();
-
-  return docs.map((d) => ({
-    id: (d._id as ObjectId).toString(),
-    role: d.role as "user" | "assistant",
-    content: (d.content as string) ?? "",
-    createdAt: d.createdAt instanceof Date ? d.createdAt.toISOString() : new Date().toISOString(),
-  }));
+  if (!thread) return null;
+  return thread.messages ?? [];
 }
 
 /**
- * Append messages to a thread and update thread's updatedAt.
+ * Replace a thread's message history with the completed turn's messages
+ * (the AI SDK hands back the full updated array on finish).
  */
-export async function appendMessagesToThread(
+export async function saveThreadMessages(
   threadId: string,
   userId: string,
   tenantId: string,
-  messages: Array<{ role: "user" | "assistant"; content: string }>
+  messages: UIMessage[]
 ): Promise<void> {
-  const thread = await getThread(threadId, userId, tenantId);
-  if (!thread) throw new Error("Thread not found");
-
-  const threadsColl = await getBuddyChatThreadsCollection();
-  const messagesColl = await getBuddyChatMessagesCollection();
-  const threadObjectId = ObjectId.createFromHexString(threadId);
-  const now = new Date();
-
-  const docs = messages.map((m) => ({
-    threadId: threadObjectId,
-    role: m.role,
-    content: m.content,
-    createdAt: now,
-  }));
-
-  await messagesColl.insertMany(docs);
-  await threadsColl.updateOne(
-    { _id: threadObjectId },
-    { $set: { updatedAt: now } }
-  );
+  const coll = await getBuddyChatThreadsCollection();
+  await coll.updateOne(ownerFilter(threadId, userId, tenantId), {
+    $set: {
+      messages: messages.slice(-MAX_MESSAGES),
+      updatedAt: new Date(),
+    },
+  });
 }
 
 /**
- * Update thread title from first user message.
+ * Update a thread's title (ownership-checked).
  */
 export async function updateThreadTitle(
   threadId: string,
@@ -185,82 +133,22 @@ export async function updateThreadTitle(
   tenantId: string,
   title: string
 ): Promise<void> {
-  const thread = await getThread(threadId, userId, tenantId);
-  if (!thread) return;
-
-  const threadsColl = await getBuddyChatThreadsCollection();
-  await threadsColl.updateOne(
-    { _id: ObjectId.createFromHexString(threadId) },
-    { $set: { title: title.slice(0, 100), updatedAt: new Date() } }
-  );
+  const coll = await getBuddyChatThreadsCollection();
+  await coll.updateOne(ownerFilter(threadId, userId, tenantId), {
+    $set: { title: title.slice(0, 100), updatedAt: new Date() },
+  });
 }
 
 /**
- * Get workflow state for a thread (if any).
- */
-export async function getWorkflowState(
-  threadId: string,
-  userId: string,
-  tenantId: string
-): Promise<WorkflowState | null> {
-  const thread = await getThread(threadId, userId, tenantId);
-  if (!thread?.workflowState) return null;
-  return thread.workflowState;
-}
-
-/**
- * Update workflow state for a thread.
- */
-export async function updateWorkflowState(
-  threadId: string,
-  userId: string,
-  tenantId: string,
-  workflowState: WorkflowState
-): Promise<void> {
-  const thread = await getThread(threadId, userId, tenantId);
-  if (!thread) throw new Error("Thread not found");
-
-  const threadsColl = await getBuddyChatThreadsCollection();
-  await threadsColl.updateOne(
-    { _id: ObjectId.createFromHexString(threadId) },
-    { $set: { workflowState, updatedAt: new Date() } }
-  );
-}
-
-/**
- * Clear workflow state for a thread (on interrupt or completion).
- */
-export async function clearWorkflowState(
-  threadId: string,
-  userId: string,
-  tenantId: string
-): Promise<void> {
-  const thread = await getThread(threadId, userId, tenantId);
-  if (!thread) return;
-
-  const threadsColl = await getBuddyChatThreadsCollection();
-  await threadsColl.updateOne(
-    { _id: ObjectId.createFromHexString(threadId) },
-    { $unset: { workflowState: "" }, $set: { updatedAt: new Date() } }
-  );
-}
-
-/**
- * Delete a thread and its messages.
+ * Delete a thread (ownership-checked). Returns true if a doc was removed.
  */
 export async function deleteThread(
   threadId: string,
   userId: string,
   tenantId: string
 ): Promise<boolean> {
-  const thread = await getThread(threadId, userId, tenantId);
-  if (!thread) return false;
-
-  const threadObjectId = ObjectId.createFromHexString(threadId);
-  const threadsColl = await getBuddyChatThreadsCollection();
-  const messagesColl = await getBuddyChatMessagesCollection();
-
-  await messagesColl.deleteMany({ threadId: threadObjectId });
-  const result = await threadsColl.deleteOne({ _id: threadObjectId });
-  return (result.deletedCount ?? 0) > 0;
+  if (!ObjectId.isValid(threadId)) return false;
+  const coll = await getBuddyChatThreadsCollection();
+  const result = await coll.deleteOne(ownerFilter(threadId, userId, tenantId));
+  return result.deletedCount > 0;
 }

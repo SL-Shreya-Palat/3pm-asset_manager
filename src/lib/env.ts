@@ -35,6 +35,9 @@ interface EnvConfig {
   auth3pm: Auth3PMConfig;
   s3: S3Config;
   sendgrid: SendGridConfig;
+  google: {
+    genAiApiKey: string;
+  };
 }
 
 function optionalString(key: string): string | undefined {
@@ -69,6 +72,9 @@ function buildEnv(): EnvConfig {
     auth3pm: resolveAuth3PMConfig(),
     s3: resolveS3Config(),
     sendgrid: resolveSendGridConfig(),
+    google: {
+      genAiApiKey: process.env.GOOGLE_GENAI_API_KEY || '',
+    },
   };
 }
 

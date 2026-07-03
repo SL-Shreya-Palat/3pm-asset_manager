@@ -28,6 +28,8 @@ export type NotificationType =
   | 'service_overdue'
   | 'part_low_stock'
   | 'part_out_of_stock'
+  | 'document_expiring'
+  | 'document_expired'
   | 'purchase_order_submitted'
   | 'purchase_order_approved'
   | 'purchase_order_rejected'

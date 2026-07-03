@@ -180,5 +180,8 @@ export function serializeAsset(doc: Record<string, unknown>): Record<string, unk
     // Populated fields
     assetTypeName: doc.assetTypeName || null,
     teamNames: Array.isArray(doc.teamNames) ? doc.teamNames : [],
+    // Worst-case compliance status across this asset's documents (list enrichment):
+    // 'expired' | 'expiring_soon' | 'valid' | 'none'
+    complianceStatus: doc.complianceStatus || 'none',
   };
 }

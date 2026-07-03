@@ -166,4 +166,6 @@ export interface AssetResponse {
   updatedAt: string;
   // Populated name for display
   assetTypeName?: string;
+  /** Worst-case compliance status across this asset's documents (list enrichment). */
+  complianceStatus?: 'expired' | 'expiring_soon' | 'valid' | 'none';
 }

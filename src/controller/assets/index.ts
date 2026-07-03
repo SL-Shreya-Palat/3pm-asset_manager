@@ -3,22 +3,104 @@
  * MongoDB native driver, no Mongoose/ODM.
  */
 import { ObjectId } from 'mongodb';
-import { getAssetsCollection, getAssetTypesCollection, getTeamsCollection, getFormsCollection, getServiceProgramsCollection } from '@/lib/mongodb';
+import { getAssetsCollection, getAssetTypesCollection, getTeamsCollection, getFormsCollection, getServiceProgramsCollection, getDocumentsCollection } from '@/lib/mongodb';
 import { validateCreateAssetInput, serializeAsset } from './utils';
+import { computeDocumentStatus } from '@/controller/documents/utils';
 import type { CreateAssetInput, UpdateAssetInput } from './types';
+
+/** Worst-case compliance rank: expired (3) > expiring soon (2) > valid (1). */
+const COMPLIANCE_RANK: Record<string, number> = { valid: 1, expiring_soon: 2, expired: 3 };
+const RANK_STATUS: Record<number, string> = { 1: 'valid', 2: 'expiring_soon', 3: 'expired' };
+
+/** Reduce raw expiry-bearing docs to the worst compliance status per asset id. */
+function worstStatusByAsset(
+  docs: Array<Record<string, unknown>>,
+  now: Date,
+): Map<string, string> {
+  const rankByAsset = new Map<string, number>();
+  for (const d of docs) {
+    const status = computeDocumentStatus(d.expiryDate as Date, (d.reminderDays as number) ?? 30, now);
+    const rank = COMPLIANCE_RANK[status];
+    if (!rank) continue; // no_expiry can't occur here (expiryDate is non-null), but guard anyway
+    const key = (d.assetId as ObjectId).toString();
+    if (rank > (rankByAsset.get(key) ?? 0)) rankByAsset.set(key, rank);
+  }
+  const out = new Map<string, string>();
+  for (const [key, rank] of rankByAsset) out.set(key, RANK_STATUS[rank]);
+  return out;
+}
+
+/**
+ * One-query worst-case compliance status for a set of assets, keyed by asset id.
+ * Only documents with an expiry date count; assets with none are omitted (→ 'none').
+ * Reuses the same `computeDocumentStatus` the compliance tab + reminder scan use.
+ */
+async function computeComplianceStatusMap(
+  tenantOid: ObjectId,
+  assetOids: ObjectId[],
+): Promise<Map<string, string>> {
+  if (assetOids.length === 0) return new Map();
+  const docsCol = await getDocumentsCollection();
+  const docs = await docsCol
+    .find(
+      {
+        tenantId: tenantOid,
+        scope: 'asset',
+        assetId: { $in: assetOids },
+        isArchived: { $ne: true },
+        expiryDate: { $ne: null },
+      },
+      { projection: { assetId: 1, expiryDate: 1, reminderDays: 1 } },
+    )
+    .toArray();
+  return worstStatusByAsset(docs as Array<Record<string, unknown>>, new Date());
+}
+
+/**
+ * Accurate, fleet-wide asset-id filter for a compliance status — used to filter
+ * the assets list SERVER-side (so it's correct across pagination, not just the
+ * loaded page). Scans every expiry-bearing asset document for the tenant (no
+ * horizon bound, so far-future "valid" docs are still counted).
+ *
+ * Returns a Mongo `_id` clause: `$in` the matching assets for expired/expiring/
+ * valid, or `$nin` the tracked assets for 'none' (assets with no tracked doc).
+ */
+async function complianceAssetIdClause(
+  tenantOid: ObjectId,
+  status: string,
+): Promise<Record<string, ObjectId[]>> {
+  const docsCol = await getDocumentsCollection();
+  const docs = await docsCol
+    .find(
+      { tenantId: tenantOid, scope: 'asset', isArchived: { $ne: true }, expiryDate: { $ne: null } },
+      { projection: { assetId: 1, expiryDate: 1, reminderDays: 1 } },
+    )
+    .toArray();
+  const worst = worstStatusByAsset(docs as Array<Record<string, unknown>>, new Date());
+
+  if (status === 'none') {
+    // Any asset with a tracked (expiry-bearing) document is NOT 'none'.
+    return { $nin: [...worst.keys()].map((k) => ObjectId.createFromHexString(k)) };
+  }
+  const matching = [...worst.entries()]
+    .filter(([, s]) => s === status)
+    .map(([k]) => ObjectId.createFromHexString(k));
+  return { $in: matching };
+}
 
 /** List assets with pagination, filtering, and search. */
 export async function getAllAssets(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; status?: string; teamId?: string },
+  options: { page?: number; limit?: number; search?: string; status?: string; teamId?: string; complianceStatus?: string },
 ) {
   const collection = await getAssetsCollection();
   const page = Math.max(1, options.page || 1);
   const limit = Math.min(100, Math.max(1, options.limit || 25));
   const skip = (page - 1) * limit;
+  const tenantOid = ObjectId.createFromHexString(tenantId);
 
   const filter: Record<string, unknown> = {
-    tenantId: ObjectId.createFromHexString(tenantId),
+    tenantId: tenantOid,
     isArchived: { $ne: true },
   };
 
@@ -40,6 +122,12 @@ export async function getAllAssets(
       { vin: regex },
       { licensePlate: regex },
     ];
+  }
+
+  // Compliance filter is resolved to a fleet-wide asset-id set FIRST, so results
+  // are accurate across pagination (not just the loaded page).
+  if (options.complianceStatus && options.complianceStatus !== 'all') {
+    filter._id = await complianceAssetIdClause(tenantOid, options.complianceStatus);
   }
 
   const [items, total] = await Promise.all([
@@ -72,6 +160,13 @@ export async function getAllAssets(
     teamNameMap = new Map(teamDocs.map((t) => [t._id.toString(), t.name as string]));
   }
 
+  // Worst-case compliance status per asset (rego/WOF/CoF/RUC/insurance expiry).
+  // Bounded to the current page's assets, so this is safe at scale.
+  const complianceMap = await computeComplianceStatusMap(
+    tenantOid,
+    items.map((i) => i._id as ObjectId),
+  );
+
   const serialized = items.map((item) => {
     const assetType = item.assetTypeId ? assetTypeMap.get(item.assetTypeId.toString()) : null;
     const assetTypeName = assetType ? (assetType.name as string) : undefined;
@@ -80,7 +175,9 @@ export async function getAllAssets(
       ? item.teamIds.map((id: ObjectId) => teamNameMap.get(id.toString())).filter(Boolean)
       : [];
 
-    return serializeAsset({ ...item, assetTypeName, teamNames });
+    const complianceStatus = complianceMap.get((item._id as ObjectId).toString()) || 'none';
+
+    return serializeAsset({ ...item, assetTypeName, teamNames, complianceStatus });
   });
 
   return {

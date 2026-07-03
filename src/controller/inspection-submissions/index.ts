@@ -176,6 +176,7 @@ export async function processInspectionSubmission(
   let effectiveAssetId = explicitAssetId;
   let operatorId: ObjectId | null = null;
   let operatorName: string | null = null;
+  let driverId: ObjectId | null = null;
   if (!effectiveAssetId) {
     const launches = await getInspectionLaunchesCollection();
     const launch = await launches.findOneAndUpdate(
@@ -188,6 +189,8 @@ export async function processInspectionSubmission(
       // Operator = whoever launched the inspection (passed just like the asset).
       operatorId = (launch.userId as ObjectId) ?? null;
       operatorName = (launch.userName as string) || (launch.userEmail as string) || null;
+      // Driver = the driver this inspection was launched for (driver wellness flow).
+      if (launch.driverId) driverId = launch.driverId as ObjectId;
     }
   }
   const asset = await resolveAsset(tenantOid, maps, response, effectiveAssetId ?? null);
@@ -204,6 +207,7 @@ export async function processInspectionSubmission(
     assetId: asset.id,
     assetName: asset.name,
     unitNumber: asset.unitNumber,
+    driverId,
     operatorId,
     operatorName,
     response,
@@ -349,6 +353,7 @@ function serializeSubmission(
     assetId: doc.assetId ? (doc.assetId as ObjectId).toString() : null,
     assetName: (doc.assetName as string) ?? null,
     unitNumber: (doc.unitNumber as string) ?? null,
+    driverId: doc.driverId ? (doc.driverId as ObjectId).toString() : null,
     operatorName: (doc.operatorName as string) ?? null,
     result: (doc.result as string) ?? 'pass',
     defectCount: Array.isArray(doc.defects) ? (doc.defects as unknown[]).length : 0,
@@ -370,7 +375,7 @@ function serializeSubmission(
 /** Paginated inspection history for the tenant (newest first). */
 export async function listInspectionSubmissions(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; result?: string; assetId?: string },
+  options: { page?: number; limit?: number; search?: string; result?: string; assetId?: string; driverId?: string; full?: boolean },
 ) {
   const col = await getInspectionSubmissionsCollection();
   const page = Math.max(1, options.page || 1);
@@ -382,6 +387,9 @@ export async function listInspectionSubmissions(
   if (options.result) filter.result = options.result;
   if (options.assetId && ObjectId.isValid(options.assetId)) {
     filter.assetId = ObjectId.createFromHexString(options.assetId);
+  }
+  if (options.driverId && ObjectId.isValid(options.driverId)) {
+    filter.driverId = ObjectId.createFromHexString(options.driverId);
   }
   if (options.search) {
     const regex = { $regex: options.search, $options: 'i' };
@@ -399,7 +407,7 @@ export async function listInspectionSubmissions(
   ]);
 
   return {
-    items: items.map((d) => serializeSubmission(d as Record<string, unknown>)),
+    items: items.map((d) => serializeSubmission(d as Record<string, unknown>, { full: options.full })),
     pagination: { page, limit, total, hasMore: skip + limit < total },
   };
 }

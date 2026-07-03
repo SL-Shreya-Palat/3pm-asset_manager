@@ -5,7 +5,6 @@ import axios from 'axios';
 import {
   CheckCircle2,
   AlertTriangle,
-  AlertCircle,
   Calendar,
   User,
   ChevronDown,
@@ -58,62 +57,62 @@ const VALUE_LABELS: Record<string, string> = {
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
-interface WellnessCheck {
-  id: string;
-  outcome: 'fit' | 'fit_with_concerns' | 'not_fit';
-  concerns: { field: string; value: string; severity: 'critical' | 'non_critical' }[];
-  answers: Record<string, string>;
-  comments: string;
-  fitForDutyDeclared: boolean;
-  submittedBy: { email?: string; name?: string };
-  createdAt: string;
+interface InspectionDefect {
+  fieldKey: string;
+  label: string;
+  answer: string | string[];
+  severity: 'critical' | 'non_critical';
 }
 
-const OUTCOME_CONFIG = {
-  fit: {
-    label: 'Fit',
+interface InspectionSubmission {
+  id: string;
+  inspectionNumber: string;
+  formTitle: string;
+  result: 'pass' | 'fail';
+  defectCount: number;
+  response: Record<string, unknown>;
+  defects: InspectionDefect[];
+  operatorName: string | null;
+  submittedAt: string;
+}
+
+const RESULT_CONFIG = {
+  pass: {
+    label: 'Pass',
     variant: 'success' as const,
     icon: CheckCircle2,
-    color: 'text-green-600',
   },
-  fit_with_concerns: {
-    label: 'Fit with Concerns',
-    variant: 'warning' as const,
-    icon: AlertCircle,
-    color: 'text-yellow-600',
-  },
-  not_fit: {
-    label: 'Not Fit',
+  fail: {
+    label: 'Fail',
     variant: 'destructive' as const,
     icon: AlertTriangle,
-    color: 'text-red-600',
   },
 };
 
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function DriverInspectionTab({ driverId }: { driverId: string }) {
-  const [checks, setChecks] = useState<WellnessCheck[]>([]);
+  const [submissions, setSubmissions] = useState<InspectionSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const fetchChecks = useCallback(async () => {
+  const fetchSubmissions = useCallback(async () => {
     try {
       setLoading(true);
       const res = await axios.get(`/api/drivers/${driverId}/wellness-checks?limit=50`, {
         withCredentials: true,
       });
-      setChecks(res.data.data?.items || []);
+      setSubmissions(res.data.data?.items || []);
     } catch {
-      setChecks([]);
+      setSubmissions([]);
     } finally {
       setLoading(false);
     }
   }, [driverId]);
 
   useEffect(() => {
-    fetchChecks();
-  }, [fetchChecks]);
+    fetchSubmissions();
+  }, [fetchSubmissions]);
 
   if (loading) {
     return (
@@ -123,15 +122,15 @@ export function DriverInspectionTab({ driverId }: { driverId: string }) {
     );
   }
 
-  if (checks.length === 0) {
+  if (submissions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border border-dashed bg-card py-16 text-center">
         <span className="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-muted-foreground">
           <CheckCircle2 className="h-7 w-7" />
         </span>
-        <p className="mt-4 text-base font-semibold text-foreground">No wellness checks yet</p>
+        <p className="mt-4 text-base font-semibold text-foreground">No inspections yet</p>
         <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-          Wellness checks will appear here after a driver completes an inspection form.
+          Inspection results will appear here after a driver completes an inspection form.
         </p>
       </div>
     );
@@ -139,27 +138,29 @@ export function DriverInspectionTab({ driverId }: { driverId: string }) {
 
   return (
     <div className="space-y-3">
-      {checks.map((check) => {
-        const config = OUTCOME_CONFIG[check.outcome] || OUTCOME_CONFIG.fit;
+      {submissions.map((sub) => {
+        const config = RESULT_CONFIG[sub.result] || RESULT_CONFIG.pass;
         const Icon = config.icon;
-        const isExpanded = expandedId === check.id;
-        const date = new Date(check.createdAt);
+        const isExpanded = expandedId === sub.id;
+        const date = sub.submittedAt ? new Date(sub.submittedAt) : null;
+
+        // Build a defect field set for highlighting
+        const defectFieldKeys = new Set((sub.defects || []).map((d) => d.fieldKey));
 
         return (
           <div
-            key={check.id}
+            key={sub.id}
             className="rounded-xl border bg-card shadow-md overflow-hidden"
           >
             {/* Summary row */}
             <button
               type="button"
-              onClick={() => setExpandedId(isExpanded ? null : check.id)}
+              onClick={() => setExpandedId(isExpanded ? null : sub.id)}
               className="w-full flex items-center gap-4 p-4 text-left hover:bg-muted/50 transition-colors"
             >
               <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', {
-                'bg-green-100 text-green-700': check.outcome === 'fit',
-                'bg-yellow-100 text-yellow-700': check.outcome === 'fit_with_concerns',
-                'bg-red-100 text-red-700': check.outcome === 'not_fit',
+                'bg-green-100 text-green-700': sub.result === 'pass',
+                'bg-red-100 text-red-700': sub.result === 'fail',
               })}>
                 <Icon className="h-5 w-5" />
               </span>
@@ -167,24 +168,31 @@ export function DriverInspectionTab({ driverId }: { driverId: string }) {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-semibold text-foreground">
-                    Wellness Check
+                    {sub.formTitle || 'Inspection'}
                   </span>
                   <Badge variant={config.variant}>{config.label}</Badge>
-                  {check.concerns.length > 0 && (
+                  {sub.inspectionNumber && (
+                    <span className="text-xs text-muted-foreground font-mono">
+                      {sub.inspectionNumber}
+                    </span>
+                  )}
+                  {sub.defectCount > 0 && (
                     <span className="text-xs text-muted-foreground">
-                      {check.concerns.length} concern{check.concerns.length !== 1 ? 's' : ''}
+                      {sub.defectCount} defect{sub.defectCount !== 1 ? 's' : ''}
                     </span>
                   )}
                 </div>
                 <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                  {check.submittedBy?.name && (
+                  {date && (
+                    <span className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                  {sub.operatorName && (
                     <span className="flex items-center gap-1">
                       <User className="h-3 w-3" />
-                      {check.submittedBy.name}
+                      {sub.operatorName}
                     </span>
                   )}
                 </div>
@@ -200,65 +208,76 @@ export function DriverInspectionTab({ driverId }: { driverId: string }) {
             {/* Expanded details */}
             {isExpanded && (
               <div className="border-t px-4 py-4 space-y-4">
-                {/* Answers grid */}
-                <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                    Responses
-                  </h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {Object.entries(check.answers).map(([key, val]) => {
-                      const isConcern = check.concerns.some((c) => c.field === key);
-                      const concern = check.concerns.find((c) => c.field === key);
-                      return (
-                        <div
-                          key={key}
-                          className={cn(
-                            'rounded-lg border p-3 text-sm',
-                            isConcern
-                              ? concern?.severity === 'critical'
-                                ? 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950'
-                                : 'border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950'
-                              : 'bg-card',
-                          )}
-                        >
-                          <p className="text-xs font-medium text-muted-foreground">
-                            {FIELD_LABELS[key] || key}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <p className="font-medium text-foreground">
-                              {VALUE_LABELS[val] || val}
-                            </p>
-                            {isConcern && concern && (
-                              <Badge
-                                variant={concern.severity === 'critical' ? 'destructive' : 'warning'}
-                                className="text-[10px] px-1.5 py-0"
-                              >
-                                {concern.severity === 'critical' ? 'Critical' : 'Concern'}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Declaration & comments */}
-                <div className="flex items-center gap-4 text-sm">
-                  <span className="text-muted-foreground">Fit for duty declared:</span>
-                  <Badge variant={check.fitForDutyDeclared ? 'success' : 'warning'}>
-                    {check.fitForDutyDeclared ? 'Yes' : 'No'}
-                  </Badge>
-                </div>
-
-                {check.comments && (
+                {/* Responses grid */}
+                {sub.response && Object.keys(sub.response).length > 0 && (
                   <div>
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
-                      Comments
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                      Responses
                     </h4>
-                    <p className="text-sm text-foreground bg-muted/50 rounded-lg p-3 whitespace-pre-wrap">
-                      {check.comments}
-                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {Object.entries(sub.response).map(([key, val]) => {
+                        const isDefect = defectFieldKeys.has(key);
+                        const defect = (sub.defects || []).find((d) => d.fieldKey === key);
+                        const strVal = String(val ?? '');
+                        return (
+                          <div
+                            key={key}
+                            className={cn(
+                              'rounded-lg border p-3 text-sm',
+                              isDefect
+                                ? defect?.severity === 'critical'
+                                  ? 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950'
+                                  : 'border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950'
+                                : 'bg-card',
+                            )}
+                          >
+                            <p className="text-xs font-medium text-muted-foreground">
+                              {FIELD_LABELS[key] || key}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <p className="font-medium text-foreground">
+                                {VALUE_LABELS[strVal] || strVal}
+                              </p>
+                              {isDefect && defect && (
+                                <Badge
+                                  variant={defect.severity === 'critical' ? 'destructive' : 'warning'}
+                                  className="text-[10px] px-1.5 py-0"
+                                >
+                                  {defect.severity === 'critical' ? 'Critical' : 'Concern'}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Defects summary (if any) */}
+                {sub.defects && sub.defects.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                      Defects Raised
+                    </h4>
+                    <div className="space-y-1.5">
+                      {sub.defects.map((d, i) => {
+                        const answerStr = Array.isArray(d.answer) ? d.answer.join(', ') : d.answer;
+                        return (
+                          <div key={i} className="flex items-center gap-2 text-sm">
+                            <Badge
+                              variant={d.severity === 'critical' ? 'destructive' : 'warning'}
+                              className="text-[10px] px-1.5 py-0 shrink-0"
+                            >
+                              {d.severity === 'critical' ? 'Critical' : 'Non-critical'}
+                            </Badge>
+                            <span className="text-foreground">
+                              {d.label} — {VALUE_LABELS[String(answerStr)] || answerStr}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>

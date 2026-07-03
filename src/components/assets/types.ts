@@ -27,6 +27,8 @@ export interface AssetRow {
   formIds?: string[];
   driverAccessIds?: string[];
   createdAt: string;
+  /** Worst-case compliance status across the asset's documents. */
+  complianceStatus?: 'expired' | 'expiring_soon' | 'valid' | 'none';
 }
 
 export interface AssetTypeOption {

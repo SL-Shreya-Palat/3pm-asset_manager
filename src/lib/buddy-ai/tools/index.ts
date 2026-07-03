@@ -1,33 +1,63 @@
 /**
- * Buddy AI — Tool implementations
+ * Buddy AI — Tool catalog
  *
- * Each tool receives BuddyAIContext and returns data for the agent.
+ * Every capability the assistant can use, in one list. Exposure is filtered
+ * per request by buildToolset (RBAC + adminOnly). Write tools (Phase 4:
+ * create_work_order, update_asset_status, ...) also go here with
+ * access: "write" — they automatically require in-chat user approval.
  */
 
-export { getFeatureGuide, type GetFeatureGuideResult } from "./get-feature-guide";
-export { listProjects, type ListProjectsResult } from "./list-projects";
-export { getProjectDetails, type GetProjectDetailsResult } from "./get-project-details";
-export { getStaffDirectory, type GetStaffDirectoryResult } from "./get-staff-directory";
-export { listLeaveRequests, type ListLeaveRequestsResult } from "./list-leave-requests";
-export { listBusinessContacts, type ListBusinessContactsResult } from "./list-business-contacts";
-export { listAssets, type ListAssetsResult } from "./list-assets";
-export { listTasksByProject, type ListTasksByProjectResult } from "./list-tasks-by-project";
-export { listLeads, type ListLeadsResult } from "./list-leads";
-export { listQuotes, type ListQuotesResult } from "./list-quotes";
-export { listInvoices, type ListInvoicesResult } from "./list-invoices";
-export { listClaims, type ListClaimsResult } from "./list-claims";
-export { getSitesForContact, type GetSitesForContactResult } from "./get-sites-for-contact";
-export { createProject, type CreateProjectInput, type CreateProjectResult } from "./create-project";
-export { updateProject, type UpdateProjectInput, type UpdateProjectResult } from "./update-project";
-export { getProjectForUpdate } from "./get-project-for-update";
+import type { BuddyToolDef } from "./registry";
+import { featureGuide } from "./get-feature-guide";
+import { listAssets, getAsset } from "./assets";
+import {
+  getFleetSnapshot,
+  listWorkOrders,
+  listDefects,
+  listServiceSchedule,
+} from "./maintenance";
+import { listInspections } from "./inspections";
+import { listParts } from "./inventory";
+import { listFuelTransactions, fuelAnalytics } from "./fuel";
+import { listDrivers, listTeams, listVendors } from "./people";
+import {
+  updateAssetStatus,
+  updateDefectStatus,
+  recordMeterReading,
+  createWorkOrderAction,
+} from "./actions";
+
+export const REGISTRY: BuddyToolDef[] = [
+  // Navigation / meta
+  featureGuide,
+  // Fleet
+  getFleetSnapshot,
+  listAssets,
+  getAsset,
+  // Maintenance
+  listWorkOrders,
+  listDefects,
+  listServiceSchedule,
+  listInspections,
+  // Inventory & fuel
+  listParts,
+  listFuelTransactions,
+  fuelAnalytics,
+  // People
+  listDrivers,
+  listTeams,
+  listVendors,
+  // Write actions (require in-chat confirmation)
+  updateAssetStatus,
+  updateDefectStatus,
+  recordMeterReading,
+  createWorkOrderAction,
+];
+
 export {
-  createBusinessContact,
-  type CreateBusinessContactInput,
-  type CreateBusinessContactResult,
-} from "./create-business-contact";
-export {
-  updateBusinessContact,
-  type UpdateBusinessContactInput,
-  type UpdateBusinessContactResult,
-} from "./update-business-contact";
-export { getBusinessContactForUpdate } from "./get-business-contact-for-update";
+  defineTool,
+  buildToolset,
+  buildToolApproval,
+  canUseTool,
+  type BuddyToolDef,
+} from "./registry";

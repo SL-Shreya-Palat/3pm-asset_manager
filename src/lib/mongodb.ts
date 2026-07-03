@@ -314,6 +314,15 @@ export async function getInspectionLaunchesCollection(): Promise<Collection> {
 // In-app notifications
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Buddy AI chat
+// ---------------------------------------------------------------------------
+
+export async function getBuddyChatThreadsCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('buddyChatThreads');
+}
+
 export async function getNotificationsCollection(): Promise<Collection> {
   const db = await getDb();
   return db.collection('notifications');
@@ -329,10 +338,3 @@ export async function getServiceHistoryCollection(): Promise<Collection> {
 }
 
 // ---------------------------------------------------------------------------
-// Driver wellness checks
-// ---------------------------------------------------------------------------
-
-export async function getDriverWellnessChecksCollection(): Promise<Collection> {
-  const db = await getDb();
-  return db.collection('driverWellnessChecks');
-}
