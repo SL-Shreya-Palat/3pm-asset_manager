@@ -87,7 +87,7 @@ export function DateField({
           />
         </PopoverContent>
       </Popover>
-      {error && <p className="text-sm text-destructive mt-1">{error}</p>}
+      {error && <p className="text-xs mt-1 font-medium text-destructive">{error}</p>}
     </div>
   );
 }

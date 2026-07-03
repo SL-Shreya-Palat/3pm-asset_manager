@@ -39,7 +39,7 @@ export function BaseForm({
 
         <form onSubmit={onSubmit}>
           {/* Photo + Name Card */}
-          <div className="rounded-lg border bg-card p-5 shadow-sm mb-6">
+          <div className="rounded-sm border bg-card p-5 shadow-sm mb-6">
             <div className="flex items-center gap-4">
               {/* Round photo upload */}
               <input
@@ -52,7 +52,7 @@ export function BaseForm({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-border bg-muted/50 cursor-pointer hover:border-primary/50 transition-colors overflow-hidden"
+                className="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-full border-2 border-dashed border-border bg-muted/50 cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors overflow-hidden"
               >
                 {photoPreview ? (
                   <img
@@ -75,7 +75,7 @@ export function BaseForm({
             {sections.map((section) => (
               <div
                 key={section.title}
-                className="rounded-lg border bg-card p-5 shadow-sm"
+                className="rounded-sm border bg-card p-5 shadow-sm"
               >
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-base font-semibold text-foreground">

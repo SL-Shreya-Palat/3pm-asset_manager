@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth-3pm';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
+import { BuddyRail } from '@/components/buddy/buddy-rail';
+import { BuddyPanel } from '@/components/buddy/buddy-panel';
 
 export default async function PortalLayout({
   children,
@@ -21,6 +23,8 @@ export default async function PortalLayout({
         <Header />
         <main className="flex-1 overflow-auto bg-background">{children}</main>
       </div>
+      <BuddyRail />
+      <BuddyPanel />
     </div>
   );
 }

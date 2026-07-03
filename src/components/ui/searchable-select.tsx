@@ -188,22 +188,27 @@ function SearchableSelectComponent(props: SearchableSelectProps) {
           {displayedOptions.map((option) => (
             <Badge
               key={option.value}
-              variant="secondary"
-              className="text-xs px-2 py-0.5 h-6 flex items-center gap-1 max-w-full rounded-full font-medium"
+              title={option.label}
+              className="text-xs px-2.5 py-0.5 h-6 flex items-center gap-1.5 max-w-full bg-primary-50 text-primary-600 border border-primary/30 rounded-full font-medium"
             >
-              <span className="truncate max-w-[140px]">{option.label}</span>
+              <span className="truncate max-w-[120px] sm:max-w-[140px] md:max-w-[180px]">
+                {option.label}
+              </span>
               <div
-                className="h-3.5 w-3.5 cursor-pointer hover:text-destructive flex items-center justify-center rounded-full shrink-0"
+                className="h-4 w-4 cursor-pointer hover:text-destructive hover:bg-destructive/10 flex items-center justify-center rounded-full transition-colors duration-150 shrink-0"
                 onClick={(e) => handleRemoveItem(e, option.value)}
                 role="button"
                 aria-label={`Remove ${option.label}`}
               >
-                <X className="h-2.5 w-2.5" />
+                <X className="h-3 w-3" />
               </div>
             </Badge>
           ))}
           {remainingCount > 0 && (
-            <Badge variant="outline" className="text-xs px-2 py-0.5 h-6 rounded-full font-medium">
+            <Badge
+              variant="outline"
+              className="text-xs px-2.5 py-0.5 h-6 border-primary/20 bg-primary/5 text-primary rounded-full font-medium"
+            >
               +{remainingCount} more
             </Badge>
           )}
@@ -234,12 +239,17 @@ function SearchableSelectComponent(props: SearchableSelectProps) {
             role="combobox"
             aria-expanded={open}
             className={cn(
-              'w-full justify-between text-left font-normal',
-              isMulti ? 'h-auto min-h-9 py-1.5 items-start' : 'h-9 py-0 items-center',
-              'px-3',
+              'w-full min-w-0 justify-between text-left font-normal',
+              isMulti ? 'h-auto min-h-9 py-2 items-start' : 'h-9 py-0 items-center',
+              'px-3 rounded',
+              'border-slate-300 bg-white',
+              'hover:border-primary-400 hover:bg-white',
+              'focus-visible:border-primary-500 focus-visible:ring-primary-500/20 focus-visible:ring-1',
+              'transition-all duration-200',
               !selectedOptions.length && 'text-muted-foreground',
               disabled && 'opacity-50',
-              error && 'border-destructive',
+              error && 'border-destructive focus-visible:ring-destructive/30',
+              open && 'border-primary-500 ring-1 ring-primary-500/20',
             )}
             disabled={disabled}
           >
@@ -249,7 +259,7 @@ function SearchableSelectComponent(props: SearchableSelectProps) {
             <div className="flex items-center gap-1 ml-2 shrink-0">
               {selectedOptions.length > 0 && isClearable && (
                 <div
-                  className="h-5 w-5 cursor-pointer hover:text-destructive flex items-center justify-center rounded"
+                  className="h-6 w-6 cursor-pointer hover:text-destructive hover:bg-destructive/10 transition-all duration-200 flex items-center justify-center rounded"
                   onClick={handleClearAll}
                   role="button"
                   aria-label="Clear selection"
@@ -262,8 +272,8 @@ function SearchableSelectComponent(props: SearchableSelectProps) {
               ) : (
                 <ChevronDown
                   className={cn(
-                    'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
-                    open && 'rotate-180',
+                    'h-4 w-4 shrink-0 text-muted-foreground transition-all duration-200',
+                    open && 'rotate-180 text-gray-700',
                   )}
                 />
               )}
@@ -271,7 +281,7 @@ function SearchableSelectComponent(props: SearchableSelectProps) {
           </Button>
         </PopoverTrigger>
         <PopoverContent
-          className="p-0 shadow-lg"
+          className="p-0 z-10000 shadow-lg border-slate-200 rounded"
           align="start"
           side="bottom"
           style={{
@@ -283,7 +293,7 @@ function SearchableSelectComponent(props: SearchableSelectProps) {
             <div className="p-4 text-sm text-muted-foreground text-center">Loading...</div>
           ) : (
             <>
-              <div className="p-2 border-b border-border">
+              <div className="p-2 border-b border-slate-200">
                 <Input
                   ref={inputRef}
                   placeholder={searchPlaceholder}
@@ -292,10 +302,10 @@ function SearchableSelectComponent(props: SearchableSelectProps) {
                     setSearchTerm(e.target.value);
                     debouncedSearch(e.target.value);
                   }}
-                  className="h-8 text-sm"
+                  className="h-8 text-sm border-slate-300 rounded focus-visible:border-primary-500 focus-visible:ring-primary-500/20"
                 />
               </div>
-              <div className="overflow-y-auto max-h-[200px]">
+              <div className="overflow-y-auto overflow-x-hidden overscroll-contain scroll-smooth max-h-[170px]">
                 {filteredOptions.length === 0 ? (
                   <div className="p-4 text-sm text-muted-foreground text-center">
                     {emptyMessage}
@@ -318,15 +328,20 @@ function SearchableSelectComponent(props: SearchableSelectProps) {
                         <div
                           key={option.value}
                           className={cn(
-                            'flex items-center justify-between gap-2 px-2 py-1.5 cursor-pointer rounded transition-colors',
-                            'hover:bg-muted/50',
-                            isSelected && 'bg-primary/5 hover:bg-primary/10',
-                            option.disabled && 'opacity-50 pointer-events-none',
+                            'flex items-center justify-between gap-2 px-2 py-1.5 cursor-pointer rounded transition-colors duration-150',
+                            'hover:bg-slate-100',
+                            isSelected && 'bg-primary-50/50 hover:bg-primary/10',
+                            option.disabled && 'opacity-50 pointer-events-none hover:bg-transparent',
                           )}
                           onClick={() => !option.disabled && handleToggleOption(option.value)}
                         >
                           <div className="flex-1 min-w-0">
-                            <div className={cn('text-sm text-foreground truncate', isSelected && 'font-medium')}>
+                            <div
+                              className={cn(
+                                'text-xs font-medium text-gray-700 truncate',
+                                isSelected && 'font-normal',
+                              )}
+                            >
                               {option.label}
                             </div>
                             {option.meta && (
@@ -346,7 +361,7 @@ function SearchableSelectComponent(props: SearchableSelectProps) {
           )}
         </PopoverContent>
       </Popover>
-      {error && <p className="text-sm text-destructive mt-1">{error}</p>}
+      {error && <p className="text-xs mt-1 font-medium text-destructive">{error}</p>}
     </div>
   );
 }

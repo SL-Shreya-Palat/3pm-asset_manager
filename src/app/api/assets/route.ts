@@ -18,8 +18,9 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get('search') || undefined;
   const status = searchParams.get('status') || undefined;
   const teamId = searchParams.get('teamId') || undefined;
+  const complianceStatus = searchParams.get('complianceStatus') || undefined;
 
-  const result = await getAllAssets(user.currentTenantId, { page, limit, search, status, teamId });
+  const result = await getAllAssets(user.currentTenantId, { page, limit, search, status, teamId, complianceStatus });
   return NextResponse.json({ data: result, error: null });
 }
 

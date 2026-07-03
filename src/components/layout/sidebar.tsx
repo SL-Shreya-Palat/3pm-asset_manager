@@ -81,13 +81,18 @@ export function Sidebar() {
       )}
     >
       {/* Logo / brand */}
-      <div className="flex h-14 items-center px-4 border-b border-sidebar-border">
-        <Link href="/dashboard" className="flex items-center gap-2 overflow-hidden">
-          <div className="flex h-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-xs px-2">
+      <div
+        className={cn(
+          'flex h-14 items-center border-b border-sidebar-border px-4',
+          collapsed && 'justify-center',
+        )}
+      >
+        <Link href="/dashboard" className="flex items-center gap-x-3 overflow-hidden">
+          <div className="flex h-8 min-w-8 shrink-0 items-center justify-center rounded-md bg-primary px-1.5 text-[11px] font-bold text-primary-foreground shadow-sm">
             3PM
           </div>
           {!collapsed && (
-            <span className="text-sm font-semibold text-sidebar-foreground truncate">
+            <span className="brand-wordmark truncate text-lg font-bold leading-none">
               Asset Manager
             </span>
           )}
@@ -111,13 +116,13 @@ export function Sidebar() {
                   <button
                     onClick={() => toggleExpand(item.href)}
                     className={cn(
-                      'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors w-full',
+                      'flex w-full items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors',
                       isActive
-                        ? 'bg-sidebar-accent text-sidebar-primary'
-                        : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                        ? 'bg-sidebar-primary text-sidebar-primary-foreground shadow-sm ring-1 ring-sidebar-primary/10'
+                        : 'text-sidebar-foreground hover:bg-gray-100',
                     )}
                   >
-                    <Icon className={cn('h-5 w-5 shrink-0', isActive && 'text-sidebar-primary')} />
+                    <Icon className="h-5 w-5 shrink-0" />
                     <span className="truncate flex-1 text-left">{item.label}</span>
                     <ChevronDown
                       className={cn(
@@ -136,10 +141,10 @@ export function Sidebar() {
                             key={child.href}
                             href={child.href}
                             className={cn(
-                              'flex items-center rounded-md px-3 py-1.5 text-sm transition-colors',
+                              'flex items-center rounded px-3 py-1.5 text-sm transition-colors',
                               isChildActive
                                 ? 'font-medium text-sidebar-primary'
-                                : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                                : 'text-sidebar-foreground hover:bg-gray-100',
                             )}
                           >
                             <span className="truncate">{child.label}</span>
@@ -158,14 +163,14 @@ export function Sidebar() {
                 key={item.href}
                 href={hasChildren ? item.children![0].href : item.href}
                 className={cn(
-                  'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                  'flex items-center gap-3 rounded px-3 py-2.5 text-sm font-medium transition-colors',
                   isActive
-                    ? 'bg-sidebar-accent text-sidebar-primary'
-                    : 'text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                    ? 'bg-sidebar-primary text-sidebar-primary-foreground shadow-sm ring-1 ring-sidebar-primary/10'
+                    : 'text-sidebar-foreground hover:bg-gray-100',
                   collapsed && 'justify-center px-2',
                 )}
               >
-                <Icon className={cn('h-5 w-5 shrink-0', isActive && 'text-sidebar-primary')} />
+                <Icon className="h-5 w-5 shrink-0" />
                 {!collapsed && <span className="truncate">{item.label}</span>}
               </Link>
             );
@@ -193,7 +198,7 @@ export function Sidebar() {
           {!collapsed && (
             <a
               href="/api/auth/logout"
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors flex-1"
+              className="flex items-center gap-2 rounded px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-gray-100 transition-colors flex-1"
             >
               <LogOut className="h-4 w-4" />
               <span>Sign Out</span>
@@ -202,7 +207,7 @@ export function Sidebar() {
           <button
             onClick={() => setCollapsed(!collapsed)}
             className={cn(
-              'flex items-center justify-center rounded-md p-2 text-sidebar-foreground hover:bg-sidebar-accent transition-colors',
+              'flex items-center justify-center rounded p-2 text-sidebar-foreground hover:bg-gray-100 transition-colors',
               collapsed && 'w-full',
             )}
           >

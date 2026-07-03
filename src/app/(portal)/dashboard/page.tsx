@@ -1,6 +1,7 @@
 import { Truck, CircleCheck, Wrench, CircleSlash } from 'lucide-react';
 import { getSession } from '@/lib/auth-3pm';
 import { StatCard } from '@/components/ui/stat-card';
+import { DashboardWidgets } from '@/components/dashboard/dashboard-widgets';
 
 export default async function DashboardPage() {
   const session = await getSession();
@@ -20,6 +21,8 @@ export default async function DashboardPage() {
         <StatCard label="In Shop" value="—" icon={<Wrench />} accent="text-amber-600" />
         <StatCard label="Under Maintenance" value="—" icon={<CircleSlash />} accent="text-red-600" />
       </div>
+
+      <DashboardWidgets />
     </div>
   );
 }

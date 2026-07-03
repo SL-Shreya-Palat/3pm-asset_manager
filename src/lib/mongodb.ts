@@ -260,6 +260,20 @@ export async function getFormBuilderSessionsCollection(): Promise<Collection> {
 }
 
 // ---------------------------------------------------------------------------
+// Widget Builder embed session cache + per-tenant embed tokens
+// ---------------------------------------------------------------------------
+
+export async function getWidgetBuilderSessionsCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('widgetBuilderSessions');
+}
+
+export async function getEmbedTokensCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('embedTokens');
+}
+
+// ---------------------------------------------------------------------------
 // Form Builder – local form storage & org→tenant mapping
 // ---------------------------------------------------------------------------
 
@@ -299,6 +313,15 @@ export async function getInspectionLaunchesCollection(): Promise<Collection> {
 // ---------------------------------------------------------------------------
 // In-app notifications
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Buddy AI chat
+// ---------------------------------------------------------------------------
+
+export async function getBuddyChatThreadsCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('buddyChatThreads');
+}
 
 export async function getNotificationsCollection(): Promise<Collection> {
   const db = await getDb();

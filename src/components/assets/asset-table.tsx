@@ -19,6 +19,13 @@ import { InspectFormPickerDialog } from '@/components/inspections/inspect-button
 import { VinLookupDialog } from './vin-lookup-dialog';
 import { GenerateBarcodeDialog } from './generate-barcode-dialog';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/ui/page-header';
@@ -71,6 +78,9 @@ export function AssetTable() {
   });
   const [loading, setLoading] = useState(true);
   const [search, setSearch, debouncedSearch] = useDebouncedSearch(300);
+  // Server-side compliance filter (accurate across pagination, unlike the
+  // client-side toolbar filters which only narrow the loaded page).
+  const [complianceFilter, setComplianceFilter] = useState<string>('all');
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [inspectAssetId, setInspectAssetId] = useState<string | null>(null);
   const [vinDialogOpen, setVinDialogOpen] = useState(false);
@@ -192,6 +202,7 @@ export function AssetTable() {
       params.set('page', String(page));
       params.set('limit', String(rowsPerPage));
       if (debouncedSearch) params.set('search', debouncedSearch);
+      if (complianceFilter !== 'all') params.set('complianceStatus', complianceFilter);
 
       const res = await axios.get(`/api/assets?${params.toString()}`, {
         withCredentials: true,
@@ -205,7 +216,7 @@ export function AssetTable() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, rowsPerPage]);
+  }, [debouncedSearch, rowsPerPage, complianceFilter]);
 
   useEffect(() => {
     fetchAssets(1);
@@ -374,6 +385,19 @@ export function AssetTable() {
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
+  const getComplianceBadge = (status?: string) => {
+    switch (status) {
+      case 'expired':
+        return <Badge variant="destructive">Expired</Badge>;
+      case 'expiring_soon':
+        return <Badge variant="warning">Expiring</Badge>;
+      case 'valid':
+        return <Badge variant="success">Valid</Badge>;
+      default:
+        return <span className="text-muted-foreground">—</span>;
+    }
+  };
+
   // ── Column definitions ──
   const assetColumns: DataTableColumn<AssetRow>[] = [
     {
@@ -392,6 +416,13 @@ export function AssetTable() {
       label: 'Status',
       sortable: true,
       render: (asset) => getStatusBadge(asset.status),
+    },
+    {
+      key: 'complianceStatus',
+      header: 'Compliance',
+      label: 'Compliance',
+      sortable: true,
+      render: (asset) => getComplianceBadge(asset.complianceStatus),
     },
     {
       key: 'assetTypeName',
@@ -707,20 +738,34 @@ export function AssetTable() {
         onFilterChange={setFilter}
         onFiltersClear={clearFilters}
         actions={
-          selectedKeys.size > 0 ? (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={() => setBarcodeDialogOpen(true)}
-            >
-              <Barcode className="h-4 w-4" />
-              Generate barcode
-              <Badge variant="default" className="ml-1 h-5 min-w-5 px-1.5 text-xs rounded-full">
-                {selectedKeys.size}
-              </Badge>
-            </Button>
-          ) : null
+          <div className="flex items-center gap-2">
+            <Select value={complianceFilter} onValueChange={setComplianceFilter}>
+              <SelectTrigger className="h-9 w-40">
+                <SelectValue placeholder="Compliance" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All compliance</SelectItem>
+                <SelectItem value="expired">Expired</SelectItem>
+                <SelectItem value="expiring_soon">Expiring soon</SelectItem>
+                <SelectItem value="valid">Valid</SelectItem>
+                <SelectItem value="none">No documents</SelectItem>
+              </SelectContent>
+            </Select>
+            {selectedKeys.size > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setBarcodeDialogOpen(true)}
+              >
+                <Barcode className="h-4 w-4" />
+                Generate barcode
+                <Badge variant="default" className="ml-1 h-5 min-w-5 px-1.5 text-xs rounded-full">
+                  {selectedKeys.size}
+                </Badge>
+              </Button>
+            )}
+          </div>
         }
         searchNode={
           <SearchInput
