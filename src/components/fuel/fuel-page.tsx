@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import axios from 'axios';
 import {
   Plus,
-  Pencil,
+  Edit,
   Trash2,
   Fuel,
   Eye,
@@ -372,7 +372,7 @@ export function FuelPage() {
       render: (txn) => (
         <RowActions>
           <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(txn)} />
-          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(txn)} />
+          <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(txn)} />
           <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(txn)} />
         </RowActions>
       ),
@@ -384,7 +384,7 @@ export function FuelPage() {
       {/* Left — Main content */}
       <div className="flex flex-col flex-1 min-w-0">
         {/* Header */}
-        <PageHeader title="Fuel" count={pagination.total}>
+        <PageHeader title="Fuel" description="Record and monitor fuel transactions across your fleet" count={pagination.total}>
           <input
             ref={fileInputRef}
             type="file"
@@ -518,7 +518,7 @@ export function FuelPage() {
                 if (viewTransaction) handleOpenEdit(viewTransaction);
               }}
             >
-              <Pencil className="h-4 w-4 mr-1" />
+              <Edit className="h-4 w-4 mr-1" />
               Edit
             </Button>
             <Button variant="outline" onClick={() => setViewDialogOpen(false)}>Close</Button>

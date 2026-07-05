@@ -290,7 +290,7 @@ export function ServiceSchedulePage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <PageHeader title="Asset Service Schedule" count={pagination.total} />
+      <PageHeader title="Asset Service Schedule" description="View upcoming and overdue service tasks for each asset" count={pagination.total} />
 
       {/* Status Tabs */}
       <div className="px-6 pb-3">

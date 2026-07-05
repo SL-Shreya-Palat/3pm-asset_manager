@@ -200,7 +200,7 @@ export function WorkOrderForm({
         id: i.id as string,
         label: i.label as string,
         color: i.color as string,
-        approvalRequired: i.approvalRequired as boolean,
+        type: (i.type as string) || 'open',
         sequence: i.sequence as number,
       })));
 
@@ -953,9 +953,6 @@ export function WorkOrderForm({
                             style={{ backgroundColor: s.color }}
                           />
                           <span>{s.label}</span>
-                          {s.approvalRequired && (
-                            <span className="text-xs text-muted-foreground">*</span>
-                          )}
                         </div>
                       </SelectItem>
                     ))

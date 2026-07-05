@@ -13,7 +13,7 @@ import {
 } from '@/lib/mongodb';
 import { validateInviteUserInput, serializeTenantMember } from './utils';
 import { createInvitation3PM } from '@/controller/invitations';
-import { create3PMInvitation } from '@/lib/3pm-data-api';
+import { create3PMUser, create3PMInvitation } from '@/lib/3pm-data-api';
 import type { InviteUserInput, UpdateTenantMemberInput } from './types';
 
 /** Build a role name lookup map for a tenant. */
@@ -33,7 +33,7 @@ async function getRoleMap(tenantOid: ObjectId): Promise<Map<string, string>> {
 /** List tenant members with pagination and search. */
 export async function getAllTenantMembers(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; teamId?: string },
+  options: { page?: number; limit?: number; search?: string; teamId?: string; showArchived?: boolean },
 ) {
   const collection = await getTenantMembersCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
@@ -42,6 +42,12 @@ export async function getAllTenantMembers(
   const skip = (page - 1) * limit;
 
   const filter: Record<string, unknown> = { tenantId: tenantOid };
+
+  if (options.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
 
   if (options.teamId) {
     filter['teamMemberships.teamId'] = ObjectId.createFromHexString(options.teamId);
@@ -190,6 +196,22 @@ export async function inviteUser(tenantId: string, invitedByUserId: string, inpu
         ? `${inviter.firstName || ''} ${inviter.lastName || ''}`.trim()
         : undefined;
 
+      // Pre-register the user in 3pm-auth so they can log in directly
+      // (skip the registration/secondary-verification flow).
+      // Safe to call every time — returns status: "skipped" if email exists.
+      try {
+        await create3PMUser({
+          email: normalizedEmail,
+          firstName: input.firstName.trim(),
+          lastName: input.lastName.trim(),
+          mobile: input.mobileNumber?.trim(),
+        });
+      } catch (userCreateError) {
+        // Non-fatal: the invitation can still be sent; user would just
+        // hit the registration flow on first login as a fallback.
+        console.warn('[inviteUser] Failed to pre-register user in 3pm-auth:', userCreateError);
+      }
+
       // Create invitation on 3pm-auth — 3pm-auth sends the email
       const threePMInvite = await create3PMInvitation({
         tenantId: authTenantId,
@@ -279,17 +301,14 @@ export async function updateTenantMember(
   };
 }
 
-/** Deactivate a tenant member. */
+/** Permanently delete a tenant member. */
 export async function deactivateTenantMember(tenantId: string, memberId: string) {
   const collection = await getTenantMembersCollection();
-  const result = await collection.updateOne(
-    {
-      _id: ObjectId.createFromHexString(memberId),
-      tenantId: ObjectId.createFromHexString(tenantId),
-    },
-    { $set: { isActive: false, updatedAt: new Date() } },
-  );
-  return result.modifiedCount > 0;
+  const docOid = ObjectId.createFromHexString(memberId);
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+
+  const result = await collection.deleteOne({ _id: docOid, tenantId: tenantOid });
+  return result.deletedCount > 0;
 }
 
 /** Bulk-add users to a team with a given role. */

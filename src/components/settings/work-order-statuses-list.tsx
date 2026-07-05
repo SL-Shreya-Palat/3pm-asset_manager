@@ -2,13 +2,13 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import axios from 'axios';
-import { Plus, Pencil, Trash2, ArrowRight } from 'lucide-react';
+import { Plus, Edit, Trash2, ArrowRight, Archive, ArchiveRestore } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SearchInput } from '@/components/ui/search-input';
 import { DataTable, type DataTableColumn, type DataTablePagination } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
@@ -22,13 +22,34 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
+import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
+
+const STATUS_TYPES = [
+  { value: 'open', label: 'Open' },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'on_hold', label: 'On Hold' },
+  { value: 'completed', label: 'Completed' },
+  { value: 'cancelled', label: 'Cancelled' },
+] as const;
+
+type StatusType = (typeof STATUS_TYPES)[number]['value'];
+
+const STATUS_TYPE_LABEL_MAP: Record<StatusType, string> = {
+  open: 'Open',
+  in_progress: 'In Progress',
+  on_hold: 'On Hold',
+  completed: 'Completed',
+  cancelled: 'Cancelled',
+};
 
 interface WorkOrderStatusItem {
   id: string;
   label: string;
   color: string;
   description?: string;
-  approvalRequired: boolean;
+  type: StatusType;
   sequence: number;
   workOrderCount: number;
 }
@@ -39,6 +60,7 @@ export function WorkOrderStatusesList() {
   const [items, setItems] = useState<WorkOrderStatusItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch, debouncedSearch] = useDebouncedSearch(300);
+  const [showArchived, setShowArchived] = useState(false);
 
   // Table state
   const { hiddenColumnKeys, setHiddenColumnKeys, density, setDensity } = useDataTable();
@@ -56,9 +78,14 @@ export function WorkOrderStatusesList() {
   const [formLabel, setFormLabel] = useState('');
   const [formColor, setFormColor] = useState(DEFAULT_COLOR);
   const [formDescription, setFormDescription] = useState('');
-  const [formApprovalRequired, setFormApprovalRequired] = useState(false);
+  const [formType, setFormType] = useState<StatusType>('open');
 
-  // Delete dialog
+  // Archive dialog
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingItem, setArchivingItem] = useState<WorkOrderStatusItem | null>(null);
+  const [archiving, setArchiving] = useState(false);
+
+  // Delete dialog (permanent delete for archived items)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingItem, setDeletingItem] = useState<WorkOrderStatusItem | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -70,6 +97,7 @@ export function WorkOrderStatusesList() {
       setLoading(true);
       const params = new URLSearchParams();
       if (debouncedSearch) params.set('search', debouncedSearch);
+      if (showArchived) params.set('showArchived', 'true');
       const res = await axios.get(`${apiEndpoint}?${params.toString()}`, { withCredentials: true });
       setItems(res.data.data || []);
     } catch {
@@ -77,14 +105,14 @@ export function WorkOrderStatusesList() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch]);
+  }, [debouncedSearch, showArchived]);
 
   useEffect(() => { fetchItems(); }, [fetchItems]);
 
-  // Reset to page 1 when search changes
+  // Reset to page 1 when search or showArchived changes
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch]);
+  }, [debouncedSearch, showArchived]);
 
   // Client-side pagination
   const paginatedData = useMemo(() => {
@@ -117,12 +145,14 @@ export function WorkOrderStatusesList() {
       header: 'Label',
       pinned: true,
       render: (item) => (
-        <span className="font-medium text-foreground">
-          {item.label}
-          {item.approvalRequired && (
-            <span className="text-xs text-muted-foreground ml-1">*</span>
-          )}
-        </span>
+        <span className="font-medium text-foreground">{item.label}</span>
+      ),
+    },
+    {
+      key: 'type',
+      header: 'Type',
+      render: (item) => (
+        <span className="text-muted-foreground">{STATUS_TYPE_LABEL_MAP[item.type] || item.type}</span>
       ),
     },
     {
@@ -155,17 +185,34 @@ export function WorkOrderStatusesList() {
       pinned: true,
       render: (item) => (
         <RowActions>
-          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => openEditDialog(item)} />
-          <RowActionButton
-            label="Delete"
-            tone="destructive"
-            icon={<Trash2 />}
-            onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
-          />
+          {showArchived ? (
+            <>
+              <RowActionButton
+                label="Unarchive"
+                icon={<ArchiveRestore />}
+                onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
+              />
+              <RowActionButton
+                label="Delete"
+                tone="destructive"
+                icon={<Trash2 />}
+                onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
+              />
+            </>
+          ) : (
+            <>
+              <RowActionButton label="Edit" icon={<Edit />} onClick={() => openEditDialog(item)} />
+              <RowActionButton
+                label="Archive"
+                icon={<Archive />}
+                onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
+              />
+            </>
+          )}
         </RowActions>
       ),
     },
-  ], []);
+  ], [showArchived]);
 
   const openCreateDialog = () => {
     setDialogMode('create');
@@ -173,7 +220,7 @@ export function WorkOrderStatusesList() {
     setFormLabel('');
     setFormColor(DEFAULT_COLOR);
     setFormDescription('');
-    setFormApprovalRequired(false);
+    setFormType('open');
     setFieldErrors({});
     setDialogOpen(true);
   };
@@ -184,7 +231,7 @@ export function WorkOrderStatusesList() {
     setFormLabel(item.label);
     setFormColor(item.color);
     setFormDescription(item.description || '');
-    setFormApprovalRequired(item.approvalRequired);
+    setFormType(item.type);
     setFieldErrors({});
     setDialogOpen(true);
   };
@@ -194,13 +241,14 @@ export function WorkOrderStatusesList() {
     const errors: Record<string, string> = {};
     if (!formLabel.trim()) errors.label = 'Label is required';
     if (!formColor.trim()) errors.color = 'Color is required';
+    if (!formType) errors.type = 'Type is required';
     if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
 
     const payload = {
       label: formLabel.trim(),
       color: formColor.trim(),
       description: formDescription.trim() || undefined,
-      approvalRequired: formApprovalRequired,
+      type: formType,
     };
 
     try {
@@ -222,6 +270,17 @@ export function WorkOrderStatusesList() {
     }
   };
 
+  const handleArchive = async () => {
+    if (!archivingItem) return;
+    setArchiving(true);
+    try {
+      await axios.patch(apiEndpoint, { id: archivingItem.id, archived: !showArchived }, { withCredentials: true });
+      setArchiveDialogOpen(false);
+      setArchivingItem(null);
+      fetchItems();
+    } catch { /* silent */ } finally { setArchiving(false); }
+  };
+
   const handleDelete = async () => {
     if (!deletingItem) return;
     setDeleting(true);
@@ -237,11 +296,16 @@ export function WorkOrderStatusesList() {
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-foreground">Work Order Statuses</h2>
-        <Button size="sm" onClick={openCreateDialog}>
-          <Plus className="h-4 w-4" />
-          Add Status
-        </Button>
+        <div className="flex items-center gap-4">
+          <h2 className="text-lg font-semibold text-foreground">Work Order Statuses</h2>
+          <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+        </div>
+        {!showArchived && (
+          <Button size="sm" onClick={openCreateDialog}>
+            <Plus className="h-4 w-4" />
+            Add Status
+          </Button>
+        )}
       </div>
 
       {/* Toolbar */}
@@ -267,11 +331,11 @@ export function WorkOrderStatusesList() {
         rowsPerPage={rowsPerPage}
         density={density}
         hiddenColumnKeys={hiddenColumnKeys}
-        emptyMessage={debouncedSearch ? 'No results match your search.' : 'No work order statuses yet.'}
+        emptyMessage={debouncedSearch ? 'No results match your search.' : showArchived ? 'No archived statuses.' : 'No work order statuses yet.'}
       />
 
-      {/* Visual Status Flow */}
-      {items.length > 0 && (
+      {/* Visual Status Flow (only for active items) */}
+      {!showArchived && items.length > 0 && (
         <div className="mt-8">
           <h3 className="text-sm font-semibold text-foreground mb-1">Your work order status flow</h3>
           <p className="text-xs text-muted-foreground mb-4">
@@ -287,7 +351,9 @@ export function WorkOrderStatusesList() {
                   />
                   <span className="text-sm text-foreground whitespace-nowrap">
                     {item.label}
-                    {item.approvalRequired && <span className="text-destructive">*</span>}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {STATUS_TYPE_LABEL_MAP[item.type] || item.type}
                   </span>
                 </div>
                 {idx < items.length - 1 && (
@@ -296,9 +362,6 @@ export function WorkOrderStatusesList() {
               </div>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground mt-3">
-            Statuses with asterisk (*) require approval before changing their status
-          </p>
         </div>
       )}
 
@@ -347,6 +410,22 @@ export function WorkOrderStatusesList() {
               {fieldErrors.color && <p className="text-sm text-destructive mt-1">{fieldErrors.color}</p>}
             </div>
 
+            {/* Type */}
+            <div>
+              <Label>Type <span className="text-destructive">*</span></Label>
+              <Select value={formType} onValueChange={(val) => setFormType(val as StatusType)}>
+                <SelectTrigger className={`mt-1.5 ${fieldErrors.type ? 'border-destructive' : ''}`}>
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {fieldErrors.type && <p className="text-sm text-destructive mt-1">{fieldErrors.type}</p>}
+            </div>
+
             {/* Description */}
             <div>
               <Label>Description</Label>
@@ -358,21 +437,6 @@ export function WorkOrderStatusesList() {
                 className="mt-1.5"
               />
             </div>
-
-            {/* Approval Required */}
-            <label className="flex items-start gap-2 cursor-pointer">
-              <Checkbox
-                checked={formApprovalRequired}
-                onCheckedChange={(checked) => setFormApprovalRequired(checked === true)}
-                className="mt-0.5"
-              />
-              <div>
-                <span className="text-sm text-foreground">Approval required</span>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  When enabled, work orders must be approved before moving to this status.
-                </p>
-              </div>
-            </label>
           </div>
 
           <DialogFooter>
@@ -384,23 +448,24 @@ export function WorkOrderStatusesList() {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Status</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{deletingItem?.label}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Archive / Unarchive Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={archivingItem?.label}
+        action={showArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
+
+      {/* Permanent Delete Dialog */}
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={deletingItem?.label}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
     </div>
   );
 }

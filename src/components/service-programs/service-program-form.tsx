@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-import { ArrowLeft, Trash2, Info, ExternalLink } from 'lucide-react';
+import { Trash2, Info, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { PageBackButton } from '@/components/ui/page-back-button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -281,10 +282,8 @@ export function ServiceProgramForm({ mode, initialData, programId }: ServiceProg
     <TooltipProvider>
       <div className="p-6 w-full">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <Button variant="ghost" size="icon" onClick={navigateBack}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
+        <div className="flex items-center gap-3 mb-6">
+          <PageBackButton onClick={navigateBack} className="mt-0.5" />
           <div>
             <h1 className="text-2xl font-semibold text-foreground">
               {mode === 'edit' ? 'Edit Service Program' : 'Add Service Program'}

@@ -1,7 +1,7 @@
 /**
  * Canonical system roles seeded for every tenant at org-creation time.
  *
- * Admin / Manager / Driver are always present and `isSystem: true` (locked from
+ * Admin / Manager / Driver / Team Manager / Mechanic are always present and `isSystem: true` (locked from
  * edit/delete in the UI). Seeding is idempotent: the role is created once per
  * tenant; on subsequent logins only `isSystem`/`updatedAt` are touched, so a
  * tenant's own permission tweaks (if any) are never clobbered.
@@ -11,72 +11,183 @@
  */
 import { ObjectId } from 'mongodb';
 import { getRolesCollection } from '@/lib/mongodb';
-import type { StoredPermissions } from '@/controller/roles/types';
+import type { SparsePermissions, SparseFormGrant } from '@/lib/rbac';
 
-/** Full, unrestricted access. */
-const ALL_ACCESS: StoredPermissions = { scope: 'all', teamScoped: false, mobileOnly: false };
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Build a form grant with full access (ALL view, create, ALL edit, ALL archive). */
+function fullGrant(formId: string): SparseFormGrant {
+  return { id: formId, v: 'ALL', c: true, e: 'ALL', ar: 'ALL' };
+}
+
+/** Build a form grant with view-only access. */
+function viewOnlyGrant(formId: string): SparseFormGrant {
+  return { id: formId, v: 'ALL', c: false, e: false };
+}
+
+/** Build a form grant with view + create (no edit/archive). */
+function viewCreateGrant(formId: string): SparseFormGrant {
+  return { id: formId, v: 'ALL', c: true, e: false };
+}
+
+// ---------------------------------------------------------------------------
+// System role definitions
+// ---------------------------------------------------------------------------
 
 interface SystemRoleDef {
   name: string;
   description: string;
-  permissions: StoredPermissions;
+  permissions: SparsePermissions;
+  teamScoped: boolean;
+  mobileOnly: boolean;
   isManager?: boolean;
+  isTeamManager?: boolean;
   isMechanic?: boolean;
   isDriver?: boolean;
   isAdmin?: boolean;
 }
 
 export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
+  // ─── Admin ─────────────────────────────────────────────────────────────
   {
     name: 'Admin',
     description: 'Administrator — full access to all modules.',
-    permissions: ALL_ACCESS,
+    permissions: { v: 2, forms: ['*'], m: ['*'], sm: [] },
+    teamScoped: false,
+    mobileOnly: false,
     isAdmin: true,
   },
+
+  // ─── Manager ───────────────────────────────────────────────────────────
   {
     name: 'Manager',
     description: 'Manager — oversees inspections, defects, work orders and inventory.',
     permissions: {
-      scope: 'modules',
-      teamScoped: false,
-      mobileOnly: false,
-      modules: {
-        teams: { view: true, create: true, update: true },
-        assets: { view: true, create: true, update: true },
-        inspections: { view: true, create: true, update: true, export: true },
-        forms: { view: true },
-        exception_report: { view: true, export: true },
-        defects: { view: true, create: true, update: true },
-        faults: { view: true, create: true, update: true },
-        service_tasks: { view: true, create: true, update: true },
-        service_programs: { view: true, create: true, update: true },
-        work_order: { view: true, create: true, update: true },
-        inventory: { view: true, create: true, update: true },
-        drivers: { view: true, create: true, update: true },
-        fuel: { view: true, create: true, update: true, export: true },
-      },
+      v: 2,
+      forms: [
+        fullGrant('assets.assets.asset'),
+        fullGrant('inspections.inspections.inspection'),
+        viewOnlyGrant('inspections.forms.form'),
+        viewOnlyGrant('inspections.exceptionReport.exceptionReport'),
+        fullGrant('maintenance.defects.defect'),
+        fullGrant('maintenance.faults.fault'),
+        fullGrant('maintenance.serviceTasks.serviceTask'),
+        fullGrant('maintenance.servicePrograms.serviceProgram'),
+        fullGrant('maintenance.workOrders.workOrder'),
+        fullGrant('maintenance.inventory.inventoryItem'),
+        fullGrant('people.teams.team'),
+        fullGrant('people.drivers.driver'),
+        fullGrant('fuel.fuel.fuelEntry'),
+      ],
+      m: ['assets', 'inspections', 'maintenance', 'people', 'fuel'],
+      sm: [
+        'assets.assets',
+        'inspections.inspections',
+        'inspections.forms',
+        'inspections.exceptionReport',
+        'maintenance.defects',
+        'maintenance.faults',
+        'maintenance.serviceTasks',
+        'maintenance.servicePrograms',
+        'maintenance.workOrders',
+        'maintenance.inventory',
+        'people.teams',
+        'people.drivers',
+        'fuel.fuel',
+      ],
     },
+    teamScoped: false,
+    mobileOnly: false,
     isManager: true,
   },
+
+  // ─── Driver ────────────────────────────────────────────────────────────
   {
     name: 'Driver',
     description: 'Driver — mobile inspections and defect reporting.',
     permissions: {
-      scope: 'modules',
-      teamScoped: false,
-      mobileOnly: true,
-      modules: {
-        assets: { view: true },
-        inspections: { view: true, create: true },
-        defects: { view: true, create: true },
-        faults: { view: true, create: true },
-        fuel: { view: true, create: true },
-        drivers: { view: true },
-      },
+      v: 2,
+      forms: [
+        viewOnlyGrant('assets.assets.asset'),
+        viewCreateGrant('inspections.inspections.inspection'),
+        viewCreateGrant('maintenance.defects.defect'),
+        viewCreateGrant('maintenance.faults.fault'),
+        viewCreateGrant('fuel.fuel.fuelEntry'),
+        viewOnlyGrant('people.drivers.driver'),
+      ],
+      m: ['assets', 'inspections', 'maintenance', 'people', 'fuel'],
+      sm: [
+        'assets.assets',
+        'inspections.inspections',
+        'maintenance.defects',
+        'maintenance.faults',
+        'people.drivers',
+        'fuel.fuel',
+      ],
     },
+    teamScoped: false,
+    mobileOnly: true,
     isDriver: true,
   },
+
+  // ─── Team Manager ────────────────────────────────────────────────────
+  {
+    name: 'Team Manager',
+    description:
+      'Team Manager — team-scoped access to assets, drivers, inspections, defects, and work orders.',
+    permissions: {
+      v: 2,
+      forms: [
+        fullGrant('assets.assets.asset'),
+        fullGrant('inspections.inspections.inspection'),
+        fullGrant('maintenance.defects.defect'),
+        fullGrant('maintenance.workOrders.workOrder'),
+        fullGrant('people.drivers.driver'),
+      ],
+      m: ['assets', 'inspections', 'maintenance', 'people'],
+      sm: [
+        'assets.assets',
+        'inspections.inspections',
+        'maintenance.defects',
+        'maintenance.workOrders',
+        'people.drivers',
+      ],
+    },
+    teamScoped: true,
+    mobileOnly: false,
+    isTeamManager: true,
+  },
+
+  // ─── Mechanic ────────────────────────────────────────────────────────
+  {
+    name: 'Mechanic',
+    description:
+      'Mechanic — full access to defects, faults, and work orders in the maintenance module.',
+    permissions: {
+      v: 2,
+      forms: [
+        fullGrant('maintenance.defects.defect'),
+        fullGrant('maintenance.faults.fault'),
+        fullGrant('maintenance.workOrders.workOrder'),
+      ],
+      m: ['maintenance'],
+      sm: [
+        'maintenance.defects',
+        'maintenance.faults',
+        'maintenance.workOrders',
+      ],
+    },
+    teamScoped: false,
+    mobileOnly: false,
+    isMechanic: true,
+  },
 ];
+
+// ---------------------------------------------------------------------------
+// Seed function
+// ---------------------------------------------------------------------------
 
 /**
  * Idempotently seed the canonical system roles for a tenant.
@@ -103,14 +214,13 @@ export async function seedSystemRoles(tenantId: ObjectId, userId: ObjectId): Pro
             createdAt: now,
             isActive: true,
           },
-          // Always sync permissions and flags from canonical definitions so that
-          // code-level changes (e.g. adding a new module to Driver) propagate to
-          // existing role documents on next login.
           $set: {
             isSystem: true,
             permissions: def.permissions,
+            teamScoped: def.teamScoped,
+            mobileOnly: def.mobileOnly,
             isManager: def.isManager ?? null,
-            isTeamManager: null,
+            isTeamManager: def.isTeamManager ?? null,
             isMechanic: def.isMechanic ?? null,
             isDriver: def.isDriver ?? null,
             isAdmin: def.isAdmin ?? null,

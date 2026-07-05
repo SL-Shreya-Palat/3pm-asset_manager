@@ -6,7 +6,7 @@ import axios from 'axios';
 import {
   ArrowLeft,
   SquarePen,
-  Trash2,
+  Archive,
   User,
   Info,
   ClipboardCheck,
@@ -32,9 +32,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DriverInspectionTab } from '@/components/drivers/driver-inspection-tab';
 
 const DRIVER_TABS = [
@@ -54,9 +54,9 @@ export default function DriverDetailPage() {
   // Team name
   const [teamName, setTeamName] = useState<string>('');
 
-  // Delete dialog
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  // Archive dialog
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   // Inspect dialog
   const [inspectDialogOpen, setInspectDialogOpen] = useState(false);
@@ -93,16 +93,16 @@ export default function DriverDetailPage() {
     })();
   }, [driver?.teamId]);
 
-  // ── Delete handler ──
-  const handleDelete = async () => {
-    setDeleting(true);
+  // ── Archive handler ──
+  const handleArchive = async () => {
+    setArchiving(true);
     try {
-      await axios.delete(`/api/drivers/${params.id}`, { withCredentials: true });
+      await axios.patch(`/api/drivers/${params.id}/archive`, { archived: true }, { withCredentials: true });
       router.push('/people/drivers');
     } catch (err) {
-      console.error('Failed to delete driver:', err);
+      console.error('Failed to archive driver:', err);
     } finally {
-      setDeleting(false);
+      setArchiving(false);
     }
   };
 
@@ -236,8 +236,8 @@ export default function DriverDetailPage() {
             <Button variant="ghost" size="icon" onClick={() => router.push(`/people/drivers/${params.id}/edit`)} title="Edit">
               <SquarePen className="h-5 w-5 text-amber-600 dark:text-amber-400" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => setDeleteDialogOpen(true)} title="Delete">
-              <Trash2 className="h-5 w-5 text-red-600 dark:text-red-400" />
+            <Button variant="ghost" size="icon" onClick={() => setArchiveDialogOpen(true)} title="Archive">
+              <Archive className="h-5 w-5 text-muted-foreground" />
             </Button>
           </div>
         </div>
@@ -322,23 +322,15 @@ export default function DriverDetailPage() {
         <DriverInspectionTab driverId={String(params.id)} />
       )}
 
-      {/* Delete Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Driver</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{fullName}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Archive Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={fullName}
+        action="archive"
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
 
       {/* Inspect Dialog */}
       <Dialog open={inspectDialogOpen} onOpenChange={setInspectDialogOpen}>

@@ -10,7 +10,7 @@ import type { CreateServiceProgramInput, UpdateServiceProgramInput } from './typ
 /** List service programs with pagination, search. */
 export async function getAllServicePrograms(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string },
+  options: { page?: number; limit?: number; search?: string; showArchived?: boolean },
 ) {
   const collection = await getServiceProgramsCollection();
   const page = Math.max(1, options.page || 1);
@@ -19,8 +19,13 @@ export async function getAllServicePrograms(
 
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
-    isArchived: { $ne: true },
   };
+
+  if (options.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
 
   if (options.search) {
     const regex = { $regex: options.search, $options: 'i' };
@@ -189,29 +194,14 @@ export async function updateServiceProgram(
   return { data: updated ? serializeServiceProgram(updated) : null, error: null };
 }
 
-/** Archive (soft-delete) a service program. */
+/** Permanently delete a service program. */
 export async function deleteServiceProgram(tenantId: string, userId: string, programId: string) {
   const collection = await getServiceProgramsCollection();
-  const programOid = ObjectId.createFromHexString(programId);
+  const docOid = ObjectId.createFromHexString(programId);
   const tenantOid = ObjectId.createFromHexString(tenantId);
 
-  const now = new Date();
-  const userOid = ObjectId.createFromHexString(userId);
-
-  const result = await collection.updateOne(
-    { _id: programOid, tenantId: tenantOid, isArchived: { $ne: true } },
-    {
-      $set: {
-        isArchived: true,
-        archivedAt: now,
-        archivedBy: userOid,
-        updatedBy: userOid,
-        updatedAt: now,
-      },
-    },
-  );
-
-  return result.modifiedCount > 0;
+  const result = await collection.deleteOne({ _id: docOid, tenantId: tenantOid });
+  return result.deletedCount > 0;
 }
 
 /** Duplicate a service program (create a copy). */

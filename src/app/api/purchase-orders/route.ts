@@ -17,8 +17,9 @@ export async function GET(request: NextRequest) {
   const limit = parseInt(searchParams.get('limit') || '25', 10);
   const search = searchParams.get('search') || undefined;
   const status = searchParams.get('status') || undefined;
+  const showArchived = searchParams.get('showArchived') === 'true';
 
-  const result = await getAllPurchaseOrders(user.currentTenantId, { page, limit, search, status });
+  const result = await getAllPurchaseOrders(user.currentTenantId, { page, limit, search, status, showArchived });
   return NextResponse.json({ data: result, error: null });
 }
 

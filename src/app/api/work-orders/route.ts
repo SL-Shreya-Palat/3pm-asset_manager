@@ -22,8 +22,9 @@ export async function GET(request: NextRequest) {
   // order; everyone else (e.g. mechanics) sees only the ones assigned to them.
   const role = await getUserRoleForTenant(user.id, user.currentTenantId);
   const assigneeId = role && !role.fullAccess ? user.id : undefined;
+  const showArchived = searchParams.get('showArchived') === 'true';
 
-  const result = await getAllWorkOrders(user.currentTenantId, { page, limit, search, statusId, assigneeId });
+  const result = await getAllWorkOrders(user.currentTenantId, { page, limit, search, statusId, assigneeId, showArchived });
   return NextResponse.json({ data: result, error: null });
 }
 

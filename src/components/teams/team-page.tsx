@@ -4,11 +4,13 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import {
   Plus,
-  Pencil,
+  Edit,
   Trash2,
   Users,
   List,
   Info,
+  Archive,
+  ArchiveRestore,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
@@ -28,6 +30,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { PageHeader } from '@/components/ui/page-header';
+import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { cn } from '@/lib/utils';
 import {
   Tooltip,
@@ -66,6 +71,12 @@ export function TeamPage() {
   const [teamName, setTeamName] = useState('');
   const [nameError, setNameError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Archive state
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingTeam, setArchivingTeam] = useState<TeamRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
   // Team delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -216,6 +227,7 @@ export function TeamPage() {
       const params = new URLSearchParams();
       params.set('page', String(page));
       params.set('limit', String(rowsPerPage));
+      if (showArchived) params.set('showArchived', 'true');
       const res = await axios.get(`/api/teams?${params.toString()}`, { withCredentials: true });
       const data = res.data.data;
       setTeams(data.items || []);
@@ -226,7 +238,7 @@ export function TeamPage() {
     } finally {
       setLoading(false);
     }
-  }, [rowsPerPage]);
+  }, [rowsPerPage, showArchived]);
 
   useEffect(() => {
     fetchTeams(1);
@@ -510,6 +522,28 @@ export function TeamPage() {
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Archive handlers
+  const handleOpenArchive = (team: TeamRow) => {
+    setArchivingTeam(team);
+    setArchiveDialogOpen(true);
+  };
+
+  const handleArchive = async () => {
+    if (!archivingTeam) return;
+    setArchiving(true);
+    try {
+      const archived = !showArchived; // If viewing active items, we archive. If viewing archived, we unarchive.
+      await axios.patch(`/api/teams/${archivingTeam.id}/archive`, { archived }, { withCredentials: true });
+      setArchiveDialogOpen(false);
+      setArchivingTeam(null);
+      fetchTeams(pagination.page);
+    } catch (err) {
+      console.error('Failed to archive/unarchive team:', err);
+    } finally {
+      setArchiving(false);
     }
   };
 
@@ -822,8 +856,18 @@ export function TeamPage() {
       align: 'right',
       render: (team) => (
         <RowActions>
-          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(team)} />
-          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(team)} />
+          {!showArchived && (
+            <>
+              <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(team)} />
+              <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(team)} />
+            </>
+          )}
+          {showArchived && (
+            <>
+              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(team)} />
+              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(team)} />
+            </>
+          )}
         </RowActions>
       ),
     },
@@ -1388,6 +1432,9 @@ export function TeamPage() {
           {/* All Teams view - no tabs, just the teams table */}
           {!selectedTeamId && (
             <>
+              <div className="mb-3">
+                <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+              </div>
               <DataTableToolbar
                 columns={teamColumns}
                 hiddenColumnKeys={teamsTable.hiddenColumnKeys}
@@ -1564,23 +1611,24 @@ export function TeamPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Archive Team Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={archivingTeam?.name}
+        action={showArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
+
       {/* Delete Team Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Team</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{deletingTeam?.name}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={deletingTeam?.name}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
 
       {/* Add Assets Dialog */}
       <Dialog open={addAssetsDialogOpen} onOpenChange={setAddAssetsDialogOpen}>

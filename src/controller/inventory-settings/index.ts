@@ -32,12 +32,16 @@ function serialize(doc: Record<string, unknown>): Record<string, unknown> {
 // Measurement Units
 // ═══════════════════════════════════════════════════════════════════════════
 
-export async function getAllMeasurementUnits(tenantId: string, search?: string) {
+export async function getAllMeasurementUnits(tenantId: string, search?: string, options?: { showArchived?: boolean }) {
   const col = await getMeasurementUnitsCollection();
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
-    isArchived: { $ne: true },
   };
+  if (options?.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
   if (search) {
     filter.$or = [
       { name: { $regex: search, $options: 'i' } },
@@ -89,11 +93,27 @@ export async function updateMeasurementUnit(tenantId: string, userId: string, id
   return { data: updated ? serialize(updated) : null, error: null };
 }
 
-export async function deleteMeasurementUnit(tenantId: string, userId: string, id: string) {
+export async function deleteMeasurementUnit(tenantId: string, id: string) {
+  const col = await getMeasurementUnitsCollection();
+  const result = await col.deleteOne(
+    { _id: ObjectId.createFromHexString(id), tenantId: ObjectId.createFromHexString(tenantId) },
+  );
+  return result.deletedCount > 0;
+}
+
+export async function archiveMeasurementUnit(tenantId: string, userId: string, id: string, archived: boolean) {
   const col = await getMeasurementUnitsCollection();
   const result = await col.updateOne(
-    { _id: ObjectId.createFromHexString(id), tenantId: ObjectId.createFromHexString(tenantId), isArchived: { $ne: true } },
-    { $set: { isArchived: true, archivedAt: new Date(), archivedBy: ObjectId.createFromHexString(userId), updatedAt: new Date() } },
+    { _id: ObjectId.createFromHexString(id), tenantId: ObjectId.createFromHexString(tenantId) },
+    {
+      $set: {
+        isArchived: archived,
+        archivedAt: archived ? new Date() : null,
+        archivedBy: archived ? ObjectId.createFromHexString(userId) : null,
+        updatedBy: ObjectId.createFromHexString(userId),
+        updatedAt: new Date(),
+      },
+    },
   );
   return result.modifiedCount > 0;
 }
@@ -102,12 +122,16 @@ export async function deleteMeasurementUnit(tenantId: string, userId: string, id
 // Part Categories
 // ═══════════════════════════════════════════════════════════════════════════
 
-export async function getAllPartCategories(tenantId: string, search?: string) {
+export async function getAllPartCategories(tenantId: string, search?: string, options?: { showArchived?: boolean }) {
   const col = await getPartCategoriesCollection();
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
-    isArchived: { $ne: true },
   };
+  if (options?.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
   if (search) {
     filter.name = { $regex: search, $options: 'i' };
   }
@@ -153,11 +177,27 @@ export async function updatePartCategory(tenantId: string, userId: string, id: s
   return { data: updated ? serialize(updated) : null, error: null };
 }
 
-export async function deletePartCategory(tenantId: string, userId: string, id: string) {
+export async function deletePartCategory(tenantId: string, id: string) {
+  const col = await getPartCategoriesCollection();
+  const result = await col.deleteOne(
+    { _id: ObjectId.createFromHexString(id), tenantId: ObjectId.createFromHexString(tenantId) },
+  );
+  return result.deletedCount > 0;
+}
+
+export async function archivePartCategory(tenantId: string, userId: string, id: string, archived: boolean) {
   const col = await getPartCategoriesCollection();
   const result = await col.updateOne(
-    { _id: ObjectId.createFromHexString(id), tenantId: ObjectId.createFromHexString(tenantId), isArchived: { $ne: true } },
-    { $set: { isArchived: true, archivedAt: new Date(), archivedBy: ObjectId.createFromHexString(userId), updatedAt: new Date() } },
+    { _id: ObjectId.createFromHexString(id), tenantId: ObjectId.createFromHexString(tenantId) },
+    {
+      $set: {
+        isArchived: archived,
+        archivedAt: archived ? new Date() : null,
+        archivedBy: archived ? ObjectId.createFromHexString(userId) : null,
+        updatedBy: ObjectId.createFromHexString(userId),
+        updatedAt: new Date(),
+      },
+    },
   );
   return result.modifiedCount > 0;
 }
@@ -166,12 +206,16 @@ export async function deletePartCategory(tenantId: string, userId: string, id: s
 // Part Locations
 // ═══════════════════════════════════════════════════════════════════════════
 
-export async function getAllPartLocations(tenantId: string, search?: string) {
+export async function getAllPartLocations(tenantId: string, search?: string, options?: { showArchived?: boolean }) {
   const col = await getPartLocationsCollection();
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
-    isArchived: { $ne: true },
   };
+  if (options?.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
   if (search) {
     filter.name = { $regex: search, $options: 'i' };
   }
@@ -236,11 +280,27 @@ export async function updatePartLocation(tenantId: string, userId: string, id: s
   return { data: updated ? serialize(updated) : null, error: null };
 }
 
-export async function deletePartLocation(tenantId: string, userId: string, id: string) {
+export async function deletePartLocation(tenantId: string, id: string) {
+  const col = await getPartLocationsCollection();
+  const result = await col.deleteOne(
+    { _id: ObjectId.createFromHexString(id), tenantId: ObjectId.createFromHexString(tenantId) },
+  );
+  return result.deletedCount > 0;
+}
+
+export async function archivePartLocation(tenantId: string, userId: string, id: string, archived: boolean) {
   const col = await getPartLocationsCollection();
   const result = await col.updateOne(
-    { _id: ObjectId.createFromHexString(id), tenantId: ObjectId.createFromHexString(tenantId), isArchived: { $ne: true } },
-    { $set: { isArchived: true, archivedAt: new Date(), archivedBy: ObjectId.createFromHexString(userId), updatedAt: new Date() } },
+    { _id: ObjectId.createFromHexString(id), tenantId: ObjectId.createFromHexString(tenantId) },
+    {
+      $set: {
+        isArchived: archived,
+        archivedAt: archived ? new Date() : null,
+        archivedBy: archived ? ObjectId.createFromHexString(userId) : null,
+        updatedBy: ObjectId.createFromHexString(userId),
+        updatedAt: new Date(),
+      },
+    },
   );
   return result.modifiedCount > 0;
 }

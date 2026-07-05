@@ -21,8 +21,12 @@ export function validateCreateRoleInput(input: CreateRoleInput): ValidationResul
 
   if (!input.permissions) {
     errors.permissions = 'Permissions are required';
-  } else if (input.permissions.scope !== 'all' && input.permissions.scope !== 'modules') {
-    errors.permissions = 'Invalid permission scope';
+  } else if (input.permissions.v !== 2) {
+    errors.permissions = 'Invalid permission format version';
+  } else if (!Array.isArray(input.permissions.forms)) {
+    errors.permissions = 'Permissions forms must be an array';
+  } else if (!Array.isArray(input.permissions.m)) {
+    errors.permissions = 'Permissions modules must be an array';
   }
 
   if (input.baseCostPerHour !== undefined && input.baseCostPerHour !== null) {
@@ -52,6 +56,8 @@ export function serializeRole(doc: Record<string, unknown>): Record<string, unkn
     permissions: doc.permissions,
     isSystem: doc.isSystem ?? false,
     isActive: doc.isActive ?? true,
+    teamScoped: doc.teamScoped ?? false,
+    mobileOnly: doc.mobileOnly ?? false,
     isManager: doc.isManager ?? null,
     isTeamManager: doc.isTeamManager ?? null,
     isMechanic: doc.isMechanic ?? null,

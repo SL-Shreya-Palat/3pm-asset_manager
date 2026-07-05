@@ -1,17 +1,8 @@
-import type { ModuleKey, Action } from '@/lib/rbac';
+import type { SparsePermissions } from '@/lib/rbac';
 
-/** Module permission set for the frontend. */
-export type ModulePermissions = Partial<Record<Action, boolean>>;
-
-/** Permissions shape used in the form and API. */
-export type RolePermissions =
-  | { scope: 'all'; teamScoped: false; mobileOnly: false }
-  | {
-      scope: 'modules';
-      modules: Partial<Record<ModuleKey, ModulePermissions>>;
-      teamScoped: boolean;
-      mobileOnly: boolean;
-    };
+// ---------------------------------------------------------------------------
+// Role row (API response shape used in the list/view pages)
+// ---------------------------------------------------------------------------
 
 export interface RoleRow {
   id: string;
@@ -20,9 +11,11 @@ export interface RoleRow {
   description?: string;
   baseCostPerHour: number;
   chargeOutRate: number;
-  permissions: RolePermissions;
+  permissions: SparsePermissions;
   isSystem: boolean;
   isActive: boolean;
+  teamScoped: boolean;
+  mobileOnly: boolean;
   isManager: boolean | null;
   isTeamManager: boolean | null;
   isMechanic: boolean | null;
@@ -38,12 +31,34 @@ export interface Pagination {
   hasMore: boolean;
 }
 
-/** Permission tab grouping modules into UI categories. */
-export interface PermissionTab {
+// ---------------------------------------------------------------------------
+// UI-specific permission types (used in role form)
+// ---------------------------------------------------------------------------
+
+export type PermissionLevel = 'all' | 'own' | 'none';
+
+export interface PermissionForm {
+  name: string;
   key: string;
-  label: string;
-  modules: { key: ModuleKey; label: string }[];
+  /** Which actions are available for this form (from forms.ts accessibility). */
+  accessibility: string[];
+  viewLevel: PermissionLevel;
+  create: boolean;
+  editLevel: PermissionLevel;
+  archiveLevel: PermissionLevel;
+  deleteLevel: PermissionLevel;
 }
 
-/** Default role template key. */
-export type RoleTemplateKey = 'owner' | 'admin' | 'manager' | 'team_manager' | 'mechanic' | 'driver';
+export interface PermissionSubModule {
+  name: string;
+  key: string;
+  view: boolean;
+  forms: PermissionForm[];
+}
+
+export interface PermissionModule {
+  name: string;
+  key: string;
+  view: boolean;
+  subModules: PermissionSubModule[];
+}

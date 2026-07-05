@@ -61,7 +61,7 @@ export interface WOStatusOption {
   id: string;
   label: string;
   color: string;
-  approvalRequired: boolean;
+  type: string;
   sequence: number;
 }
 

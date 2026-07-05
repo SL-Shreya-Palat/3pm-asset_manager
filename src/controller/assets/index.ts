@@ -91,7 +91,7 @@ async function complianceAssetIdClause(
 /** List assets with pagination, filtering, and search. */
 export async function getAllAssets(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; status?: string; teamId?: string; complianceStatus?: string },
+  options: { page?: number; limit?: number; search?: string; status?: string; teamId?: string; complianceStatus?: string; showArchived?: boolean },
 ) {
   const collection = await getAssetsCollection();
   const page = Math.max(1, options.page || 1);
@@ -101,8 +101,13 @@ export async function getAllAssets(
 
   const filter: Record<string, unknown> = {
     tenantId: tenantOid,
-    isArchived: { $ne: true },
   };
+
+  if (options.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
 
   if (options.status) {
     filter.status = options.status;
@@ -184,6 +189,34 @@ export async function getAllAssets(
     items: serialized,
     pagination: { page, limit, total, hasMore: skip + limit < total },
   };
+}
+
+/** Fleet-wide summary counts for the asset stat ribbon. */
+export async function getAssetSummary(tenantId: string) {
+  const collection = await getAssetsCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const activeFilter = { tenantId: tenantOid, isArchived: { $ne: true } };
+
+  const [total, inService, outOfService] = await Promise.all([
+    collection.countDocuments(activeFilter),
+    collection.countDocuments({ ...activeFilter, status: 'in_service' }),
+    collection.countDocuments({ ...activeFilter, status: 'out_of_service' }),
+  ]);
+
+  // Count assets with compliance issues (expired or expiring_soon documents)
+  const allActiveIds = await collection
+    .find(activeFilter, { projection: { _id: 1 } })
+    .toArray();
+  const complianceMap = await computeComplianceStatusMap(
+    tenantOid,
+    allActiveIds.map((a) => a._id as ObjectId),
+  );
+  let nonCompliant = 0;
+  for (const status of complianceMap.values()) {
+    if (status === 'expired' || status === 'expiring_soon') nonCompliant++;
+  }
+
+  return { total, inService, outOfService, nonCompliant };
 }
 
 /** Get a single asset by ID. */
@@ -360,27 +393,14 @@ export async function updateAsset(
   return { data: updated ? serializeAsset(updated) : null, error: null };
 }
 
-/** Archive (soft-delete) an asset. */
+/** Permanently delete an asset. */
 export async function deleteAsset(tenantId: string, userId: string, assetId: string) {
   const collection = await getAssetsCollection();
-  const result = await collection.updateOne(
-    {
-      _id: ObjectId.createFromHexString(assetId),
-      tenantId: ObjectId.createFromHexString(tenantId),
-      isArchived: { $ne: true },
-    },
-    {
-      $set: {
-        isArchived: true,
-        archivedAt: new Date(),
-        archivedBy: ObjectId.createFromHexString(userId),
-        updatedBy: ObjectId.createFromHexString(userId),
-        updatedAt: new Date(),
-      },
-    },
-  );
+  const docOid = ObjectId.createFromHexString(assetId);
+  const tenantOid = ObjectId.createFromHexString(tenantId);
 
-  return result.modifiedCount > 0;
+  const result = await collection.deleteOne({ _id: docOid, tenantId: tenantOid });
+  return result.deletedCount > 0;
 }
 
 /** Bulk-add a team to multiple assets. */

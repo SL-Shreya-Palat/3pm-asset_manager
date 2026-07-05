@@ -2,36 +2,24 @@
 
 import { useMemo } from 'react';
 import { useAuth } from '@/hooks/useAuth';
-import type { ModuleKey } from '@/lib/rbac';
+import {
+  isSparsePermissions,
+  isWildcardPermissions,
+  SparsePermissionIndex,
+} from '@/lib/rbac';
+import type { SparsePermissions } from '@/lib/rbac';
 
 interface RoleAccess {
-  /** True for admin/owner (scope: 'all'). */
+  /** True for admin/owner (wildcard permissions). */
   hasFullAccess: boolean;
   /** True for driver role (mobile-only, no portal access). */
   isMobileOnly: boolean;
   /** Check if the user can view a specific module. */
-  canAccessModule: (moduleKey: ModuleKey) => boolean;
-}
-
-interface PermissionsAll {
-  scope: 'all';
-}
-
-interface PermissionsModules {
-  scope: 'modules';
-  modules: Partial<Record<ModuleKey, Partial<Record<string, boolean>>>>;
-  mobileOnly: boolean;
-}
-
-type Permissions = PermissionsAll | PermissionsModules;
-
-function isPermissionsObject(value: unknown): value is Permissions {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'scope' in value &&
-    ((value as Permissions).scope === 'all' || (value as Permissions).scope === 'modules')
-  );
+  canAccessModule: (moduleKey: string) => boolean;
+  /** Check if the user can view a specific submodule. */
+  canAccessSubModule: (moduleKey: string, subModuleKey: string) => boolean;
+  /** The underlying permission index for granular checks. */
+  permissionIndex: SparsePermissionIndex;
 }
 
 export function useRoleAccess(): RoleAccess {
@@ -42,17 +30,18 @@ export function useRoleAccess(): RoleAccess {
 
     // Not loaded yet — grant full access to avoid hiding the UI during loading
     if (!tenant) {
+      const idx = new SparsePermissionIndex();
+      idx.build({ v: 2, forms: ['*'], m: ['*'], sm: [] });
       return {
         hasFullAccess: true,
         isMobileOnly: false,
         canAccessModule: () => true,
+        canAccessSubModule: () => true,
+        permissionIndex: idx,
       };
     }
 
     // Check role flags, name, and tenant ownership for admin/owner detection.
-    // The Owner role may be provisioned with permissions: [] (not { scope: 'all' }),
-    // or the tenantMember may have no roleId at all. We also compare the user's id
-    // against the tenant's ownerId as a definitive ownership check.
     const roleName = (tenant.roleName || '').toLowerCase();
     const isOwnerByTenant = !!(user?.id && tenant.ownerId && user.id === tenant.ownerId);
     const isOwnerOrAdmin =
@@ -63,26 +52,36 @@ export function useRoleAccess(): RoleAccess {
 
     const permissions = tenant.permissions;
 
-    // Admin/Owner — full access (via permissions scope or role flags/name)
-    if (isOwnerOrAdmin || (isPermissionsObject(permissions) && permissions.scope === 'all')) {
+    // Build the permission index
+    const index = new SparsePermissionIndex();
+
+    // Admin/Owner — full access (via wildcard or role flags/name)
+    if (
+      isOwnerOrAdmin ||
+      (isSparsePermissions(permissions) && isWildcardPermissions(permissions as SparsePermissions))
+    ) {
+      index.build({ v: 2, forms: ['*'], m: ['*'], sm: [] });
       return {
         hasFullAccess: true,
         isMobileOnly: false,
         canAccessModule: () => true,
+        canAccessSubModule: () => true,
+        permissionIndex: index,
       };
     }
 
-    // Module-scoped permissions
-    if (isPermissionsObject(permissions) && permissions.scope === 'modules') {
-      const isMobileOnly = permissions.mobileOnly === true;
-      const modules = permissions.modules || {};
+    // Sparse v2 permissions
+    if (isSparsePermissions(permissions)) {
+      index.build(permissions as SparsePermissions);
+      const isMobileOnly = tenant.mobileOnly === true;
 
       return {
         hasFullAccess: false,
         isMobileOnly,
-        canAccessModule: (moduleKey: ModuleKey) => {
-          return modules[moduleKey]?.view === true;
-        },
+        canAccessModule: (moduleKey: string) => index.hasModuleView(moduleKey),
+        canAccessSubModule: (moduleKey: string, subModuleKey: string) =>
+          index.hasSubModuleView(moduleKey, subModuleKey),
+        permissionIndex: index,
       };
     }
 
@@ -91,6 +90,8 @@ export function useRoleAccess(): RoleAccess {
       hasFullAccess: false,
       isMobileOnly: false,
       canAccessModule: () => false,
+      canAccessSubModule: () => false,
+      permissionIndex: index,
     };
   }, [user]);
 }

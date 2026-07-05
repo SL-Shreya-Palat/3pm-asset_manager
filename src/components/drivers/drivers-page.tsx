@@ -5,12 +5,14 @@ import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   Plus,
-  Pencil,
+  Edit,
   Trash2,
   User,
   Eye,
   ClipboardCheck,
   FileText,
+  Archive,
+  ArchiveRestore,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SearchInput } from '@/components/ui/search-input';
@@ -24,8 +26,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
 } from '@/components/ui/dialog';
+import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
 import { Spinner } from '@/components/ui/spinner';
@@ -56,7 +60,13 @@ export function DriversPage() {
   const [inspectLoading, setInspectLoading] = useState(false);
   const [inspectForms, setInspectForms] = useState<{ formId: string; title: string }[]>([]);
 
-  // Delete dialog
+  // Archive state
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingDriver, setArchivingDriver] = useState<DriverRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
+
+  // Delete state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingDriver, setDeletingDriver] = useState<DriverRow | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -69,6 +79,7 @@ export function DriversPage() {
       params.set('page', String(page));
       params.set('limit', String(rowsPerPage));
       if (debouncedSearch) params.set('search', debouncedSearch);
+      if (showArchived) params.set('showArchived', 'true');
       const res = await axios.get(`/api/drivers?${params.toString()}`, { withCredentials: true });
       const data = res.data.data;
       setDrivers(data.items || []);
@@ -79,7 +90,7 @@ export function DriversPage() {
     } finally {
       setLoading(false);
     }
-  }, [rowsPerPage, debouncedSearch]);
+  }, [rowsPerPage, debouncedSearch, showArchived]);
 
   useEffect(() => {
     fetchDrivers(1);
@@ -98,9 +109,47 @@ export function DriversPage() {
     loadTeams();
   }, []);
 
+  // Archive handlers
+  const handleOpenArchive = (driver: DriverRow) => {
+    setArchivingDriver(driver);
+    setArchiveDialogOpen(true);
+  };
+
+  const handleArchive = async () => {
+    if (!archivingDriver) return;
+    setArchiving(true);
+    try {
+      const archived = !showArchived; // If viewing active items, we archive. If viewing archived, we unarchive.
+      await axios.patch(`/api/drivers/${archivingDriver.id}/archive`, { archived }, { withCredentials: true });
+      setArchiveDialogOpen(false);
+      setArchivingDriver(null);
+      fetchDrivers(pagination.page);
+    } catch (err) {
+      console.error('Failed to archive/unarchive driver:', err);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  // Delete handlers
   const handleOpenDelete = (driver: DriverRow) => {
     setDeletingDriver(driver);
     setDeleteDialogOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!deletingDriver) return;
+    setDeleting(true);
+    try {
+      await axios.delete(`/api/drivers/${deletingDriver.id}`, { withCredentials: true });
+      setDeleteDialogOpen(false);
+      setDeletingDriver(null);
+      fetchDrivers(pagination.page);
+    } catch (err) {
+      console.error('Failed to delete driver:', err);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // ── Inspection ──
@@ -127,21 +176,6 @@ export function DriversPage() {
       setInspectForms([]);
     } finally {
       setInspectLoading(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deletingDriver) return;
-    setDeleting(true);
-    try {
-      await axios.delete(`/api/drivers/${deletingDriver.id}`, { withCredentials: true });
-      setDeleteDialogOpen(false);
-      setDeletingDriver(null);
-      fetchDrivers(pagination.page);
-    } catch (err) {
-      console.error('Failed to delete driver:', err);
-    } finally {
-      setDeleting(false);
     }
   };
 
@@ -225,10 +259,20 @@ export function DriversPage() {
       align: 'right',
       render: (driver) => (
         <RowActions>
-          <RowActionButton label="Inspect" icon={<ClipboardCheck />} onClick={() => handleOpenInspect(driver)} />
-          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleViewDriver(driver)} />
-          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => router.push(`/people/drivers/${driver.id}/edit`)} />
-          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(driver)} />
+          {!showArchived && (
+            <>
+              <RowActionButton label="Inspect" icon={<ClipboardCheck />} onClick={() => handleOpenInspect(driver)} />
+              <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleViewDriver(driver)} />
+              <RowActionButton label="Edit" icon={<Edit />} onClick={() => router.push(`/people/drivers/${driver.id}/edit`)} />
+              <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(driver)} />
+            </>
+          )}
+          {showArchived && (
+            <>
+              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(driver)} />
+              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(driver)} />
+            </>
+          )}
         </RowActions>
       ),
     },
@@ -237,12 +281,16 @@ export function DriversPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <PageHeader title="Drivers" count={pagination.total}>
+      <PageHeader title="Drivers" description="Manage driver profiles, licences, and asset assignments" count={pagination.total}>
         <Button onClick={() => router.push('/people/drivers/new')}>
           <Plus className="h-4 w-4" />
           Add Driver
         </Button>
       </PageHeader>
+
+      <div className="px-6 pb-3">
+        <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+      </div>
 
       {/* Toolbar + Table */}
       <div className="flex-1 overflow-auto px-6 pb-6">
@@ -264,7 +312,7 @@ export function DriversPage() {
           rowsPerPage={rowsPerPage}
           onPageChange={fetchDrivers}
           onRowsPerPageChange={setRowsPerPage}
-          onRowClick={handleViewDriver}
+          onRowClick={showArchived ? undefined : handleViewDriver}
           rowKey={(d) => d.id}
           density={density}
           hiddenColumnKeys={hiddenColumnKeys}
@@ -276,23 +324,24 @@ export function DriversPage() {
         />
       </div>
 
+      {/* Archive Driver Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={archivingDriver ? `${archivingDriver.firstName} ${archivingDriver.lastName}` : undefined}
+        action={showArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
+
       {/* Delete Driver Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Driver</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{deletingDriver?.firstName} {deletingDriver?.lastName}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={deletingDriver ? `${deletingDriver.firstName} ${deletingDriver.lastName}` : undefined}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
 
       {/* Inspect Driver Dialog */}
       <Dialog open={inspectDialogOpen} onOpenChange={setInspectDialogOpen}>

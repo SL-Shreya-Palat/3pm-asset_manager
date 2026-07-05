@@ -22,8 +22,9 @@ export async function GET(request: NextRequest) {
   const teamId = searchParams.get('teamId') || undefined;
   const assetId = searchParams.get('assetId') || undefined;
   const source = searchParams.get('source') || undefined;
+  const showArchived = searchParams.get('showArchived') === 'true';
 
-  const result = await getAllDefects(user.currentTenantId, { page, limit, search, status, priority, severity, teamId, assetId, source });
+  const result = await getAllDefects(user.currentTenantId, { page, limit, search, status, priority, severity, teamId, assetId, source, showArchived });
   return NextResponse.json({ data: result, error: null });
 }
 

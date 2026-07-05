@@ -7,14 +7,13 @@ import {
   Fuel,
   Users,
 } from 'lucide-react';
-import type { ModuleKey } from '@/lib/rbac';
 
 export interface NavChild {
   label: string;
   href: string;
-  /** RBAC module required to see this item (checked via `view` action). */
-  requiredModule?: ModuleKey;
-  /** If true, only users with `scope: 'all'` (admin/owner) can see this. */
+  /** Module key required to see this item (checked via module view permission). */
+  requiredModule?: string;
+  /** If true, only users with full access (admin/owner) can see this. */
   adminOnly?: boolean;
 }
 
@@ -23,9 +22,9 @@ export interface NavItem {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   children?: NavChild[];
-  /** RBAC module required to see this item (checked via `view` action). */
-  requiredModule?: ModuleKey;
-  /** If true, only users with `scope: 'all'` (admin/owner) can see this. */
+  /** Module key required to see this item (checked via module view permission). */
+  requiredModule?: string;
+  /** If true, only users with full access (admin/owner) can see this. */
   adminOnly?: boolean;
 }
 
@@ -37,9 +36,9 @@ export const navItems: NavItem[] = [
     icon: ClipboardCheck,
     children: [
       { label: 'Inspection History', href: '/inspections/history', requiredModule: 'inspections' },
-      { label: 'Forms', href: '/inspections/forms', requiredModule: 'forms' },
+      { label: 'Forms', href: '/inspections/forms', requiredModule: 'inspections' },
       { label: 'Defect Settings', href: '/inspections/defect-settings', requiredModule: 'inspections' },
-      { label: 'Exception Report', href: '/inspections/exception-report', requiredModule: 'exception_report' },
+      { label: 'Exception Report', href: '/inspections/exception-report', requiredModule: 'inspections' },
     ],
   },
   {
@@ -47,14 +46,14 @@ export const navItems: NavItem[] = [
     href: '/maintenance',
     icon: Wrench,
     children: [
-      { label: 'Service Tasks', href: '/maintenance/service-tasks', requiredModule: 'service_tasks' },
-      { label: 'Service Programs', href: '/maintenance/service-programs', requiredModule: 'service_programs' },
-      { label: 'Asset Service Schedule', href: '/maintenance/service-schedule', requiredModule: 'service_programs' },
-      { label: 'Work Orders', href: '/maintenance/work-orders', requiredModule: 'work_order' },
-      { label: 'Defects', href: '/maintenance/defects', requiredModule: 'defects' },
-      { label: 'Faults', href: '/maintenance/faults', requiredModule: 'faults' },
+      { label: 'Service Tasks', href: '/maintenance/service-tasks', requiredModule: 'maintenance' },
+      { label: 'Service Programs', href: '/maintenance/service-programs', requiredModule: 'maintenance' },
+      { label: 'Asset Service Schedule', href: '/maintenance/service-schedule', requiredModule: 'maintenance' },
+      { label: 'Work Orders', href: '/maintenance/work-orders', requiredModule: 'maintenance' },
+      { label: 'Defects', href: '/maintenance/defects', requiredModule: 'maintenance' },
+      { label: 'Faults', href: '/maintenance/faults', requiredModule: 'maintenance' },
       { label: 'Purchase Orders', href: '/maintenance/purchase-orders', adminOnly: true },
-      { label: 'Inventory', href: '/maintenance/inventory', requiredModule: 'inventory' },
+      { label: 'Inventory', href: '/maintenance/inventory', requiredModule: 'maintenance' },
     ],
   },
   { label: 'Assets', href: '/assets', icon: Truck, requiredModule: 'assets' },
@@ -66,8 +65,8 @@ export const navItems: NavItem[] = [
     icon: Users,
     children: [
       { label: 'Users', href: '/people/users', adminOnly: true },
-      { label: 'Teams', href: '/people/teams', requiredModule: 'teams' },
-      { label: 'Drivers', href: '/people/drivers', requiredModule: 'drivers' },
+      { label: 'Teams', href: '/people/teams', requiredModule: 'people' },
+      { label: 'Drivers', href: '/people/drivers', requiredModule: 'people' },
       { label: 'Roles', href: '/people/roles', adminOnly: true },
     ],
   },
@@ -78,14 +77,14 @@ export function getFlatNavItems(): Array<{
   label: string;
   href: string;
   parent?: string;
-  requiredModule?: ModuleKey;
+  requiredModule?: string;
   adminOnly?: boolean;
 }> {
   const flat: Array<{
     label: string;
     href: string;
     parent?: string;
-    requiredModule?: ModuleKey;
+    requiredModule?: string;
     adminOnly?: boolean;
   }> = [];
   for (const item of navItems) {

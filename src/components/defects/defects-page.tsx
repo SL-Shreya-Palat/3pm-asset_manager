@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   Plus,
-  Pencil,
+  Edit,
+  Archive,
+  ArchiveRestore,
   Trash2,
   Eye,
   Zap,
@@ -28,14 +30,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
@@ -127,7 +124,13 @@ export function DefectsPage() {
   const [woPanelOpen, setWoPanelOpen] = useState(false);
   const [woDefect, setWoDefect] = useState<DefectRow | null>(null);
 
-  // Delete dialog
+  // Archive state
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingDefect, setArchivingDefect] = useState<DefectRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
+
+  // Delete state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingDefect, setDeletingDefect] = useState<DefectRow | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -163,6 +166,7 @@ export function DefectsPage() {
       params.set('limit', String(rowsPerPage));
       if (debouncedSearch) params.set('search', debouncedSearch);
       if (activeTab !== 'all') params.set('status', activeTab);
+      if (showArchived) params.set('showArchived', 'true');
 
       const selectedPriorities = (filters.priority as string[]) ?? [];
       if (selectedPriorities.length > 0) params.set('priority', selectedPriorities[0]);
@@ -183,7 +187,7 @@ export function DefectsPage() {
     } finally {
       setLoading(false);
     }
-  }, [rowsPerPage, debouncedSearch, activeTab, filters]);
+  }, [rowsPerPage, debouncedSearch, activeTab, filters, showArchived]);
 
   useEffect(() => { fetchDefects(1); }, [fetchDefects]);
 
@@ -212,6 +216,27 @@ export function DefectsPage() {
   const handleWOSaved = () => {
     handleCloseWOPanel();
     fetchDefects(pagination.page); // defect moves to In Progress + gets WO #
+  };
+
+  // Archive
+  const handleOpenArchive = (defect: DefectRow) => {
+    setArchivingDefect(defect);
+    setArchiveDialogOpen(true);
+  };
+
+  const handleArchive = async () => {
+    if (!archivingDefect) return;
+    setArchiving(true);
+    try {
+      await axios.patch(`/api/defects/${archivingDefect.id}/archive`, { archived: !showArchived }, { withCredentials: true });
+      setArchiveDialogOpen(false);
+      setArchivingDefect(null);
+      fetchDefects(pagination.page);
+    } catch (err) {
+      console.error('Failed to archive/unarchive defect:', err);
+    } finally {
+      setArchiving(false);
+    }
   };
 
   // Delete
@@ -348,20 +373,29 @@ export function DefectsPage() {
       align: 'right',
       render: (defect) => (
         <RowActions>
-          {defect.workOrderNumber ? (
-            <Badge variant="outline" className="font-mono text-xs gap-1">
-              <Wrench className="h-3 w-3" />{defect.workOrderNumber}
-            </Badge>
+          {showArchived ? (
+            <>
+              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(defect)} />
+              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(defect)} />
+            </>
           ) : (
-            <RowActionButton
-              label="Create work order"
-              icon={<Wrench />}
-              onClick={() => handleOpenCreateWO(defect)}
-            />
+            <>
+              {defect.workOrderNumber ? (
+                <Badge variant="outline" className="font-mono text-xs gap-1">
+                  <Wrench className="h-3 w-3" />{defect.workOrderNumber}
+                </Badge>
+              ) : (
+                <RowActionButton
+                  label="Create work order"
+                  icon={<Wrench />}
+                  onClick={() => handleOpenCreateWO(defect)}
+                />
+              )}
+              <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(defect)} />
+              <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(defect)} />
+              <RowActionButton label="Archive" tone="destructive" icon={<Archive />} onClick={() => handleOpenArchive(defect)} />
+            </>
           )}
-          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(defect)} />
-          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(defect)} />
-          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(defect)} />
         </RowActions>
       ),
     },
@@ -371,7 +405,7 @@ export function DefectsPage() {
     <div className="relative flex h-full">
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0">
-        <PageHeader title="Defects" count={pagination.total}>
+        <PageHeader title="Defects" description="Track inspection defects from discovery through to resolution" count={pagination.total}>
           <Button onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             Create Defect
@@ -379,12 +413,13 @@ export function DefectsPage() {
         </PageHeader>
 
         {/* Status Tabs */}
-        <div className="px-6 pb-4">
+        <div className="px-6 pb-4 flex items-center gap-4">
           <FilterTabs
             value={activeTab}
             onChange={setActiveTab}
             tabs={DEFECT_STATUS_TABS.map((tab) => ({ value: tab.key, label: tab.label }))}
           />
+          <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
         </div>
 
         <div className="flex-1 overflow-auto px-6 pb-6">
@@ -436,7 +471,7 @@ export function DefectsPage() {
             rowsPerPage={rowsPerPage}
             onPageChange={fetchDefects}
             onRowsPerPageChange={setRowsPerPage}
-            onRowClick={handleOpenView}
+            onRowClick={showArchived ? undefined : handleOpenView}
             rowKey={(d) => d.id}
             density={density}
             hiddenColumnKeys={hiddenColumnKeys}
@@ -503,23 +538,24 @@ export function DefectsPage() {
         )}
       </div>
 
+      {/* Archive Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={archivingDefect?.defectNumber}
+        action={showArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
+
       {/* Delete Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Defect</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{deletingDefect?.defectNumber}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={deletingDefect?.defectNumber}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
     </div>
   );
 }

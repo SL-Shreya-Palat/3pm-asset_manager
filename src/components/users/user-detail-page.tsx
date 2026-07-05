@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-import { ArrowLeft, User } from 'lucide-react';
+import { User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PageBackButton } from '@/components/ui/page-back-button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
@@ -64,9 +65,7 @@ export function UserDetailPage({ userId }: UserDetailPageProps) {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-4 px-6 pt-6 pb-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/people/users')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
+        <PageBackButton href="/people/users" />
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
             <User className="h-5 w-5" />

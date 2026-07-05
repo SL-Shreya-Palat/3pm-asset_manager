@@ -1,10 +1,13 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   Plus,
-  Pencil,
+  Edit,
+  Archive,
+  ArchiveRestore,
   Trash2,
   Eye,
   Package,
@@ -17,15 +20,9 @@ import { SearchInput } from '@/components/ui/search-input';
 import { PageHeader } from '@/components/ui/page-header';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Separator } from '@/components/ui/separator';
+import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
@@ -62,6 +59,7 @@ function isUnpriced(part: PartRow): boolean {
 }
 
 export function InventoryPage() {
+  const router = useRouter();
   const [parts, setParts] = useState<PartRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1, limit: 25, total: 0, hasMore: false,
@@ -87,11 +85,13 @@ export function InventoryPage() {
   const [panelMode, setPanelMode] = useState<'create' | 'edit'>('create');
   const [editingPart, setEditingPart] = useState<PartRow | null>(null);
 
-  // View dialog
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [viewPart, setViewPart] = useState<PartRow | null>(null);
+  // Archive state
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingPart, setArchivingPart] = useState<PartRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
-  // Delete dialog
+  // Delete state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingPart, setDeletingPart] = useState<PartRow | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -137,6 +137,7 @@ export function InventoryPage() {
       params.set('page', String(page));
       params.set('limit', String(rowsPerPage));
       if (debouncedSearch) params.set('search', debouncedSearch);
+      if (showArchived) params.set('showArchived', 'true');
 
       const res = await axios.get(`/api/parts?${params.toString()}`, { withCredentials: true });
       const data = res.data.data;
@@ -148,7 +149,7 @@ export function InventoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [rowsPerPage, debouncedSearch]);
+  }, [rowsPerPage, debouncedSearch, showArchived]);
 
   useEffect(() => { fetchLookups(); }, [fetchLookups]);
   useEffect(() => { fetchParts(1); }, [fetchParts]);
@@ -163,19 +164,46 @@ export function InventoryPage() {
     fetchLookups();
   };
 
-  // View dialog
-  const handleOpenView = (part: PartRow) => { setViewPart(part); setViewDialogOpen(true); };
+  // Archive
+  const handleOpenArchive = (part: PartRow) => {
+    setArchivingPart(part);
+    setArchiveDialogOpen(true);
+  };
 
-  // Delete
-  const handleOpenDelete = (part: PartRow) => { setDeletingPart(part); setDeleteDialogOpen(true); };
+  const handleArchive = async () => {
+    if (!archivingPart) return;
+    setArchiving(true);
+    try {
+      await axios.patch(`/api/parts/${archivingPart.id}/archive`, { archived: !showArchived }, { withCredentials: true });
+      setArchiveDialogOpen(false);
+      setArchivingPart(null);
+      fetchParts(pagination.page);
+    } catch (err) {
+      console.error('Failed to archive/unarchive part:', err);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  // Delete handlers
+  const handleOpenDelete = (part: PartRow) => {
+    setDeletingPart(part);
+    setDeleteDialogOpen(true);
+  };
+
   const handleDelete = async () => {
     if (!deletingPart) return;
     setDeleting(true);
     try {
       await axios.delete(`/api/parts/${deletingPart.id}`, { withCredentials: true });
-      setDeleteDialogOpen(false); setDeletingPart(null);
+      setDeleteDialogOpen(false);
+      setDeletingPart(null);
       fetchParts(pagination.page);
-    } catch { /* silent */ } finally { setDeleting(false); }
+    } catch (err) {
+      console.error('Failed to delete part:', err);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Column definitions
@@ -276,9 +304,18 @@ export function InventoryPage() {
       align: 'right',
       render: (part) => (
         <RowActions>
-          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(part)} />
-          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(part)} />
-          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(part)} />
+          {showArchived ? (
+            <>
+              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(part)} />
+              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(part)} />
+            </>
+          ) : (
+            <>
+              <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/maintenance/inventory/${part.id}`)} />
+              <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(part)} />
+              <RowActionButton label="Archive" tone="destructive" icon={<Archive />} onClick={() => handleOpenArchive(part)} />
+            </>
+          )}
         </RowActions>
       ),
     },
@@ -288,12 +325,16 @@ export function InventoryPage() {
     <div className="relative flex h-full">
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0">
-        <PageHeader title="Inventory" count={pagination.total}>
+        <PageHeader title="Inventory" description="Track parts, stock levels, and warehouse locations" count={pagination.total}>
           <Button onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             Add Part
           </Button>
         </PageHeader>
+
+        <div className="px-6 pb-3">
+          <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+        </div>
 
         <div className="flex-1 overflow-auto px-6 pb-6">
           <DataTableToolbar
@@ -330,7 +371,7 @@ export function InventoryPage() {
             rowsPerPage={rowsPerPage}
             onPageChange={fetchParts}
             onRowsPerPageChange={setRowsPerPage}
-            onRowClick={handleOpenView}
+            onRowClick={showArchived ? undefined : (part) => router.push(`/maintenance/inventory/${part.id}`)}
             rowKey={(p) => p.id}
             density={density}
             hiddenColumnKeys={hiddenColumnKeys}
@@ -364,50 +405,25 @@ export function InventoryPage() {
         )}
       </div>
 
-      {/* View Part Dialog */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{viewPart?.name || 'Part Details'}</DialogTitle>
-            <DialogDescription>Inventory part overview.</DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto py-4">
-            {viewPart && (
-              <ViewPartContent
-                part={viewPart}
-                categoryMap={categoryMap}
-                unitMap={unitMap}
-                locationMap={locationMap}
-                vendorMap={vendorMap}
-              />
-            )}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setViewDialogOpen(false); if (viewPart) handleOpenEdit(viewPart); }}>
-              <Pencil className="h-4 w-4 mr-1" /> Edit
-            </Button>
-            <Button variant="outline" onClick={() => setViewDialogOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
+      {/* Archive Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={archivingPart?.name}
+        action={showArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
 
       {/* Delete Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Part</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{deletingPart?.name}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={deletingPart?.name}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
 
       {/* Generate Barcode Dialog */}
       <GenerateBarcodeDialog
@@ -419,104 +435,3 @@ export function InventoryPage() {
   );
 }
 
-/** Read-only view of part details. */
-function ViewPartContent({
-  part,
-  categoryMap,
-  unitMap,
-  locationMap,
-  vendorMap,
-}: {
-  part: PartRow;
-  categoryMap: Record<string, string>;
-  unitMap: Record<string, string>;
-  locationMap: Record<string, string>;
-  vendorMap: Record<string, string>;
-}) {
-  const totalStock = getTotalStock(part);
-  const status = getStockStatus(part, totalStock);
-  const unitPrice = getUnitPrice(part);
-  const stockValue = totalStock * unitPrice;
-
-  return (
-    <div className="space-y-6">
-      {/* Details */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Part Details</h3>
-        <Separator className="mb-4" />
-        <div className="space-y-4">
-          <ViewField label="Part Name" value={part.name} />
-          <div className="grid grid-cols-2 gap-4">
-            <ViewField label="Part Number" value={part.partNumber} />
-            <ViewField label="UPC" value={part.upc} />
-          </div>
-          <ViewField label="Category" value={part.categoryId ? categoryMap[part.categoryId] : undefined} />
-          <ViewField label="Description" value={part.description} />
-        </div>
-      </div>
-
-      {/* Stock */}
-      <div>
-        <div className="flex items-center gap-2 mb-3">
-          <h3 className="text-sm font-semibold text-foreground">Stock Management</h3>
-          <Badge variant={status.variant}>{status.label}</Badge>
-          {isUnpriced(part) && <Badge variant="warning">Unpriced</Badge>}
-        </div>
-        <Separator className="mb-4" />
-        <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
-            <ViewField label="Total Stock" value={String(totalStock)} />
-            <ViewField label="Reorder Point" value={part.reorderPoint != null ? String(part.reorderPoint) : undefined} />
-            <ViewField label="Max Quantity" value={part.maximumQuantity != null ? String(part.maximumQuantity) : undefined} />
-          </div>
-          <div className="grid grid-cols-3 gap-4">
-            <ViewField label="Measurement Unit" value={part.measurementUnitId ? unitMap[part.measurementUnitId] : undefined} />
-            <ViewField label="Unit Price" value={unitPrice > 0 ? `$${unitPrice.toFixed(2)}` : undefined} />
-            <ViewField label="Stock Value" value={unitPrice > 0 ? `$${stockValue.toFixed(2)}` : undefined} />
-          </div>
-        </div>
-      </div>
-
-      {/* Vendors */}
-      {part.vendors.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Vendors</h3>
-          <Separator className="mb-4" />
-          <div className="space-y-2">
-            {part.vendors.map((v, i) => (
-              <div key={i} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-                <span className="text-sm text-foreground">{vendorMap[v.vendorId] || v.vendorId}</span>
-                <span className="text-sm text-muted-foreground">${v.unitCost.toFixed(2)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Locations */}
-      {part.stockLocations.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Locations</h3>
-          <Separator className="mb-4" />
-          <div className="space-y-2">
-            {part.stockLocations.map((s, i) => (
-              <div key={i} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-                <span className="text-sm text-foreground">{(s.locationId && locationMap[s.locationId]) || 'Unassigned'}</span>
-                <Badge variant="secondary">{s.quantity}</Badge>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ViewField({ label, value }: { label: string; value?: string }) {
-  return (
-    <div>
-      <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <p className="text-sm text-foreground mt-0.5">{value || '—'}</p>
-    </div>
-  );
-}

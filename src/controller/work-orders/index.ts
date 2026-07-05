@@ -19,15 +19,20 @@ import { logServiceEntry } from '@/controller/service-history';
 
 export async function getAllWorkOrders(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; statusId?: string; assigneeId?: string },
+  options: { page?: number; limit?: number; search?: string; statusId?: string; assigneeId?: string; showArchived?: boolean },
 ) {
   const col = await getWorkOrdersCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
 
   const filter: Record<string, unknown> = {
     tenantId: tenantOid,
-    isArchived: { $ne: true },
   };
+
+  if (options.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
 
   // Status filter
   if (options.statusId) {
@@ -411,42 +416,17 @@ export async function updateWorkOrder(
 }
 
 // ---------------------------------------------------------------------------
-// Delete work order (soft)
+// Delete work order
 // ---------------------------------------------------------------------------
 
+/** Permanently delete a work order. */
 export async function deleteWorkOrder(tenantId: string, userId: string, woId: string) {
   const col = await getWorkOrdersCollection();
+  const docOid = ObjectId.createFromHexString(woId);
   const tenantOid = ObjectId.createFromHexString(tenantId);
-  const woOid = ObjectId.createFromHexString(woId);
 
-  const existing = await col.findOne({
-    _id: woOid,
-    tenantId: tenantOid,
-    isArchived: { $ne: true },
-  });
-
-  if (!existing) return false;
-
-  const result = await col.updateOne(
-    { _id: woOid, tenantId: tenantOid },
-    {
-      $set: {
-        isArchived: true,
-        archivedAt: new Date(),
-        archivedBy: ObjectId.createFromHexString(userId),
-        updatedBy: ObjectId.createFromHexString(userId),
-        updatedAt: new Date(),
-      },
-    },
-  );
-
-  // Return any parts to inventory (the work was cancelled).
-  const existingParts = (existing.parts as WOPart[]) || [];
-  if (result.modifiedCount > 0 && existingParts.length > 0) {
-    await applyInventoryDelta(tenantOid, existingParts, [], ObjectId.createFromHexString(userId));
-  }
-
-  return result.modifiedCount > 0;
+  const result = await col.deleteOne({ _id: docOid, tenantId: tenantOid });
+  return result.deletedCount > 0;
 }
 
 // ---------------------------------------------------------------------------

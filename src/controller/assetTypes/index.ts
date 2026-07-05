@@ -6,12 +6,16 @@ import { getAssetTypesCollection } from '@/lib/mongodb';
 import { isNonEmptyString } from '@/lib/validation/commonValidators';
 
 /** List all asset types for a tenant. */
-export async function getAllAssetTypes(tenantId: string, search?: string) {
+export async function getAllAssetTypes(tenantId: string, search?: string, options?: { showArchived?: boolean }) {
   const collection = await getAssetTypesCollection();
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
-    isArchived: { $ne: true },
   };
+  if (options?.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
   if (search) {
     filter.name = { $regex: search, $options: 'i' };
   }
@@ -138,25 +142,33 @@ export async function updateAssetType(
   };
 }
 
-/** Archive an asset type. */
-export async function deleteAssetType(tenantId: string, userId: string, assetTypeId: string) {
+/** Permanently delete an asset type. */
+export async function deleteAssetType(tenantId: string, assetTypeId: string) {
+  const collection = await getAssetTypesCollection();
+  const result = await collection.deleteOne({
+    _id: ObjectId.createFromHexString(assetTypeId),
+    tenantId: ObjectId.createFromHexString(tenantId),
+  });
+  return result.deletedCount > 0;
+}
+
+/** Archive or unarchive an asset type. */
+export async function archiveAssetType(tenantId: string, userId: string, assetTypeId: string, archived: boolean) {
   const collection = await getAssetTypesCollection();
   const result = await collection.updateOne(
     {
       _id: ObjectId.createFromHexString(assetTypeId),
       tenantId: ObjectId.createFromHexString(tenantId),
-      isArchived: { $ne: true },
     },
     {
       $set: {
-        isArchived: true,
-        archivedAt: new Date(),
-        archivedBy: ObjectId.createFromHexString(userId),
+        isArchived: archived,
+        archivedAt: archived ? new Date() : null,
+        archivedBy: archived ? ObjectId.createFromHexString(userId) : null,
         updatedBy: ObjectId.createFromHexString(userId),
         updatedAt: new Date(),
       },
     },
   );
-
   return result.modifiedCount > 0;
 }

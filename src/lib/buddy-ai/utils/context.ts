@@ -12,8 +12,12 @@ import {
   getTenantMembersCollection,
   getTenantsCollection,
 } from "@/lib/mongodb";
-import type { Role, RolePermissions } from "@/lib/rbac";
-import type { BuddyAIContext } from "@/lib/buddy-ai/utils/rbac";
+import {
+  PermissionChecker,
+  isSparsePermissions,
+  type SparsePermissions,
+} from "@/lib/rbac";
+import type { BuddyAIContext, BuddyAIRole } from "@/lib/buddy-ai/utils/rbac";
 
 export type ResolveContextUser = {
   id: string;
@@ -21,17 +25,18 @@ export type ResolveContextUser = {
 };
 
 /** Member without a role sees nothing until a role is assigned. */
-const NO_ACCESS_PERMISSIONS: RolePermissions = {
-  scope: "modules",
-  modules: {},
-  teamScoped: false,
-  mobileOnly: false,
+const NO_ACCESS_PERMISSIONS: SparsePermissions = {
+  v: 2,
+  forms: [],
+  m: [],
+  sm: [],
 };
 
-const OWNER_PERMISSIONS: RolePermissions = {
-  scope: "all",
-  teamScoped: false,
-  mobileOnly: false,
+const OWNER_PERMISSIONS: SparsePermissions = {
+  v: 2,
+  forms: ["*"],
+  m: ["*"],
+  sm: [],
 };
 
 /**
@@ -78,12 +83,11 @@ export async function resolveContext(
   const isOwner = tenantDoc?.ownerId?.toString() === user.id;
   const roleId = tenantMemberDoc.roleId as ObjectId | undefined;
 
-  let role: Role;
+  let role: BuddyAIRole;
   if (isOwner) {
     // Owner always has full access, regardless of the linked role doc.
     role = {
       _id: roleId?.toString() ?? "",
-      key: "owner",
       name: "Owner",
       permissions: OWNER_PERMISSIONS,
       isSystem: true,
@@ -97,20 +101,29 @@ export async function resolveContext(
         tenantId: tenantObjectId,
       });
     }
+
+    const rawPermissions = roleDoc?.permissions;
+    const permissions: SparsePermissions = isSparsePermissions(rawPermissions)
+      ? (rawPermissions as SparsePermissions)
+      : NO_ACCESS_PERMISSIONS;
+
     role = {
       _id: roleId?.toString() ?? "",
-      key: (roleDoc?.key as string) ?? "",
       name: (roleDoc?.name as string) ?? "",
-      permissions:
-        (roleDoc?.permissions as RolePermissions) ?? NO_ACCESS_PERMISSIONS,
+      permissions,
       isSystem: Boolean(roleDoc?.isSystem),
     };
   }
+
+  // Build a PermissionChecker for O(1) lookups throughout the request.
+  const checker = new PermissionChecker();
+  checker.initialize(role.permissions);
 
   return {
     userId: user.id,
     tenantId,
     tenantName: tenantDoc?.name as string | undefined,
     role,
+    checker,
   };
 }

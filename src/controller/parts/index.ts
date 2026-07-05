@@ -9,7 +9,7 @@ import type { CreatePartInput, UpdatePartInput } from './types';
 /** List parts with pagination, search, and optional category filter. */
 export async function getAllParts(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; categoryId?: string },
+  options: { page?: number; limit?: number; search?: string; categoryId?: string; showArchived?: boolean },
 ) {
   const collection = await getPartsCollection();
   const page = Math.max(1, options.page || 1);
@@ -18,8 +18,13 @@ export async function getAllParts(
 
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
-    isArchived: { $ne: true },
   };
+
+  if (options.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
 
   if (options.search) {
     const regex = { $regex: options.search, $options: 'i' };
@@ -178,24 +183,12 @@ export async function updatePart(
   return { data: updated ? serializePart(updated) : null, error: null };
 }
 
-/** Archive (soft-delete) a part. */
+/** Permanently delete a part. */
 export async function deletePart(tenantId: string, userId: string, partId: string) {
   const collection = await getPartsCollection();
-  const result = await collection.updateOne(
-    {
-      _id: ObjectId.createFromHexString(partId),
-      tenantId: ObjectId.createFromHexString(tenantId),
-      isArchived: { $ne: true },
-    },
-    {
-      $set: {
-        isArchived: true,
-        archivedAt: new Date(),
-        archivedBy: ObjectId.createFromHexString(userId),
-        updatedBy: ObjectId.createFromHexString(userId),
-        updatedAt: new Date(),
-      },
-    },
-  );
-  return result.modifiedCount > 0;
+  const docOid = ObjectId.createFromHexString(partId);
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+
+  const result = await collection.deleteOne({ _id: docOid, tenantId: tenantOid });
+  return result.deletedCount > 0;
 }

@@ -2,20 +2,10 @@
  * Role domain types -- TypeScript interfaces for the roles collection.
  */
 import { ObjectId } from 'mongodb';
-import type { ModuleKey, Action } from '@/lib/rbac';
-
-/** Module permission set stored in the database. */
-export type ModulePermissions = Partial<Record<Action, boolean>>;
+import type { SparsePermissions } from '@/lib/rbac';
 
 /** Permissions shape stored on each role document. */
-export type StoredPermissions =
-  | { scope: 'all'; teamScoped: false; mobileOnly: false }
-  | {
-      scope: 'modules';
-      modules: Partial<Record<ModuleKey, ModulePermissions>>;
-      teamScoped: boolean;
-      mobileOnly: boolean;
-    };
+export type StoredPermissions = SparsePermissions;
 
 /** Stored role document. */
 export interface RoleDocument {
@@ -29,6 +19,11 @@ export interface RoleDocument {
   chargeOutRate: number;
   permissions: StoredPermissions;
   isSystem: boolean;
+
+  /** Data filtered by managed teams when true. */
+  teamScoped: boolean;
+  /** Restricted to mobile app only when true. */
+  mobileOnly: boolean;
 
   createdBy: ObjectId;
   updatedBy: ObjectId;
@@ -49,6 +44,8 @@ export interface CreateRoleInput {
   baseCostPerHour?: number;
   chargeOutRate?: number;
   permissions: StoredPermissions;
+  teamScoped?: boolean;
+  mobileOnly?: boolean;
   isManager?: boolean | null;
   isTeamManager?: boolean | null;
   isMechanic?: boolean | null;
@@ -70,6 +67,8 @@ export interface RoleResponse {
   permissions: StoredPermissions;
   isSystem: boolean;
   isActive: boolean;
+  teamScoped: boolean;
+  mobileOnly: boolean;
   isManager: boolean | null;
   isTeamManager: boolean | null;
   isMechanic: boolean | null;

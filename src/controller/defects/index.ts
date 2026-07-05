@@ -19,7 +19,7 @@ import {
 
 export async function getAllDefects(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; status?: string; priority?: string; severity?: string; teamId?: string; assetId?: string; source?: string },
+  options: { page?: number; limit?: number; search?: string; status?: string; priority?: string; severity?: string; teamId?: string; assetId?: string; source?: string; showArchived?: boolean },
 ) {
   const collection = await getDefectsCollection();
   const page = Math.max(1, options.page || 1);
@@ -30,8 +30,13 @@ export async function getAllDefects(
 
   const filter: Record<string, unknown> = {
     tenantId: tenantOid,
-    isArchived: { $ne: true },
   };
+
+  if (options.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
 
   if (options.status) {
     filter.status = options.status;
@@ -426,28 +431,16 @@ export async function updateDefect(
   };
 }
 
-// ─── Delete (soft) ───────────────────────────────────────────────────────────
+// ─── Delete (permanent) ──────────────────────────────────────────────────────
 
+/** Permanently delete a defect. */
 export async function deleteDefect(tenantId: string, userId: string, id: string) {
   const collection = await getDefectsCollection();
-  const result = await collection.updateOne(
-    {
-      _id: ObjectId.createFromHexString(id),
-      tenantId: ObjectId.createFromHexString(tenantId),
-      isArchived: { $ne: true },
-    },
-    {
-      $set: {
-        isArchived: true,
-        archivedAt: new Date(),
-        archivedBy: ObjectId.createFromHexString(userId),
-        updatedBy: ObjectId.createFromHexString(userId),
-        updatedAt: new Date(),
-      },
-    },
-  );
+  const docOid = ObjectId.createFromHexString(id);
+  const tenantOid = ObjectId.createFromHexString(tenantId);
 
-  return result.modifiedCount > 0;
+  const result = await collection.deleteOne({ _id: docOid, tenantId: tenantOid });
+  return result.deletedCount > 0;
 }
 
 // ─── Team assignment ─────────────────────────────────────────────────────────

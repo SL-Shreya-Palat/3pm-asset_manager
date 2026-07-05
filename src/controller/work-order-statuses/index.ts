@@ -1,6 +1,7 @@
 import { ObjectId } from 'mongodb';
 import { getWorkOrderStatusesCollection, getWorkOrdersCollection } from '@/lib/mongodb';
 import type { CreateWorkOrderStatusInput, UpdateWorkOrderStatusInput } from './types';
+import { WORK_ORDER_STATUS_TYPES, type WorkOrderStatusType } from './types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -16,7 +17,7 @@ function serialize(doc: Record<string, unknown>): Record<string, unknown> {
     label: doc.label,
     color: doc.color,
     description: doc.description || undefined,
-    approvalRequired: doc.approvalRequired ?? false,
+    type: doc.type ?? 'open',
     sequence: doc.sequence ?? 0,
     createdAt: doc.createdAt ? (doc.createdAt as Date).toISOString() : null,
     updatedAt: doc.updatedAt ? (doc.updatedAt as Date).toISOString() : null,
@@ -27,12 +28,16 @@ function serialize(doc: Record<string, unknown>): Record<string, unknown> {
 // List
 // ---------------------------------------------------------------------------
 
-export async function getAllWorkOrderStatuses(tenantId: string, search?: string) {
+export async function getAllWorkOrderStatuses(tenantId: string, search?: string, options?: { showArchived?: boolean }) {
   const col = await getWorkOrderStatusesCollection();
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
-    isArchived: { $ne: true },
   };
+  if (options?.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
 
   if (search) {
     filter.$or = [
@@ -83,6 +88,7 @@ export async function createWorkOrderStatus(
   const errors: Record<string, string> = {};
   if (!isNonEmptyString(input.label)) errors.label = 'Label is required';
   if (!isNonEmptyString(input.color)) errors.color = 'Color is required';
+  if (!input.type || !WORK_ORDER_STATUS_TYPES.includes(input.type as WorkOrderStatusType)) errors.type = 'Type is required';
   if (Object.keys(errors).length > 0) return { data: null, error: errors };
 
   const col = await getWorkOrderStatusesCollection();
@@ -103,7 +109,7 @@ export async function createWorkOrderStatus(
     label: input.label.trim(),
     color: input.color.trim(),
     description: input.description?.trim() || undefined,
-    approvalRequired: input.approvalRequired ?? false,
+    type: input.type,
     sequence: nextSequence,
     createdBy: userOid,
     updatedBy: userOid,
@@ -151,7 +157,10 @@ export async function updateWorkOrderStatus(
     $set.color = input.color.trim();
   }
   if (input.description !== undefined) $set.description = input.description?.trim() || undefined;
-  if (input.approvalRequired !== undefined) $set.approvalRequired = input.approvalRequired;
+  if (input.type !== undefined) {
+    if (!WORK_ORDER_STATUS_TYPES.includes(input.type as WorkOrderStatusType)) return { data: null, error: { type: 'Invalid type' } };
+    $set.type = input.type;
+  }
 
   await col.updateOne({ _id: itemOid }, { $set });
   const updated = await col.findOne({ _id: itemOid });
@@ -162,19 +171,28 @@ export async function updateWorkOrderStatus(
 // Delete
 // ---------------------------------------------------------------------------
 
-export async function deleteWorkOrderStatus(tenantId: string, userId: string, id: string) {
+export async function deleteWorkOrderStatus(tenantId: string, id: string) {
+  const col = await getWorkOrderStatusesCollection();
+  const result = await col.deleteOne({
+    _id: ObjectId.createFromHexString(id),
+    tenantId: ObjectId.createFromHexString(tenantId),
+  });
+  return result.deletedCount > 0;
+}
+
+export async function archiveWorkOrderStatus(tenantId: string, userId: string, id: string, archived: boolean) {
   const col = await getWorkOrderStatusesCollection();
   const result = await col.updateOne(
     {
       _id: ObjectId.createFromHexString(id),
       tenantId: ObjectId.createFromHexString(tenantId),
-      isArchived: { $ne: true },
     },
     {
       $set: {
-        isArchived: true,
-        archivedAt: new Date(),
-        archivedBy: ObjectId.createFromHexString(userId),
+        isArchived: archived,
+        archivedAt: archived ? new Date() : null,
+        archivedBy: archived ? ObjectId.createFromHexString(userId) : null,
+        updatedBy: ObjectId.createFromHexString(userId),
         updatedAt: new Date(),
       },
     },

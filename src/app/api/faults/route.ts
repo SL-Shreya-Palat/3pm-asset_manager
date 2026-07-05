@@ -22,9 +22,10 @@ export async function GET(request: NextRequest) {
   const severity = searchParams.get('severity') || undefined;
   const teamId = searchParams.get('teamId') || undefined;
   const assetId = searchParams.get('assetId') || undefined;
+  const showArchived = searchParams.get('showArchived') === 'true';
 
   const result = await getAllFaults(user.currentTenantId, {
-    page, limit, search, status, category, priority, severity, teamId, assetId,
+    page, limit, search, status, category, priority, severity, teamId, assetId, showArchived,
   });
   return NextResponse.json({ data: result, error: null });
 }

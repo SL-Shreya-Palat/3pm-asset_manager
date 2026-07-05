@@ -4,7 +4,6 @@ import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { getFlatNavItems } from '@/constants/navigation';
 import { useRoleAccess } from '@/hooks/use-role-access';
-import type { ModuleKey } from '@/lib/rbac';
 
 export interface SearchResult {
   id: string;
@@ -28,7 +27,7 @@ interface UseGlobalSearchReturn {
 interface EndpointConfig {
   url: string;
   category: 'asset' | 'driver' | 'vendor';
-  requiredModule: ModuleKey;
+  requiredModule: string;
   adminOnly?: boolean;
   toResult: (item: Record<string, string>) => SearchResult;
 }

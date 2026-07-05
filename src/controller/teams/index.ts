@@ -10,7 +10,7 @@ import type { CreateTeamInput, UpdateTeamInput } from './types';
 /** List teams with pagination and search. */
 export async function getAllTeams(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string },
+  options: { page?: number; limit?: number; search?: string; showArchived?: boolean },
 ) {
   const collection = await getTeamsCollection();
   const page = Math.max(1, options.page || 1);
@@ -19,8 +19,13 @@ export async function getAllTeams(
 
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
-    isArchived: { $ne: true },
   };
+
+  if (options.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
 
   if (options.search) {
     const regex = { $regex: options.search, $options: 'i' };
@@ -187,25 +192,12 @@ export async function updateTeam(
   return { data: updated ? serializeTeam(updated) : null, error: null };
 }
 
-/** Archive (soft-delete) a team. */
+/** Permanently delete a team. */
 export async function deleteTeam(tenantId: string, userId: string, teamId: string) {
   const collection = await getTeamsCollection();
-  const result = await collection.updateOne(
-    {
-      _id: ObjectId.createFromHexString(teamId),
-      tenantId: ObjectId.createFromHexString(tenantId),
-      isArchived: { $ne: true },
-    },
-    {
-      $set: {
-        isArchived: true,
-        archivedAt: new Date(),
-        archivedBy: ObjectId.createFromHexString(userId),
-        updatedBy: ObjectId.createFromHexString(userId),
-        updatedAt: new Date(),
-      },
-    },
-  );
+  const docOid = ObjectId.createFromHexString(teamId);
+  const tenantOid = ObjectId.createFromHexString(tenantId);
 
-  return result.modifiedCount > 0;
+  const result = await collection.deleteOne({ _id: docOid, tenantId: tenantOid });
+  return result.deletedCount > 0;
 }

@@ -18,7 +18,7 @@ import type { CreateDriverInput, UpdateDriverInput } from './types';
 /** List drivers with pagination and search. */
 export async function getAllDrivers(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; teamId?: string },
+  options: { page?: number; limit?: number; search?: string; teamId?: string; showArchived?: boolean },
 ) {
   const collection = await getDriversCollection();
   const page = Math.max(1, options.page || 1);
@@ -27,8 +27,13 @@ export async function getAllDrivers(
 
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
-    isArchived: { $ne: true },
   };
+
+  if (options.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
 
   if (options.search) {
     const regex = { $regex: options.search, $options: 'i' };
@@ -94,13 +99,15 @@ async function resolveDriverRoleId(tenantOid: ObjectId, createdByOid: ObjectId):
     nameLower: 'driver',
     description: 'Mobile-only access for completing inspections.',
     permissions: {
-      scope: 'modules',
-      modules: {
-        inspections: { view: true, create: true, update: false, delete: false, export: false, bulkUpload: false },
-      },
-      teamScoped: true,
-      mobileOnly: true,
+      v: 2,
+      forms: [
+        { id: 'inspections.inspections.inspection', v: 'ALL', c: true, e: false },
+      ],
+      m: ['inspections'],
+      sm: ['inspections.inspections'],
     },
+    teamScoped: true,
+    mobileOnly: true,
     isSystem: false,
     isActive: true,
     isArchived: false,
@@ -386,35 +393,20 @@ export async function updateDriver(
   return { data: updated ? serializeDriver(updated) : null, error: null };
 }
 
-/** Archive (soft-delete) a driver and deactivate the linked tenantMember. */
+/** Permanently delete a driver and deactivate the linked tenantMember. */
 export async function deleteDriver(tenantId: string, userId: string, driverId: string) {
   const collection = await getDriversCollection();
   const driverOid = ObjectId.createFromHexString(driverId);
   const tenantOid = ObjectId.createFromHexString(tenantId);
 
-  // Fetch driver first to get tenantMemberId
+  // Fetch driver first to get tenantMemberId before deletion
   const driver = await collection.findOne({
     _id: driverOid,
     tenantId: tenantOid,
-    isArchived: { $ne: true },
   });
   if (!driver) return false;
 
-  const now = new Date();
-  const userOid = ObjectId.createFromHexString(userId);
-
-  const result = await collection.updateOne(
-    { _id: driverOid, tenantId: tenantOid },
-    {
-      $set: {
-        isArchived: true,
-        archivedAt: now,
-        archivedBy: userOid,
-        updatedBy: userOid,
-        updatedAt: now,
-      },
-    },
-  );
+  const result = await collection.deleteOne({ _id: driverOid, tenantId: tenantOid });
 
   // Deactivate the linked tenantMember
   if (driver.tenantMemberId) {
@@ -422,12 +414,12 @@ export async function deleteDriver(tenantId: string, userId: string, driverId: s
       const tenantMembersCol = await getTenantMembersCollection();
       await tenantMembersCol.updateOne(
         { _id: driver.tenantMemberId as ObjectId },
-        { $set: { isActive: false, updatedAt: now } },
+        { $set: { isActive: false, updatedAt: new Date() } },
       );
     } catch (err) {
       console.error('[driver] Failed to deactivate tenantMember:', err);
     }
   }
 
-  return result.modifiedCount > 0;
+  return result.deletedCount > 0;
 }

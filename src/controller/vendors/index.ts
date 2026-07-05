@@ -10,7 +10,7 @@ import type { CreateVendorInput, UpdateVendorInput } from './types';
 /** List vendors with pagination, search, and optional type filter. */
 export async function getAllVendors(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; vendorType?: string },
+  options: { page?: number; limit?: number; search?: string; vendorType?: string; showArchived?: boolean },
 ) {
   const collection = await getVendorsCollection();
   const page = Math.max(1, options.page || 1);
@@ -19,8 +19,13 @@ export async function getAllVendors(
 
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
-    isArchived: { $ne: true },
   };
+
+  if (options.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
 
   if (options.search) {
     const regex = { $regex: options.search, $options: 'i' };
@@ -151,27 +156,12 @@ export async function updateVendor(
   return { data: updated ? serializeVendor(updated) : null, error: null };
 }
 
-/** Archive (soft-delete) a vendor. */
+/** Permanently delete a vendor. */
 export async function deleteVendor(tenantId: string, userId: string, vendorId: string) {
   const collection = await getVendorsCollection();
-  const vendorOid = ObjectId.createFromHexString(vendorId);
+  const docOid = ObjectId.createFromHexString(vendorId);
   const tenantOid = ObjectId.createFromHexString(tenantId);
 
-  const now = new Date();
-  const userOid = ObjectId.createFromHexString(userId);
-
-  const result = await collection.updateOne(
-    { _id: vendorOid, tenantId: tenantOid, isArchived: { $ne: true } },
-    {
-      $set: {
-        isArchived: true,
-        archivedAt: now,
-        archivedBy: userOid,
-        updatedBy: userOid,
-        updatedAt: now,
-      },
-    },
-  );
-
-  return result.modifiedCount > 0;
+  const result = await collection.deleteOne({ _id: docOid, tenantId: tenantOid });
+  return result.deletedCount > 0;
 }

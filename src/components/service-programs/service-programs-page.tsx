@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   Plus,
-  Pencil,
+  Edit,
+  Archive,
+  ArchiveRestore,
   Trash2,
   Eye,
   CalendarClock,
@@ -13,21 +15,14 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
-import { Badge } from '@/components/ui/badge';
 import { CountBadge } from '@/components/ui/count-badge';
 import { PageHeader } from '@/components/ui/page-header';
 import { SearchInput } from '@/components/ui/search-input';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Separator } from '@/components/ui/separator';
+import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
@@ -59,11 +54,13 @@ export function ServiceProgramsPage() {
     density, setDensity,
   } = useDataTable();
 
-  // View dialog
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [viewProgram, setViewProgram] = useState<ServiceProgramRow | null>(null);
+  // Archive state
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingProgram, setArchivingProgram] = useState<ServiceProgramRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
-  // Delete dialog
+  // Delete state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingProgram, setDeletingProgram] = useState<ServiceProgramRow | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -91,6 +88,7 @@ export function ServiceProgramsPage() {
       params.set('page', String(page));
       params.set('limit', String(rowsPerPage));
       if (debouncedSearch) params.set('search', debouncedSearch);
+      if (showArchived) params.set('showArchived', 'true');
 
       const res = await axios.get(`/api/service-programs?${params.toString()}`, { withCredentials: true });
       const data = res.data.data;
@@ -102,7 +100,7 @@ export function ServiceProgramsPage() {
     } finally {
       setLoading(false);
     }
-  }, [rowsPerPage, debouncedSearch]);
+  }, [rowsPerPage, debouncedSearch, showArchived]);
 
   useEffect(() => {
     fetchTaskMap();
@@ -112,13 +110,28 @@ export function ServiceProgramsPage() {
     fetchPrograms(1);
   }, [fetchPrograms]);
 
-  // ── View dialog ──
-  const handleOpenView = (program: ServiceProgramRow) => {
-    setViewProgram(program);
-    setViewDialogOpen(true);
+  // ── Archive handlers ──
+  const handleOpenArchive = (program: ServiceProgramRow) => {
+    setArchivingProgram(program);
+    setArchiveDialogOpen(true);
   };
 
-  // ── Delete dialog ──
+  const handleArchive = async () => {
+    if (!archivingProgram) return;
+    setArchiving(true);
+    try {
+      await axios.patch(`/api/service-programs/${archivingProgram.id}/archive`, { archived: !showArchived }, { withCredentials: true });
+      setArchiveDialogOpen(false);
+      setArchivingProgram(null);
+      fetchPrograms(pagination.page);
+    } catch (err) {
+      console.error('Failed to archive/unarchive service program:', err);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  // Delete handlers
   const handleOpenDelete = (program: ServiceProgramRow) => {
     setDeletingProgram(program);
     setDeleteDialogOpen(true);
@@ -239,10 +252,20 @@ export function ServiceProgramsPage() {
       align: 'right',
       render: (program) => (
         <RowActions>
-          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(program)} />
-          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => router.push(`/maintenance/service-programs/${program.id}/edit`)} />
-          <RowActionButton label="Duplicate" icon={<Copy />} onClick={() => handleDuplicate(program)} />
-          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(program)} />
+          {!showArchived && (
+            <>
+              <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/maintenance/service-programs/${program.id}`)} />
+              <RowActionButton label="Edit" icon={<Edit />} onClick={() => router.push(`/maintenance/service-programs/${program.id}/edit`)} />
+              <RowActionButton label="Duplicate" icon={<Copy />} onClick={() => handleDuplicate(program)} />
+              <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(program)} />
+            </>
+          )}
+          {showArchived && (
+            <>
+              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(program)} />
+              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(program)} />
+            </>
+          )}
         </RowActions>
       ),
     },
@@ -251,7 +274,7 @@ export function ServiceProgramsPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <PageHeader title="Service Programs" count={pagination.total}>
+      <PageHeader title="Service Programs" description="Define recurring maintenance plans and intervals for your fleet" count={pagination.total}>
         <Button onClick={() => router.push('/maintenance/service-programs/new')}>
           <Plus className="h-4 w-4" />
           Add Program
@@ -266,6 +289,9 @@ export function ServiceProgramsPage() {
           onHiddenColumnKeysChange={setHiddenColumnKeys}
           density={density}
           onDensityChange={setDensity}
+          afterControls={
+            <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+          }
           searchNode={
             <SearchInput value={search} onChange={setSearch} placeholder="Search service programs..." />
           }
@@ -278,7 +304,7 @@ export function ServiceProgramsPage() {
           rowsPerPage={rowsPerPage}
           onPageChange={fetchPrograms}
           onRowsPerPageChange={setRowsPerPage}
-          onRowClick={handleOpenView}
+          onRowClick={showArchived ? undefined : (program) => router.push(`/maintenance/service-programs/${program.id}`)}
           rowKey={(p) => p.id}
           density={density}
           hiddenColumnKeys={hiddenColumnKeys}
@@ -290,209 +316,24 @@ export function ServiceProgramsPage() {
         />
       </div>
 
-      {/* View Service Program Dialog */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{viewProgram?.title || 'Service Program Details'}</DialogTitle>
-            <DialogDescription>Service program overview.</DialogDescription>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-y-auto py-4">
-            {viewProgram && (
-              <ViewServiceProgramContent program={viewProgram} taskMap={taskMap} />
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setViewDialogOpen(false);
-                if (viewProgram) router.push(`/maintenance/service-programs/${viewProgram.id}/edit`);
-              }}
-            >
-              <Pencil className="h-4 w-4 mr-1" />
-              Edit
-            </Button>
-            <Button variant="outline" onClick={() => setViewDialogOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Archive Service Program Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={archivingProgram?.title}
+        action={showArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
 
       {/* Delete Service Program Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Service Program</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{deletingProgram?.title}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-/** Read-only view of service program details shown in the view dialog. */
-function ViewServiceProgramContent({
-  program,
-  taskMap,
-}: {
-  program: ServiceProgramRow;
-  taskMap: Record<string, string>;
-}) {
-  const iv = program.interval;
-  const rm = program.reminders;
-
-  return (
-    <div className="space-y-6">
-      {/* Details */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Details</h3>
-        <Separator className="mb-4" />
-        <div className="space-y-4">
-          <ViewField label="Title" value={program.title} />
-        </div>
-      </div>
-
-      {/* Service Tasks */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Service Tasks</h3>
-        <Separator className="mb-4" />
-        {program.serviceTaskIds.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No service tasks assigned.</p>
-        ) : (
-          <div className="space-y-2">
-            {program.serviceTaskIds.map((taskId) => (
-              <div
-                key={taskId}
-                className="flex items-center gap-2 rounded-md border border-border px-3 py-2"
-              >
-                <Badge variant="outline" className="text-xs">Task</Badge>
-                <span className="text-sm text-foreground">
-                  {taskMap[taskId] || taskId}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Interval */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Interval</h3>
-        <Separator className="mb-4" />
-        {iv ? (
-          <div className="rounded-md border border-border p-3 space-y-2">
-            <Badge variant="secondary" className="text-xs capitalize">
-              {iv.type === 'one_time' ? 'One Time' : 'Repeat'}
-            </Badge>
-            {iv.type === 'repeat' && (
-              <div className="space-y-1">
-                {iv.mileage?.enabled && iv.mileage.every > 0 && (
-                  <p className="text-sm text-foreground">Every {iv.mileage.every} km</p>
-                )}
-                {iv.engineHours?.enabled && iv.engineHours.every > 0 && (
-                  <p className="text-sm text-foreground">Every {iv.engineHours.every} hrs</p>
-                )}
-                {iv.calendar?.enabled && iv.calendar.every > 0 && (
-                  <p className="text-sm text-foreground">
-                    Every {iv.calendar.every} {iv.calendar.unit}{iv.calendar.every !== 1 ? 's' : ''}
-                  </p>
-                )}
-                {iv.ends && iv.ends.type !== 'never' && (
-                  <p className="text-sm text-muted-foreground">
-                    {iv.ends.type === 'on' && iv.ends.date
-                      ? `Ends on ${new Date(iv.ends.date).toLocaleDateString()}`
-                      : iv.ends.type === 'after' && iv.ends.occurrences
-                        ? `Ends after ${iv.ends.occurrences} occurrences`
-                        : ''}
-                  </p>
-                )}
-              </div>
-            )}
-            {iv.type === 'one_time' && (
-              <div className="space-y-1">
-                {iv.dueMileage?.enabled && iv.dueMileage.value > 0 && (
-                  <p className="text-sm text-foreground">{iv.dueMileage.mode === 'in' ? 'In' : 'At'} {iv.dueMileage.value} km</p>
-                )}
-                {iv.dueEngineHours?.enabled && iv.dueEngineHours.value > 0 && (
-                  <p className="text-sm text-foreground">{iv.dueEngineHours.mode === 'in' ? 'In' : 'At'} {iv.dueEngineHours.value} hrs</p>
-                )}
-                {iv.dueOnDate?.enabled && iv.dueOnDate.date && (
-                  <p className="text-sm text-foreground">On {new Date(iv.dueOnDate.date).toLocaleDateString()}</p>
-                )}
-              </div>
-            )}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No interval configured.</p>
-        )}
-      </div>
-
-      {/* Assets */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Assets</h3>
-        <Separator className="mb-4" />
-        {program.assetIds.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No assets assigned.</p>
-        ) : (
-          <p className="text-sm text-foreground">
-            {program.assetIds.length} asset{program.assetIds.length !== 1 ? 's' : ''} assigned
-          </p>
-        )}
-      </div>
-
-      {/* Reminders */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Reminders</h3>
-        <Separator className="mb-4" />
-        {rm ? (
-          <div className="space-y-2">
-            {rm.thresholdMileage?.enabled && rm.thresholdMileage.value > 0 && (
-              <ViewField label="Threshold (Mileage)" value={`${rm.thresholdMileage.value} km before due`} />
-            )}
-            {rm.thresholdEngineHours?.enabled && rm.thresholdEngineHours.value > 0 && (
-              <ViewField label="Threshold (Engine Hours)" value={`${rm.thresholdEngineHours.value} hrs before due`} />
-            )}
-            {rm.thresholdCalendar?.enabled && rm.thresholdCalendar.value > 0 && (
-              <ViewField label="Threshold (Calendar)" value={`${rm.thresholdCalendar.value} ${rm.thresholdCalendar.unit}${rm.thresholdCalendar.value !== 1 ? 's' : ''} before due`} />
-            )}
-            <ViewField
-              label="Auto create work order"
-              value={rm.autoCreateWorkOrder ? 'Yes' : 'No'}
-            />
-            {rm.recipientSelf && (
-              <ViewField label="Recipients" value="Myself" />
-            )}
-            {rm.channels.length > 0 && (
-              <ViewField
-                label="Channels"
-                value={rm.channels.map((c) => c.charAt(0).toUpperCase() + c.slice(1)).join(', ')}
-              />
-            )}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No reminders configured.</p>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ViewField({ label, value }: { label: string; value?: string }) {
-  return (
-    <div>
-      <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <p className="text-sm text-foreground mt-0.5">{value || '—'}</p>
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={deletingProgram?.title}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
     </div>
   );
 }

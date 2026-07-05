@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-import { ArrowLeft, Save, ShieldAlert, Wrench, Ban, RotateCcw, Check, Info } from 'lucide-react';
+import { Save, ShieldAlert, Wrench, Ban, RotateCcw, Check, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PageBackButton } from '@/components/ui/page-back-button';
 import {
   Select,
   SelectContent,
@@ -215,16 +216,12 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-6">
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
-        <div className="space-y-1">
-          <button
-            onClick={() => router.back()}
-            className="mb-1 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </button>
-          <h1 className="text-2xl font-semibold tracking-tight">Defect Settings</h1>
-          <p className="text-sm text-muted-foreground">{formTitle}</p>
+        <div className="flex items-start gap-3">
+          <PageBackButton onClick={() => router.back()} className="mt-1" />
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold tracking-tight">Defect Settings</h1>
+            <p className="text-sm text-muted-foreground">{formTitle}</p>
+          </div>
         </div>
         <Button onClick={handleSave} disabled={saving} className="shrink-0">
           <Save className="mr-2 h-4 w-4" />

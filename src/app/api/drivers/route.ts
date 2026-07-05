@@ -17,8 +17,9 @@ export async function GET(request: NextRequest) {
   const limit = parseInt(searchParams.get('limit') || '25', 10);
   const search = searchParams.get('search') || undefined;
   const teamId = searchParams.get('teamId') || undefined;
+  const showArchived = searchParams.get('showArchived') === 'true';
 
-  const result = await getAllDrivers(user.currentTenantId, { page, limit, search, teamId });
+  const result = await getAllDrivers(user.currentTenantId, { page, limit, search, teamId, showArchived });
   return NextResponse.json({ data: result, error: null });
 }
 
