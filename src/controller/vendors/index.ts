@@ -5,6 +5,11 @@
 import { ObjectId } from 'mongodb';
 import { getVendorsCollection } from '@/lib/mongodb';
 import { validateCreateVendorInput, serializeVendor } from './utils';
+import {
+  isCommandConnectionEnabled,
+  stripCommandOwnedFields,
+  MASTER_DATA_MANAGED_MESSAGE,
+} from '@/controller/command-connection/guard';
 import type { CreateVendorInput, UpdateVendorInput } from './types';
 
 /** List vendors with pagination, search, and optional type filter. */
@@ -66,6 +71,11 @@ export async function getVendorById(tenantId: string, vendorId: string) {
 
 /** Create a new vendor. */
 export async function createVendor(tenantId: string, userId: string, input: CreateVendorInput) {
+  // Connected tenants add suppliers in Command, then import as vendors.
+  if (await isCommandConnectionEnabled(tenantId)) {
+    return { data: null, error: MASTER_DATA_MANAGED_MESSAGE };
+  }
+
   const validation = validateCreateVendorInput(input);
   if (!validation.valid) {
     return { data: null, error: validation.errors };
@@ -122,6 +132,18 @@ export async function updateVendor(
     isArchived: { $ne: true },
   });
   if (!existing) return { data: null, error: 'Vendor not found' };
+
+  // Command-sourced vendors: name/contact details are owned by Command
+  // suppliers — strip them from local edits (AM-only fields still save).
+  if (existing.source === 'command') {
+    const guarded = stripCommandOwnedFields(input as Record<string, unknown>, 'vendors');
+    input = guarded.input as UpdateVendorInput;
+    if (guarded.stripped.length > 0) {
+      console.warn(
+        `[vendors] Ignored Command-owned field edit on ${vendorId}: ${guarded.stripped.join(', ')}`,
+      );
+    }
+  }
 
   const $set: Record<string, unknown> = {
     updatedBy: ObjectId.createFromHexString(userId),

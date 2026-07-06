@@ -33,7 +33,11 @@ import {
 } from '@/controller/forms/schema-utils';
 import { evaluateDefects, type EvaluationResult } from '@/controller/defect-settings/evaluator';
 import { reserveDefectNumbers } from '@/controller/defects/utils';
-import { notifyTenantManagers } from '@/controller/notifications';
+import { notifyEvent } from '@/controller/notifications';
+import {
+  writebackActivityIfLinked,
+  writebackAvailabilityIfLinked,
+} from '@/controller/command-connection/hooks';
 import type { SeverityValue } from '@/controller/defect-settings/types';
 
 export interface ProcessSubmissionParams {
@@ -72,6 +76,8 @@ interface ResolvedAsset {
   id: ObjectId | null;
   name: string | null;
   unitNumber: string | null;
+  /** Teams that own this asset — used to route defect/inspection notifications. */
+  teamIds: ObjectId[];
 }
 
 /** Escape a user-supplied string for safe use inside a RegExp. */
@@ -102,14 +108,19 @@ async function resolveAsset(
     const oid = ObjectId.createFromHexString(explicitAssetId);
     const doc = await assetsCol.findOne({ _id: oid, tenantId: tenantOid });
     return doc
-      ? { id: oid, name: assetDisplayName(doc), unitNumber: (doc.assetNumber as string) ?? null }
-      : { id: null, name: null, unitNumber: null };
+      ? {
+          id: oid,
+          name: assetDisplayName(doc),
+          unitNumber: (doc.assetNumber as string) ?? null,
+          teamIds: (doc.teamIds as ObjectId[]) ?? [],
+        }
+      : { id: null, name: null, unitNumber: null, teamIds: [] };
   }
 
   const fieldKey = detectAssetFieldKey(maps);
   const raw = fieldKey ? response[fieldKey] : undefined;
   const unitNumber = typeof raw === 'string' ? raw.trim() : '';
-  if (!unitNumber) return { id: null, name: null, unitNumber: null };
+  if (!unitNumber) return { id: null, name: null, unitNumber: null, teamIds: [] };
 
   const doc = await assetsCol.findOne({
     tenantId: tenantOid,
@@ -117,8 +128,13 @@ async function resolveAsset(
     isArchived: { $ne: true },
   });
   return doc
-    ? { id: doc._id as ObjectId, name: assetDisplayName(doc), unitNumber }
-    : { id: null, name: null, unitNumber };
+    ? {
+        id: doc._id as ObjectId,
+        name: assetDisplayName(doc),
+        unitNumber,
+        teamIds: (doc.teamIds as ObjectId[]) ?? [],
+      }
+    : { id: null, name: null, unitNumber, teamIds: [] };
 }
 
 export async function processInspectionSubmission(
@@ -255,6 +271,9 @@ export async function processInspectionSubmission(
         comment: `Auto-generated from pre-start inspection "${formTitle}". Field "${defect.label}" answered "${answerStr}".${operatorNotes}`,
         assetId: asset.id,
         assetName: asset.name ?? '',
+        // Inherit the asset's teams so the Defects tab is populated and defect
+        // notifications route to the responsible team(s).
+        teamIds: asset.teamIds,
         // Operator = whoever performed the inspection (shown as "Operator" in the UI).
         driverId: operatorId,
         driverName: inspectorName,
@@ -289,32 +308,61 @@ export async function processInspectionSubmission(
         { _id: asset.id, tenantId: tenantOid },
         { $set: { status: 'out_of_service', updatedAt: now } },
       );
+      // Command-linked assets: mirror the grounding so Command pickers exclude it.
+      await writebackAvailabilityIfLinked(
+        tenantId,
+        asset.id,
+        true,
+        `Failed pre-start inspection "${formTitle}"`,
+      );
     }
 
     // Notify the tenant's managers that new defects need review (best-effort).
     const assetLabel = asset.name || asset.unitNumber || 'An asset';
-    await notifyTenantManagers(tenantId, {
-      type: 'defect_created',
-      title: `${defectIds.length} new defect${defectIds.length > 1 ? 's' : ''} reported`,
-      body: `${assetLabel} failed inspection "${formTitle}" — ${defectIds.length} defect${defectIds.length > 1 ? 's' : ''} need review.${grounded ? ' Asset marked Under Maintenance.' : ''}`,
-      link: '/maintenance/defects',
-      entityType: 'inspectionSubmission',
-      entityId: submissionId.toString(),
-    });
+    await notifyEvent(
+      tenantId,
+      {
+        type: 'defect_created',
+        title: `${defectIds.length} new defect${defectIds.length > 1 ? 's' : ''} reported`,
+        body: `${assetLabel} failed inspection "${formTitle}" — ${defectIds.length} defect${defectIds.length > 1 ? 's' : ''} need review.${grounded ? ' Asset marked Under Maintenance.' : ''}`,
+        link: '/maintenance/defects',
+        entityType: 'inspectionSubmission',
+        entityId: submissionId.toString(),
+      },
+      { teamIds: asset.teamIds },
+    );
   }
 
   // Notify managers when an inspection is submitted with NO defects (the defect
   // case above already notifies). Best-effort — never blocks the submission.
   if (defectIds.length === 0) {
-    await notifyTenantManagers(tenantId, {
-      type: 'inspection_submitted',
-      title: `Inspection completed: ${formTitle}`,
-      body: `${asset.name || 'An asset'} passed inspection "${formTitle}".`,
-      link: '/inspections',
-      entityType: 'inspectionSubmission',
-      entityId: submissionId.toString(),
-    });
+    await notifyEvent(
+      tenantId,
+      {
+        type: 'inspection_submitted',
+        title: `Inspection completed: ${formTitle}`,
+        body: `${asset.name || 'An asset'} passed inspection "${formTitle}".`,
+        link: '/inspections',
+        entityType: 'inspectionSubmission',
+        entityId: submissionId.toString(),
+      },
+      { teamIds: asset.teamIds },
+    );
   }
+
+  // Command-linked assets: append the pre-start to the Command activity timeline.
+  await writebackActivityIfLinked(tenantId, asset.id, {
+    type: 'prestart_submitted',
+    summary: `Pre-start "${formTitle}" submitted — ${evaluation.result === 'pass' ? 'passed' : 'failed'}${
+      defectIds.length ? ` (${defectIds.length} defect${defectIds.length > 1 ? 's' : ''})` : ''
+    }`,
+    details: {
+      inspectionNumber,
+      result: evaluation.result,
+      defectsCreated: defectIds.length,
+      ...(operatorName ? { operator: operatorName } : {}),
+    },
+  });
 
   return {
     status: 'processed',

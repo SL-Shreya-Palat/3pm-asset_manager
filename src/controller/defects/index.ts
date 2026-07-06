@@ -8,6 +8,7 @@ import {
   getDriversCollection,
   getTeamsCollection,
 } from '@/lib/mongodb';
+import { notifyEvent } from '@/controller/notifications';
 import type { CreateDefectInput, UpdateDefectInput } from './types';
 import {
   validateCreateDefectInput,
@@ -270,8 +271,9 @@ export async function createDefect(
   // Generate defect number
   const defectNumber = await generateDefectNumber(tenantId);
 
-  // Resolve asset name
+  // Resolve asset name + its teams (for notification routing)
   let assetName = '';
+  let assetTeamIds: ObjectId[] = [];
   try {
     const assetsCol = await getAssetsCollection();
     const asset = await assetsCol.findOne({
@@ -279,6 +281,7 @@ export async function createDefect(
       tenantId: tenantOid,
     });
     assetName = (asset?.name as string) || '';
+    assetTeamIds = (asset?.teamIds as ObjectId[]) ?? [];
   } catch {
     // Silent — assetName stays empty
   }
@@ -310,6 +313,9 @@ export async function createDefect(
     comment: input.comment?.trim() || '',
     assetId: ObjectId.createFromHexString(input.assetId),
     assetName,
+    // Inherit the asset's teams so the Defects tab is populated and the defect
+    // notification routes to the responsible team(s).
+    teamIds: assetTeamIds,
     driverId,
     driverName,
     priority: input.priority,
@@ -335,6 +341,22 @@ export async function createDefect(
   };
 
   const result = await collection.insertOne(doc);
+
+  // Notify the responsible team a defect was raised (best-effort; falls back to
+  // all managers when the asset has no team or routing is set to all-managers).
+  await notifyEvent(
+    tenantId,
+    {
+      type: 'defect_created',
+      title: `Defect ${defectNumber} reported`,
+      body: `${assetName || 'An asset'} — ${input.name.trim()}`,
+      link: '/maintenance/defects',
+      entityType: 'defect',
+      entityId: result.insertedId.toString(),
+    },
+    { teamIds: assetTeamIds },
+  );
+
   return {
     data: serializeDefect({ ...doc, _id: result.insertedId } as unknown as Record<string, unknown>),
     error: null,

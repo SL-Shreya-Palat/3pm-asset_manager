@@ -177,6 +177,10 @@ export function serializeAsset(doc: Record<string, unknown>): Record<string, unk
     isArchived: doc.isArchived ?? false,
     createdAt: doc.createdAt ? (doc.createdAt as Date).toISOString() : null,
     updatedAt: doc.updatedAt ? (doc.updatedAt as Date).toISOString() : null,
+    // Command linkage — 'command'-sourced assets badge as read-only master data
+    source: doc.source || 'local',
+    commandAssetId: doc.commandAssetId || null,
+    commandSyncedAt: doc.commandSyncedAt ? (doc.commandSyncedAt as Date).toISOString() : null,
     // Populated fields
     assetTypeName: doc.assetTypeName || null,
     teamNames: Array.isArray(doc.teamNames) ? doc.teamNames : [],

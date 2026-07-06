@@ -9,9 +9,32 @@ import {
 } from '@/lib/mongodb';
 import type { CreateWorkOrderInput, UpdateWorkOrderInput, WOPart } from './types';
 import { validateCreateWOInput, serializeWorkOrder, generateWONumber } from './utils';
-import { resolveWorkOrderParts, applyInventoryDelta } from './parts-inventory';
-import { notifyUser, notifyTenantManagers } from '@/controller/notifications';
+import {
+  resolveWorkOrderParts,
+  resolveCommandStockParts,
+  applyInventoryDelta,
+} from './parts-inventory';
+import { getEnabledConnectionAuthTenantId } from '@/controller/command-connection/guard';
+import { getCommandStockLevels, pushStockOut } from '@/lib/command/stock';
+import { getUsersCollection } from '@/lib/mongodb';
+import { notifyUser, notifyEvent } from '@/controller/notifications';
 import { logServiceEntry } from '@/controller/service-history';
+import {
+  writebackActivityIfLinked,
+  writebackAvailabilityIfLinked,
+  writebackMetersIfLinked,
+} from '@/controller/command-connection/hooks';
+
+/** Teams that own a work order's asset — used to route WO notifications. */
+async function resolveWorkOrderAssetTeamIds(
+  tenantOid: ObjectId,
+  assetId: unknown,
+): Promise<ObjectId[]> {
+  if (!(assetId instanceof ObjectId)) return [];
+  const assetsCol = await getAssetsCollection();
+  const asset = await assetsCol.findOne({ _id: assetId, tenantId: tenantOid }, { projection: { teamIds: 1 } });
+  return (asset?.teamIds as ObjectId[]) ?? [];
+}
 
 // ---------------------------------------------------------------------------
 // List work orders
@@ -106,10 +129,11 @@ export async function createWorkOrder(
   // Generate WO number
   const workOrderNumber = await generateWONumber(tenantOid);
 
-  // Resolve asset name
+  // Resolve asset name + its teams (for notification routing)
   const assetsCol = await getAssetsCollection();
   const asset = await assetsCol.findOne({ _id: ObjectId.createFromHexString(input.assetId) });
   const assetName = (asset?.name as string) || '';
+  const assetTeamIds = (asset?.teamIds as ObjectId[]) ?? [];
 
   // Resolve status label
   const statusCol = await getWorkOrderStatusesCollection();
@@ -164,8 +188,27 @@ export async function createWorkOrder(
   else if (defectOids.length > 0) source = 'defect';
   if (!['manual', 'defect', 'fault'].includes(source)) source = 'manual';
 
-  // Parts → denormalized lines + total (stock deducted after insert).
-  const { parts, partsCost } = await resolveWorkOrderParts(tenantOid, input.parts);
+  // Parts → denormalized lines + total (local stock deducted after insert;
+  // Command stock lines are pushed to Command at completion, not here).
+  const local = await resolveWorkOrderParts(tenantOid, input.parts);
+  const hasCommandLines = (input.parts || []).some((p) => p?.commandStockId);
+  let commandLines: { parts: WOPart[]; partsCost: number } = { parts: [], partsCost: 0 };
+  if (hasCommandLines) {
+    const authTenantId = await getEnabledConnectionAuthTenantId(tenantOid);
+    if (!authTenantId) {
+      return {
+        data: null,
+        error: 'This work order uses Command stock, but the Command connection is off.',
+      };
+    }
+    try {
+      commandLines = await resolveCommandStockParts(authTenantId, input.parts);
+    } catch (e) {
+      return { data: null, error: e instanceof Error ? e.message : 'Command stock lookup failed' };
+    }
+  }
+  const parts = [...local.parts, ...commandLines.parts];
+  const partsCost = Math.round((local.partsCost + commandLines.partsCost) * 100) / 100;
 
   const doc: Record<string, unknown> = {
     tenantId: tenantOid,
@@ -268,15 +311,19 @@ export async function createWorkOrder(
     });
   }
 
-  // Notify managers that a new work order was created (best-effort).
-  await notifyTenantManagers(tenantId, {
-    type: 'work_order_created',
-    title: `Work order ${workOrderNumber} created`,
-    body: `${assetName || 'Asset'}${statusLabel ? ` — ${statusLabel}` : ''}${input.dueDate ? `, due ${new Date(input.dueDate).toLocaleDateString()}` : ''}`,
-    link: '/maintenance/work-orders',
-    entityType: 'workOrder',
-    entityId: result.insertedId.toString(),
-  });
+  // Notify the responsible team a new work order was created (best-effort).
+  await notifyEvent(
+    tenantId,
+    {
+      type: 'work_order_created',
+      title: `Work order ${workOrderNumber} created`,
+      body: `${assetName || 'Asset'}${statusLabel ? ` — ${statusLabel}` : ''}${input.dueDate ? `, due ${new Date(input.dueDate).toLocaleDateString()}` : ''}`,
+      link: '/maintenance/work-orders',
+      entityType: 'workOrder',
+      entityId: result.insertedId.toString(),
+    },
+    { teamIds: assetTeamIds },
+  );
 
   return {
     data: serializeWorkOrder({ ...doc, _id: result.insertedId }),
@@ -389,11 +436,42 @@ export async function updateWorkOrder(
   let partsBefore: WOPart[] | null = null;
   let partsAfter: WOPart[] | null = null;
   if (input.parts !== undefined) {
-    const resolved = await resolveWorkOrderParts(tenantOid, input.parts);
-    $set.parts = resolved.parts;
-    $set.partsCost = resolved.partsCost;
-    partsBefore = (existing.parts as WOPart[]) || [];
-    partsAfter = resolved.parts;
+    const existingParts = (existing.parts as WOPart[]) || [];
+    const local = await resolveWorkOrderParts(tenantOid, input.parts);
+    const hasCommandLines =
+      (input.parts || []).some((p) => p?.commandStockId) ||
+      existingParts.some((p) => p.source === 'command');
+    let commandLines: { parts: WOPart[]; partsCost: number } = { parts: [], partsCost: 0 };
+    if (hasCommandLines) {
+      const authTenantId = await getEnabledConnectionAuthTenantId(tenantOid);
+      if (!authTenantId) {
+        return {
+          data: null,
+          error: 'This work order uses Command stock, but the Command connection is off.',
+        };
+      }
+      try {
+        // Passing `existingParts` preserves pushed state — a line already
+        // pushed to Command keeps its quantity/transaction and is never re-pushed.
+        commandLines = await resolveCommandStockParts(authTenantId, input.parts, existingParts);
+      } catch (e) {
+        return { data: null, error: e instanceof Error ? e.message : 'Command stock lookup failed' };
+      }
+      // Dropping an already-pushed line would silently desync the Command
+      // ledger (the OUT already happened) — keep it on the WO.
+      const kept = new Set(commandLines.parts.map((p) => p.commandStockId));
+      for (const prior of existingParts) {
+        if (prior.source === 'command' && prior.pushedToCommand && !kept.has(prior.commandStockId)) {
+          commandLines.parts.push(prior);
+          commandLines.partsCost = Math.round((commandLines.partsCost + prior.lineTotal) * 100) / 100;
+        }
+      }
+    }
+    const combined = [...local.parts, ...commandLines.parts];
+    $set.parts = combined;
+    $set.partsCost = Math.round((local.partsCost + commandLines.partsCost) * 100) / 100;
+    partsBefore = existingParts;
+    partsAfter = combined;
   }
 
   // Attachments
@@ -500,7 +578,8 @@ export async function transitionWorkOrderStatus(
   if (existing.assigneeType === 'mechanic' && existing.assigneeId) {
     await notifyUser(tenantId, existing.assigneeId as ObjectId, statusPayload);
   }
-  await notifyTenantManagers(tenantId, statusPayload);
+  const statusTeamIds = await resolveWorkOrderAssetTeamIds(tenantOid, existing.assetId);
+  await notifyEvent(tenantId, statusPayload, { teamIds: statusTeamIds });
 
   const updated = await col.findOne({ _id: woOid });
   return { data: updated ? serializeWorkOrder(updated as Record<string, unknown>) : null, error: null };
@@ -535,6 +614,99 @@ export async function completeWorkOrder(
 
   const now = new Date();
 
+  // 0) Strict lockstep — push unpushed Command stock lines FIRST (same contract
+  //    as the dispatch portal's move completion): pre-flight on-hand, push the
+  //    OUT (creates a RECEIPTED_OUT stockTransaction in Command), and mark the
+  //    line pushed immediately. Completion only proceeds once Command has
+  //    accepted every line; any failure blocks completion with nothing lost.
+  const woParts = (wo.parts as WOPart[] | undefined) || [];
+  const pendingCommandParts = woParts.filter(
+    (p) => p.source === 'command' && p.commandStockId && !p.pushedToCommand,
+  );
+  if (pendingCommandParts.length > 0) {
+    const authTenantId = await getEnabledConnectionAuthTenantId(tenantOid);
+    if (!authTenantId) {
+      return {
+        data: null,
+        error:
+          'This work order consumes Command stock, but the Command connection is off. Reconnect (Settings → Connections → Command) and try again.',
+      };
+    }
+
+    // Attribute the Command stock transaction to the completing user.
+    let actorEmail: string | undefined;
+    try {
+      const userDoc = await (await getUsersCollection()).findOne(
+        { _id: userOid },
+        { projection: { email: 1 } },
+      );
+      actorEmail = (userDoc?.email as string) || undefined;
+    } catch {
+      // attribution is best-effort
+    }
+
+    for (const part of pendingCommandParts) {
+      const stockId = part.commandStockId as string;
+
+      // Pre-flight: Command's on-hand must cover the line (at the chosen
+      // location when one was set, else across all locations).
+      const levels = await getCommandStockLevels(stockId, authTenantId);
+      if (!levels.ok) {
+        return {
+          data: null,
+          error: `Command is unreachable while checking stock for "${part.partName}" — completion blocked, no stock was consumed for this line. Try again shortly.`,
+        };
+      }
+      const onHand = part.commandLocationId
+        ? levels.data.find((l) => l.locationId === part.commandLocationId)?.onHand ?? 0
+        : levels.data.reduce((sum, l) => sum + l.onHand, 0);
+      if (onHand < part.quantity) {
+        return {
+          data: null,
+          error: `Insufficient Command stock for "${part.partName}": available ${onHand}, required ${part.quantity}.`,
+        };
+      }
+
+      const push = await pushStockOut(
+        stockId,
+        authTenantId,
+        {
+          quantity: part.quantity,
+          stockLocationId: part.commandLocationId,
+          unitCost: part.unitCost,
+          notes: `Asset Manager work order ${wo.workOrderNumber}`,
+        },
+        actorEmail,
+      );
+      if (!push.ok) {
+        return {
+          data: null,
+          error:
+            push.message ||
+            `Command rejected the stock consumption for "${part.partName}" (${push.reason}).`,
+        };
+      }
+
+      // Mark THIS line pushed immediately — a later failure must never re-push
+      // it (Command's OUT endpoint is not idempotent).
+      await col.updateOne(
+        { _id: woOid, tenantId: tenantOid },
+        {
+          $set: {
+            'parts.$[line].pushedToCommand': true,
+            'parts.$[line].commandTransactionId': push.data.transactionId,
+            updatedAt: new Date(),
+          },
+        },
+        {
+          arrayFilters: [
+            { 'line.commandStockId': stockId, 'line.pushedToCommand': { $ne: true } },
+          ],
+        },
+      );
+    }
+  }
+
   // 1) Mark completed (deterministic flag, independent of free-form status).
   await col.updateOne(
     { _id: woOid, tenantId: tenantOid },
@@ -568,6 +740,13 @@ export async function completeWorkOrder(
       { _id: wo.assetId as ObjectId, tenantId: tenantOid },
       { $set: { status: 'in_service', updatedAt: now } },
     );
+    // Command-linked assets: mirror the return-to-service to Command.
+    await writebackAvailabilityIfLinked(
+      tenantId,
+      wo.assetId as ObjectId,
+      false,
+      `Work order ${wo.workOrderNumber} completed`,
+    );
   }
 
   // 4) Log a service entry when this WO fulfilled scheduled work.
@@ -591,17 +770,39 @@ export async function completeWorkOrder(
       },
       { source: 'work_order', performedById },
     );
+
+    // Command-linked assets: mirror the completed service + meter reading.
+    await writebackActivityIfLinked(tenantId, wo.assetId as ObjectId, {
+      type: 'service_completed',
+      summary: `Service completed via work order ${wo.workOrderNumber}`,
+      details: { workOrderNumber: wo.workOrderNumber as string },
+    });
+    if (typeof input.meterAtService === 'number' && Number.isFinite(input.meterAtService)) {
+      await writebackMetersIfLinked(
+        tenantId,
+        wo.assetId as ObjectId,
+        input.meterType === 'engine_hours'
+          ? { engineHours: input.meterAtService }
+          : { odometer: input.meterAtService },
+        'work_order',
+      );
+    }
   }
 
-  // 5) Notify managers the WO is complete.
-  await notifyTenantManagers(tenantId, {
-    type: 'work_order_completed',
-    title: `Work order ${wo.workOrderNumber} completed`,
-    body: `${(wo.assetName as string) || 'Asset'} — ${wo.workOrderNumber} completed${defectOids.length ? `, ${defectOids.length} defect(s) corrected` : ''}${faultOids.length ? `, ${faultOids.length} fault(s) resolved` : ''}.`,
-    link: '/maintenance/work-orders',
-    entityType: 'workOrder',
-    entityId: woId,
-  });
+  // 5) Notify the responsible team the WO is complete.
+  const completeTeamIds = await resolveWorkOrderAssetTeamIds(tenantOid, wo.assetId);
+  await notifyEvent(
+    tenantId,
+    {
+      type: 'work_order_completed',
+      title: `Work order ${wo.workOrderNumber} completed`,
+      body: `${(wo.assetName as string) || 'Asset'} — ${wo.workOrderNumber} completed${defectOids.length ? `, ${defectOids.length} defect(s) corrected` : ''}${faultOids.length ? `, ${faultOids.length} fault(s) resolved` : ''}.`,
+      link: '/maintenance/work-orders',
+      entityType: 'workOrder',
+      entityId: woId,
+    },
+    { teamIds: completeTeamIds },
+  );
 
   const completed = await col.findOne({ _id: woOid });
   return { data: completed ? serializeWorkOrder(completed as Record<string, unknown>) : null, error: null };

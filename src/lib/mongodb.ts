@@ -329,6 +329,15 @@ export async function getNotificationsCollection(): Promise<Collection> {
 }
 
 // ---------------------------------------------------------------------------
+// Notification routing settings (one singleton doc per tenant)
+// ---------------------------------------------------------------------------
+
+export async function getNotificationSettingsCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('notificationSettings');
+}
+
+// ---------------------------------------------------------------------------
 // Service history (completed preventative-maintenance services)
 // ---------------------------------------------------------------------------
 
@@ -338,3 +347,12 @@ export async function getServiceHistoryCollection(): Promise<Collection> {
 }
 
 // ---------------------------------------------------------------------------
+// Command integration (connected mode)
+// ---------------------------------------------------------------------------
+
+/** Queued write-backs to Command that failed (replayed by the cron scan). */
+export async function getCommandOutboxCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('commandOutbox');
+}
+
