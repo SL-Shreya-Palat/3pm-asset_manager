@@ -199,14 +199,20 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
   const fetchForms = useCallback(async () => {
     try {
       setFormsLoading(true);
+      // Auto-seed pre-start forms (idempotent — skips if already seeded)
+      await axios.post('/api/forms/seed-prestart', {}, { withCredentials: true }).catch(() => {});
       const res = await axios.get('/api/forms?includeSchema=true', { withCredentials: true });
       const items = res.data.data?.items || [];
-      setFormsList(items.map((f: Record<string, unknown>) => ({
-        id: f.id as string,
-        formId: (f.formId as string) || (f.id as string),
-        title: (f.title as string) || '',
-        schema: (f.currentSchema as FormItem['schema']) || null,
-      })));
+      setFormsList(
+        items
+          .filter((f: Record<string, unknown>) => !(f.title as string)?.toLowerCase().includes('driver wellness'))
+          .map((f: Record<string, unknown>) => ({
+            id: f.id as string,
+            formId: (f.formId as string) || (f.id as string),
+            title: (f.title as string) || '',
+            schema: (f.currentSchema as FormItem['schema']) || null,
+          })),
+      );
     } catch {
       setFormsList([]);
     } finally {

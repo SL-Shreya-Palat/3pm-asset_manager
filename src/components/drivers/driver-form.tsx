@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-import { SquarePen } from 'lucide-react';
+import { SquarePen, IdCard } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { DateField } from '@/components/ui/date-field';
@@ -94,6 +95,50 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
   const [licenseNumber, setLicenseNumber] = useState('');
   const [healthCertificate, setHealthCertificate] = useState('');
   const [otherNotes, setOtherNotes] = useState('');
+
+  // Licence scan
+  const licenceInputRef = useRef<HTMLInputElement>(null);
+  const [scanning, setScanning] = useState(false);
+
+  const handleLicenceScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setError('Please select an image file');
+      return;
+    }
+
+    try {
+      setScanning(true);
+      setError('');
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await axios.post('/api/drivers/extract-licence', formData, {
+        withCredentials: true,
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const data = res.data?.data;
+      if (data) {
+        if (data.firstName) setFirstName(data.firstName);
+        if (data.lastName) setLastName(data.lastName);
+        if (data.dateOfBirth) setDateOfBirth(data.dateOfBirth);
+        if (data.licenseNumber) setLicenseNumber(data.licenseNumber);
+        if (data.licenseClass) setLicenseClass(data.licenseClass);
+        if (data.cardVersion) setDriverLicense(data.cardVersion);
+      }
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.data?.error) {
+        setError(String(err.response.data.error));
+      } else {
+        setError('Failed to extract licence details. Please try a clearer photo.');
+      }
+    } finally {
+      setScanning(false);
+      // Reset input so the same file can be re-selected
+      if (licenceInputRef.current) licenceInputRef.current.value = '';
+    }
+  };
 
   // Photo upload
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -427,6 +472,30 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
         },
         {
           title: 'Employment & License Details',
+          headerRight: (
+            <>
+              <input
+                ref={licenceInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleLicenceScan}
+              />
+              <Button
+                type="button"
+                size="sm"
+                disabled={scanning}
+                onClick={() => licenceInputRef.current?.click()}
+              >
+                {scanning ? (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                ) : (
+                  <IdCard className="h-4 w-4" />
+                )}
+                {scanning ? 'Scanning...' : 'Scan Licence'}
+              </Button>
+            </>
+          ),
           children: (
             <div className="grid grid-cols-2 gap-4">
               <div>

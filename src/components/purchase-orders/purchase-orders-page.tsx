@@ -1,17 +1,17 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   Plus,
-  Pencil,
+  Edit,
+  Archive,
+  ArchiveRestore,
   Trash2,
   Eye,
   ShoppingCart,
   PackageCheck,
-  Send,
-  Check,
-  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
@@ -19,8 +19,6 @@ import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { Badge } from '@/components/ui/badge';
 import { CountBadge } from '@/components/ui/count-badge';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { SearchInput } from '@/components/ui/search-input';
 import { PageHeader } from '@/components/ui/page-header';
 import { FilterTabs } from '@/components/ui/filter-tabs';
@@ -34,7 +32,9 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Separator } from '@/components/ui/separator';
+import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
@@ -50,45 +50,6 @@ import {
   STATUS_DISPLAY_NAME,
 } from './types';
 
-type POActionKind = 'transition' | 'receive' | 'reject';
-interface POAction {
-  targetStatus: string;
-  label: string;
-  kind: POActionKind;
-}
-
-/** Next actions for a PO given its status. Receiving and rejection open dedicated
- *  dialogs; everything else is a plain status transition. */
-function getStatusActions(status: string): POAction[] {
-  switch (status) {
-    case 'draft':
-      return [{ targetStatus: 'pending_approval', label: 'Submit for Approval', kind: 'transition' }];
-    case 'pending_approval':
-      return [
-        { targetStatus: 'approved', label: 'Approve', kind: 'transition' },
-        { targetStatus: 'rejected', label: 'Reject', kind: 'reject' },
-      ];
-    case 'rejected':
-      return [{ targetStatus: 'pending_approval', label: 'Resubmit', kind: 'transition' }];
-    case 'approved':
-      return [
-        { targetStatus: 'purchased', label: 'Mark as Purchased', kind: 'transition' },
-        { targetStatus: 'closed', label: 'Close', kind: 'transition' },
-      ];
-    case 'purchased':
-      return [{ targetStatus: 'received', label: 'Receive Items', kind: 'receive' }];
-    case 'received_partial':
-      return [
-        { targetStatus: 'received', label: 'Receive Items', kind: 'receive' },
-        { targetStatus: 'closed', label: 'Close', kind: 'transition' },
-      ];
-    case 'received':
-      return [{ targetStatus: 'closed', label: 'Close', kind: 'transition' }];
-    default:
-      return [];
-  }
-}
-
 /** A line prepared for the receive dialog. */
 interface ReceiveLine {
   index: number;
@@ -99,6 +60,7 @@ interface ReceiveLine {
 }
 
 export function PurchaseOrdersPage() {
+  const router = useRouter();
   const [orders, setOrders] = useState<PurchaseOrderRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1, limit: 25, total: 0, hasMore: false,
@@ -125,24 +87,16 @@ export function PurchaseOrdersPage() {
   const [panelMode, setPanelMode] = useState<'create' | 'edit'>('create');
   const [editingOrder, setEditingOrder] = useState<PurchaseOrderRow | null>(null);
 
-  // View dialog
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [viewOrder, setViewOrder] = useState<PurchaseOrderRow | null>(null);
+  // Archive state
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingOrder, setArchivingOrder] = useState<PurchaseOrderRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
-  // Delete dialog
+  // Delete state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState<PurchaseOrderRow | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  // Status transitions (submit / approve / purchase / close)
-  const [transitioning, setTransitioning] = useState(false);
-  const [actionError, setActionError] = useState('');
-
-  // Reject dialog
-  const [rejectOpen, setRejectOpen] = useState(false);
-  const [rejectOrder, setRejectOrder] = useState<PurchaseOrderRow | null>(null);
-  const [rejectReason, setRejectReason] = useState('');
-  const [rejecting, setRejecting] = useState(false);
 
   // Receive dialog
   const [receiveOpen, setReceiveOpen] = useState(false);
@@ -190,6 +144,7 @@ export function PurchaseOrdersPage() {
       params.set('limit', String(rowsPerPage));
       if (debouncedSearch) params.set('search', debouncedSearch);
       if (activeTab !== 'all') params.set('status', activeTab);
+      if (showArchived) params.set('showArchived', 'true');
 
       const res = await axios.get(`/api/purchase-orders?${params.toString()}`, { withCredentials: true });
       const data = res.data.data;
@@ -201,7 +156,7 @@ export function PurchaseOrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [rowsPerPage, debouncedSearch, activeTab]);
+  }, [rowsPerPage, debouncedSearch, activeTab, showArchived]);
 
   useEffect(() => { fetchLookups(); }, [fetchLookups]);
   useEffect(() => { fetchOrders(1); }, [fetchOrders]);
@@ -215,57 +170,46 @@ export function PurchaseOrdersPage() {
     fetchOrders(panelMode === 'create' ? 1 : pagination.page);
   };
 
-  // View dialog
-  const handleOpenView = (order: PurchaseOrderRow) => { setViewOrder(order); setActionError(''); setViewDialogOpen(true); };
+  // Archive
+  const handleOpenArchive = (order: PurchaseOrderRow) => {
+    setArchivingOrder(order);
+    setArchiveDialogOpen(true);
+  };
 
-  // Delete
-  const handleOpenDelete = (order: PurchaseOrderRow) => { setDeletingOrder(order); setDeleteDialogOpen(true); };
+  const handleArchive = async () => {
+    if (!archivingOrder) return;
+    setArchiving(true);
+    try {
+      await axios.patch(`/api/purchase-orders/${archivingOrder.id}/archive`, { archived: !showArchived }, { withCredentials: true });
+      setArchiveDialogOpen(false);
+      setArchivingOrder(null);
+      fetchOrders(pagination.page);
+    } catch (err) {
+      console.error('Failed to archive/unarchive purchase order:', err);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  // Delete handlers
+  const handleOpenDelete = (order: PurchaseOrderRow) => {
+    setDeletingOrder(order);
+    setDeleteDialogOpen(true);
+  };
+
   const handleDelete = async () => {
     if (!deletingOrder) return;
     setDeleting(true);
     try {
       await axios.delete(`/api/purchase-orders/${deletingOrder.id}`, { withCredentials: true });
-      setDeleteDialogOpen(false); setDeletingOrder(null);
+      setDeleteDialogOpen(false);
+      setDeletingOrder(null);
       fetchOrders(pagination.page);
-    } catch { /* silent */ } finally { setDeleting(false); }
-  };
-
-  // ── Status actions ──
-  const handleAction = (order: PurchaseOrderRow, action: POAction) => {
-    if (action.kind === 'receive') return handleOpenReceive(order);
-    if (action.kind === 'reject') { setRejectOrder(order); setRejectReason(''); setRejectOpen(true); return; }
-    handleTransition(order, action.targetStatus);
-  };
-
-  const handleTransition = async (order: PurchaseOrderRow, status: string, note?: string): Promise<boolean> => {
-    setTransitioning(true);
-    setActionError('');
-    try {
-      const res = await axios.put(
-        `/api/purchase-orders/${order.id}/status`,
-        { status, note },
-        { withCredentials: true },
-      );
-      if (res.data?.data) setViewOrder(res.data.data as PurchaseOrderRow);
-      fetchOrders(pagination.page);
-      return true;
     } catch (err) {
-      setActionError(
-        axios.isAxiosError(err) && err.response?.data?.error
-          ? String(err.response.data.error)
-          : 'Action failed',
-      );
-      return false;
-    } finally { setTransitioning(false); }
-  };
-
-  const handleSubmitReject = async () => {
-    if (!rejectOrder || !rejectReason.trim()) return;
-    setRejecting(true);
-    try {
-      const ok = await handleTransition(rejectOrder, 'rejected', rejectReason.trim());
-      if (ok) { setRejectOpen(false); setRejectOrder(null); setRejectReason(''); }
-    } finally { setRejecting(false); }
+      console.error('Failed to delete purchase order:', err);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // ── Receiving ──
@@ -315,12 +259,11 @@ export function PurchaseOrdersPage() {
 
     setReceiving(true);
     try {
-      const res = await axios.post(
+      await axios.post(
         `/api/purchase-orders/${receiveOrder.id}/receive`,
         { receipts },
         { withCredentials: true },
       );
-      if (res.data?.data) setViewOrder(res.data.data as PurchaseOrderRow);
       setReceiveOpen(false); setReceiveOrder(null);
       fetchOrders(pagination.page);
     } catch (err) {
@@ -422,15 +365,22 @@ export function PurchaseOrdersPage() {
       align: 'right',
       render: (order) => (
         <RowActions>
-          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(order)} />
-          {['purchased', 'received_partial'].includes(order.status) && (
-            <RowActionButton label="Receive" tone="primary" icon={<PackageCheck />} onClick={() => handleOpenReceive(order)} />
-          )}
-          {['draft', 'rejected'].includes(order.status) && (
-            <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(order)} />
-          )}
-          {order.status === 'draft' && (
-            <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(order)} />
+          {showArchived ? (
+            <>
+              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(order)} />
+              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(order)} />
+            </>
+          ) : (
+            <>
+              <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/maintenance/purchase-orders/${order.id}`)} />
+              {['purchased', 'received_partial'].includes(order.status) && (
+                <RowActionButton label="Receive" tone="primary" icon={<PackageCheck />} onClick={() => handleOpenReceive(order)} />
+              )}
+              {['draft', 'rejected'].includes(order.status) && (
+                <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(order)} />
+              )}
+              <RowActionButton label="Archive" tone="destructive" icon={<Archive />} onClick={() => handleOpenArchive(order)} />
+            </>
           )}
         </RowActions>
       ),
@@ -441,7 +391,7 @@ export function PurchaseOrdersPage() {
     <div className="relative flex h-full">
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0">
-        <PageHeader title="Purchase Orders" count={pagination.total}>
+        <PageHeader title="Purchase Orders" description="Track and manage procurement from request to delivery" count={pagination.total}>
           <Button onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             Create PO
@@ -449,7 +399,7 @@ export function PurchaseOrdersPage() {
         </PageHeader>
 
         {/* Status Tabs */}
-        <div className="px-6 pb-4">
+        <div className="px-6 pb-4 flex items-center gap-4">
           <FilterTabs
             value={activeTab}
             onChange={setActiveTab}
@@ -464,6 +414,9 @@ export function PurchaseOrdersPage() {
             onHiddenColumnKeysChange={setHiddenColumnKeys}
             density={density}
             onDensityChange={setDensity}
+            afterControls={
+              <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+            }
             searchNode={
               <SearchInput value={search} onChange={setSearch} placeholder="Search purchase orders..." />
             }
@@ -476,7 +429,7 @@ export function PurchaseOrdersPage() {
             rowsPerPage={rowsPerPage}
             onPageChange={fetchOrders}
             onRowsPerPageChange={setRowsPerPage}
-            onRowClick={handleOpenView}
+            onRowClick={showArchived ? undefined : (order) => router.push(`/maintenance/purchase-orders/${order.id}`)}
             rowKey={(o) => o.id}
             density={density}
             hiddenColumnKeys={hiddenColumnKeys}
@@ -514,77 +467,24 @@ export function PurchaseOrdersPage() {
         )}
       </div>
 
-      {/* View PO Dialog */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{viewOrder?.poNumber || 'Purchase Order Details'}</DialogTitle>
-            <DialogDescription>Purchase order overview.</DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto py-4">
-            {viewOrder && (
-              <ViewPOContent
-                order={viewOrder}
-                vendorMap={vendorMap}
-                partMap={partMap}
-                locationMap={locationMap}
-                userMap={userMap}
-              />
-            )}
-          </div>
-          {actionError && (
-            <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3">
-              <p className="text-sm text-destructive">{actionError}</p>
-            </div>
-          )}
-          <DialogFooter className="flex-wrap gap-2">
-            {viewOrder && ['draft', 'rejected'].includes(viewOrder.status) && (
-              <Button variant="outline" onClick={() => { setViewDialogOpen(false); if (viewOrder) handleOpenEdit(viewOrder); }}>
-                <Pencil className="h-4 w-4 mr-1" /> Edit
-              </Button>
-            )}
-            {viewOrder && getStatusActions(viewOrder.status).map((action) => {
-              const isPrimary = action.kind === 'receive' || action.targetStatus === 'approved' || action.targetStatus === 'pending_approval' || action.targetStatus === 'purchased';
-              const icon =
-                action.kind === 'receive' ? <PackageCheck className="h-4 w-4 mr-1" />
-                : action.kind === 'reject' ? <X className="h-4 w-4 mr-1" />
-                : action.targetStatus === 'approved' ? <Check className="h-4 w-4 mr-1" />
-                : action.targetStatus === 'purchased' ? <ShoppingCart className="h-4 w-4 mr-1" />
-                : action.targetStatus === 'closed' ? null
-                : <Send className="h-4 w-4 mr-1" />;
-              return (
-                <Button
-                  key={action.targetStatus}
-                  variant={isPrimary ? 'default' : 'outline'}
-                  disabled={transitioning}
-                  onClick={() => viewOrder && handleAction(viewOrder, action)}
-                >
-                  {icon}{action.label}
-                </Button>
-              );
-            })}
-            <Button variant="outline" onClick={() => setViewDialogOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Archive Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={archivingOrder?.poNumber}
+        action={showArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
 
       {/* Delete Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Purchase Order</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{deletingOrder?.poNumber}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={deletingOrder?.poNumber}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
 
       {/* Receive Items Dialog */}
       <Dialog open={receiveOpen} onOpenChange={(o) => { if (!o) { setReceiveOpen(false); setReceiveOrder(null); } }}>
@@ -645,222 +545,7 @@ export function PurchaseOrdersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Reject Dialog */}
-      <Dialog open={rejectOpen} onOpenChange={(o) => { if (!o) { setRejectOpen(false); setRejectOrder(null); } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reject Purchase Order</DialogTitle>
-            <DialogDescription>
-              Provide a reason for rejecting {rejectOrder?.poNumber}. It&apos;s recorded in the status history.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-2">
-            <Label htmlFor="rejectReason">Reason <span className="text-destructive">*</span></Label>
-            <Textarea
-              id="rejectReason"
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="Why is this PO being rejected?"
-              rows={3}
-              className="mt-1.5"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setRejectOpen(false); setRejectOrder(null); }} disabled={rejecting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleSubmitReject} disabled={rejecting || !rejectReason.trim()}>
-              {rejecting ? 'Rejecting...' : 'Reject PO'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
 
-/** Read-only view of PO details. */
-function ViewPOContent({
-  order,
-  vendorMap,
-  partMap,
-  locationMap,
-  userMap,
-}: {
-  order: PurchaseOrderRow;
-  vendorMap: Record<string, string>;
-  partMap: Record<string, string>;
-  locationMap: Record<string, string>;
-  userMap: Record<string, string>;
-}) {
-  return (
-    <div className="space-y-6">
-      {/* Status & Overview */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Overview</h3>
-        <Separator className="mb-4" />
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <ViewField label="PO Number" value={order.poNumber} />
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Status</p>
-              <Badge variant={STATUS_BADGE_VARIANT[order.status] || 'secondary'} className="mt-0.5">
-                {STATUS_DISPLAY_NAME[order.status] || order.status}
-              </Badge>
-            </div>
-          </div>
-          <ViewField label="Vendor" value={order.vendorName || vendorMap[order.vendorId]} />
-          <ViewField label="Delivery Location" value={locationMap[order.deliveryLocationId]} />
-          <ViewField label="Approver" value={userMap[order.approverId]} />
-          <ViewField label="Created" value={new Date(order.createdAt).toLocaleString()} />
-          {order.description && <ViewField label="Description" value={order.description} />}
-        </div>
-      </div>
-
-      {/* Line Items */}
-      {order.lineItems.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Line Items</h3>
-          <Separator className="mb-4" />
-          <div className="space-y-2">
-            {order.lineItems.map((li, i) => (
-              <div key={i} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-                <div className="flex-1">
-                  <span className="text-sm text-foreground">{partMap[li.partId] || li.partId}</span>
-                  <span className="text-xs text-muted-foreground ml-2">x{li.quantity}</span>
-                  {(li.receivedQuantity ?? 0) > 0 && (
-                    <span
-                      className={`text-xs ml-2 ${
-                        (li.receivedQuantity ?? 0) >= li.quantity
-                          ? 'text-green-700 dark:text-green-400'
-                          : 'text-yellow-700 dark:text-yellow-500'
-                      }`}
-                    >
-                      · received {li.receivedQuantity}/{li.quantity}
-                    </span>
-                  )}
-                </div>
-                <div className="text-right">
-                  <span className="text-sm text-muted-foreground">${li.unitCost.toFixed(2)} ea</span>
-                  <span className="text-sm text-foreground font-medium ml-3">${li.total.toFixed(2)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Cost Summary */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Cost Summary</h3>
-        <Separator className="mb-4" />
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">SubTotal</span>
-            <span className="text-foreground">${order.subTotal.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Shipping</span>
-            <span className="text-foreground">${order.shipping.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">
-              Tax ({order.taxType === 'percentage' ? `${order.taxValue}%` : `$${order.taxValue.toFixed(2)}`})
-            </span>
-            <span className="text-foreground">
-              ${(order.taxType === 'percentage'
-                ? order.subTotal * (order.taxValue / 100)
-                : order.taxValue
-              ).toFixed(2)}
-            </span>
-          </div>
-          <Separator />
-          <div className="flex justify-between text-sm font-semibold">
-            <span className="text-foreground">Total</span>
-            <span className="text-foreground">${order.total.toFixed(2)}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Documents */}
-      {order.documents.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Documents</h3>
-          <Separator className="mb-4" />
-          <div className="space-y-2">
-            {order.documents.map((doc, i) => (
-              <div key={i} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-                <span className="text-sm text-foreground">{doc.originalName}</span>
-                <span className="text-xs text-muted-foreground">
-                  {doc.size < 1024 * 1024
-                    ? `${(doc.size / 1024).toFixed(1)} KB`
-                    : `${(doc.size / (1024 * 1024)).toFixed(1)} MB`}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Rejection info */}
-      {order.status === 'rejected' && order.rejectionReason && (
-        <div>
-          <h3 className="text-sm font-semibold text-destructive mb-3">Rejection Reason</h3>
-          <Separator className="mb-4" />
-          <p className="text-sm text-foreground">{order.rejectionReason}</p>
-          {order.rejectedAt && (
-            <p className="text-xs text-muted-foreground mt-1">
-              Rejected on {new Date(order.rejectedAt).toLocaleString()}
-              {order.rejectedBy && userMap[order.rejectedBy] ? ` by ${userMap[order.rejectedBy]}` : ''}
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Approval info */}
-      {order.approvedAt && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Approval</h3>
-          <Separator className="mb-4" />
-          <p className="text-sm text-foreground">
-            Approved on {new Date(order.approvedAt).toLocaleString()}
-            {order.approvedBy && userMap[order.approvedBy] ? ` by ${userMap[order.approvedBy]}` : ''}
-          </p>
-        </div>
-      )}
-
-      {/* Status History */}
-      {order.statusHistory.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Status History</h3>
-          <Separator className="mb-4" />
-          <div className="space-y-2">
-            {order.statusHistory.map((entry, i) => (
-              <div key={i} className="flex items-start gap-3 text-sm">
-                <span className="text-xs text-muted-foreground whitespace-nowrap mt-0.5">
-                  {new Date(entry.changedAt).toLocaleString()}
-                </span>
-                <div>
-                  <span className="text-foreground">
-                    {entry.from ? `${STATUS_DISPLAY_NAME[entry.from] || entry.from} → ` : ''}
-                    {STATUS_DISPLAY_NAME[entry.to] || entry.to}
-                  </span>
-                  {entry.note && (
-                    <p className="text-xs text-muted-foreground mt-0.5">{entry.note}</p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ViewField({ label, value }: { label: string; value?: string }) {
-  return (
-    <div>
-      <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <p className="text-sm text-foreground mt-0.5">{value || '—'}</p>
-    </div>
-  );
-}

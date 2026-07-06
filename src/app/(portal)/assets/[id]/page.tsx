@@ -143,6 +143,8 @@ export default function AssetDetailPage() {
   const fetchForms = useCallback(async () => {
     setFormsLoading(true);
     try {
+      // Auto-seed pre-start forms (idempotent — skips if already seeded)
+      await axios.post('/api/forms/seed-prestart', {}, { withCredentials: true }).catch(() => {});
       const res = await axios.get('/api/forms?includeSchema=false', { withCredentials: true });
       const allForms = res.data.data?.items || [];
       setFormsList(allForms.filter((f: { title: string }) => !f.title?.toLowerCase().includes('driver wellness')));

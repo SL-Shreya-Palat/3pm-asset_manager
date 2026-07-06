@@ -1,10 +1,13 @@
 'use client';
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   Plus,
-  Pencil,
+  Edit,
+  Archive,
+  ArchiveRestore,
   Trash2,
   Eye,
   Wrench,
@@ -25,14 +28,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
@@ -50,6 +48,7 @@ import {
 } from './types';
 
 export function FaultsPage() {
+  const router = useRouter();
   const [faults, setFaults] = useState<FaultRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1, limit: 25, total: 0, hasMore: false,
@@ -127,11 +126,13 @@ export function FaultsPage() {
   const [woPanelOpen, setWoPanelOpen] = useState(false);
   const [woFault, setWoFault] = useState<FaultRow | null>(null);
 
-  // View dialog
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [viewFault, setViewFault] = useState<FaultRow | null>(null);
+  // Archive state
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingFault, setArchivingFault] = useState<FaultRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
-  // Delete dialog
+  // Delete state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingFault, setDeletingFault] = useState<FaultRow | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -167,6 +168,7 @@ export function FaultsPage() {
       params.set('limit', String(rowsPerPage));
       if (debouncedSearch) params.set('search', debouncedSearch);
       if (activeTab !== 'all') params.set('status', activeTab);
+      if (showArchived) params.set('showArchived', 'true');
 
       const selectedCategory = (filters.category as string[]) ?? [];
       if (selectedCategory.length > 0) params.set('category', selectedCategory[0]);
@@ -187,7 +189,7 @@ export function FaultsPage() {
     } finally {
       setLoading(false);
     }
-  }, [rowsPerPage, debouncedSearch, activeTab, filters]);
+  }, [rowsPerPage, debouncedSearch, activeTab, filters, showArchived]);
 
   useEffect(() => { fetchFaults(1); }, [fetchFaults]);
 
@@ -200,12 +202,8 @@ export function FaultsPage() {
     fetchFaults(panelMode === 'create' ? 1 : pagination.page);
   };
 
-  // View dialog
-  const handleOpenView = (fault: FaultRow) => { setViewFault(fault); setViewDialogOpen(true); };
-
   // Work order panel — raise a WO for a fault
   const handleOpenCreateWO = (fault: FaultRow) => {
-    setViewDialogOpen(false);
     setWoFault(fault);
     setWoPanelOpen(true);
   };
@@ -215,16 +213,46 @@ export function FaultsPage() {
     fetchFaults(pagination.page);
   };
 
-  // Delete
-  const handleOpenDelete = (fault: FaultRow) => { setDeletingFault(fault); setDeleteDialogOpen(true); };
+  // Archive
+  const handleOpenArchive = (fault: FaultRow) => {
+    setArchivingFault(fault);
+    setArchiveDialogOpen(true);
+  };
+
+  const handleArchive = async () => {
+    if (!archivingFault) return;
+    setArchiving(true);
+    try {
+      await axios.patch(`/api/faults/${archivingFault.id}/archive`, { archived: !showArchived }, { withCredentials: true });
+      setArchiveDialogOpen(false);
+      setArchivingFault(null);
+      fetchFaults(pagination.page);
+    } catch (err) {
+      console.error('Failed to archive/unarchive fault:', err);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  // Delete handlers
+  const handleOpenDelete = (fault: FaultRow) => {
+    setDeletingFault(fault);
+    setDeleteDialogOpen(true);
+  };
+
   const handleDelete = async () => {
     if (!deletingFault) return;
     setDeleting(true);
     try {
       await axios.delete(`/api/faults/${deletingFault.id}`, { withCredentials: true });
-      setDeleteDialogOpen(false); setDeletingFault(null);
+      setDeleteDialogOpen(false);
+      setDeletingFault(null);
       fetchFaults(pagination.page);
-    } catch { /* silent */ } finally { setDeleting(false); }
+    } catch (err) {
+      console.error('Failed to delete fault:', err);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Column definitions
@@ -324,20 +352,29 @@ export function FaultsPage() {
       align: 'right',
       render: (fault) => (
         <RowActions>
-          {fault.workOrderNumber ? (
-            <Badge variant="outline" className="font-mono text-xs gap-1">
-              <Wrench className="h-3 w-3" />{fault.workOrderNumber}
-            </Badge>
+          {showArchived ? (
+            <>
+              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(fault)} />
+              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(fault)} />
+            </>
           ) : (
-            <RowActionButton
-              label="Create work order"
-              icon={<Wrench />}
-              onClick={() => handleOpenCreateWO(fault)}
-            />
+            <>
+              {fault.workOrderNumber ? (
+                <Badge variant="outline" className="font-mono text-xs gap-1">
+                  <Wrench className="h-3 w-3" />{fault.workOrderNumber}
+                </Badge>
+              ) : (
+                <RowActionButton
+                  label="Create work order"
+                  icon={<Wrench />}
+                  onClick={() => handleOpenCreateWO(fault)}
+                />
+              )}
+              <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/maintenance/faults/${fault.id}`)} />
+              <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(fault)} />
+              <RowActionButton label="Archive" tone="destructive" icon={<Archive />} onClick={() => handleOpenArchive(fault)} />
+            </>
           )}
-          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(fault)} />
-          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(fault)} />
-          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(fault)} />
         </RowActions>
       ),
     },
@@ -347,7 +384,7 @@ export function FaultsPage() {
     <div className="relative flex h-full">
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0">
-        <PageHeader title="Faults" count={pagination.total}>
+        <PageHeader title="Faults" description="Log, prioritize, and resolve asset faults and breakdowns" count={pagination.total}>
           <Button onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             Create Fault
@@ -355,12 +392,13 @@ export function FaultsPage() {
         </PageHeader>
 
         {/* Status Tabs */}
-        <div className="px-6 pb-4">
+        <div className="px-6 pb-4 flex items-center gap-4">
           <FilterTabs
             value={activeTab}
             onChange={setActiveTab}
             tabs={FAULT_STATUS_TABS.map((tab) => ({ value: tab.key, label: tab.label }))}
           />
+          <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
         </div>
 
         <div className="flex-1 overflow-auto px-6 pb-6">
@@ -412,7 +450,7 @@ export function FaultsPage() {
             rowsPerPage={rowsPerPage}
             onPageChange={fetchFaults}
             onRowsPerPageChange={setRowsPerPage}
-            onRowClick={handleOpenView}
+            onRowClick={showArchived ? undefined : (fault) => router.push(`/maintenance/faults/${fault.id}`)}
             rowKey={(f) => f.id}
             density={density}
             hiddenColumnKeys={hiddenColumnKeys}
@@ -479,159 +517,25 @@ export function FaultsPage() {
         )}
       </div>
 
-      {/* View Fault Dialog */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{viewFault?.faultNumber || 'Fault Details'}</DialogTitle>
-            <DialogDescription>Fault overview.</DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto py-4">
-            {viewFault && <ViewFaultContent fault={viewFault} />}
-          </div>
-          <DialogFooter>
-            {viewFault && !viewFault.workOrderNumber && (
-              <Button onClick={() => handleOpenCreateWO(viewFault)}>
-                <Wrench className="h-4 w-4 mr-1" /> Create Work Order
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => { setViewDialogOpen(false); if (viewFault) handleOpenEdit(viewFault); }}>
-              <Pencil className="h-4 w-4 mr-1" /> Edit
-            </Button>
-            <Button variant="outline" onClick={() => setViewDialogOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Archive Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={archivingFault?.title}
+        action={showArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
 
       {/* Delete Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Fault</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{deletingFault?.faultNumber}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={deletingFault?.title}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
     </div>
   );
 }
 
-/** Read-only view of fault details. */
-function ViewFaultContent({ fault }: { fault: FaultRow }) {
-  return (
-    <div className="space-y-6">
-      {/* Overview */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Overview</h3>
-        <Separator className="mb-4" />
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <ViewField label="Fault Number" value={fault.faultNumber} />
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Status</p>
-              <Badge variant={STATUS_BADGE_VARIANT[fault.status] || 'secondary'} className="mt-0.5">
-                {STATUS_DISPLAY_NAME[fault.status] || fault.status}
-              </Badge>
-            </div>
-          </div>
-          <ViewField label="Title" value={fault.title} />
-          <ViewField label="Description" value={fault.description} />
-          <ViewField label="Reported At" value={fault.reportedAt ? new Date(fault.reportedAt).toLocaleDateString() : undefined} />
-          {fault.workOrderNumber && (
-            <ViewField label="Work Order" value={fault.workOrderNumber} />
-          )}
-          {fault.takeOutOfService && (
-            <div>
-              <p className="text-sm font-medium text-destructive">Asset taken out of service</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Asset & Reporter */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Asset & Reporter</h3>
-        <Separator className="mb-4" />
-        <div className="space-y-4">
-          <ViewField label="Asset" value={fault.assetName} />
-          <ViewField label="Reported By" value={fault.reportedByName || undefined} />
-          <ViewField label="Reporter Type" value={fault.reportedByType === 'driver' ? 'Driver' : 'Team Member'} />
-        </div>
-      </div>
-
-      {/* Classification */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Classification</h3>
-        <Separator className="mb-4" />
-        <div className="grid grid-cols-2 gap-4">
-          <ViewField label="Category" value={CATEGORY_DISPLAY_NAME[fault.category] || fault.category} />
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">Severity</p>
-            <span className={cn(
-              'mt-0.5 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium',
-              PRIORITY_BADGE_CLASSES[fault.priority] || 'bg-slate-100 text-slate-600 dark:bg-slate-800/60 dark:text-slate-300',
-            )}>
-              {PRIORITY_DISPLAY_NAME[fault.priority] || fault.priority}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Meter */}
-      {(fault.meterType || fault.meterReading != null) && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Meter</h3>
-          <Separator className="mb-4" />
-          <div className="grid grid-cols-2 gap-4">
-            <ViewField label="Meter Type" value={fault.meterType || undefined} />
-            <ViewField label="Meter Reading" value={fault.meterReading != null ? String(fault.meterReading) : undefined} />
-          </div>
-        </div>
-      )}
-
-      {/* Attachments */}
-      {fault.attachments.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-foreground mb-3">Attachments</h3>
-          <Separator className="mb-4" />
-          <div className="space-y-2">
-            {fault.attachments.map((att, i) => (
-              <div key={i} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-                <span className="text-sm text-foreground">{att.originalName}</span>
-                <span className="text-xs text-muted-foreground">
-                  {att.size < 1024 * 1024
-                    ? `${(att.size / 1024).toFixed(1)} KB`
-                    : `${(att.size / (1024 * 1024)).toFixed(1)} MB`}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Metadata */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Details</h3>
-        <Separator className="mb-4" />
-        <ViewField label="Created" value={new Date(fault.createdAt).toLocaleString()} />
-      </div>
-    </div>
-  );
-}
-
-function ViewField({ label, value }: { label: string; value?: string }) {
-  return (
-    <div>
-      <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <p className="text-sm text-foreground mt-0.5">{value || '\u2014'}</p>
-    </div>
-  );
-}

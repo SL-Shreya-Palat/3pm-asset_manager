@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
       search: sp.get('search') || undefined,
       result: sp.get('result') || undefined,
       assetId: sp.get('assetId') || undefined,
+      teamId: sp.get('teamId') || undefined,
     });
     return NextResponse.json({ data: result, error: null });
   } catch (error) {

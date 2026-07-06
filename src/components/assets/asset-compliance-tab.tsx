@@ -9,7 +9,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 import {
-  ShieldCheck, ShieldAlert, CircleCheck, Plus, Pencil, Trash2, RefreshCw, ExternalLink,
+  ShieldCheck, ShieldAlert, CircleCheck, Plus, Edit, Trash2, RefreshCw, ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -199,7 +199,7 @@ export function AssetComplianceTab({ assetId }: { assetId: string }) {
                     title="Edit"
                     onClick={() => setDialog({ mode: 'edit', doc: d })}
                   >
-                    <Pencil className="h-3.5 w-3.5" />
+                    <Edit className="h-3.5 w-3.5" />
                   </Button>
                   <Button
                     variant="ghost"

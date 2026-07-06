@@ -10,7 +10,7 @@ import type { CreateServiceTaskInput, UpdateServiceTaskInput } from './types';
 /** List service tasks with pagination and search. */
 export async function getAllServiceTasks(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string },
+  options: { page?: number; limit?: number; search?: string; showArchived?: boolean },
 ) {
   const collection = await getServiceTasksCollection();
   const page = Math.max(1, options.page || 1);
@@ -19,8 +19,13 @@ export async function getAllServiceTasks(
 
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
-    isArchived: { $ne: true },
   };
+
+  if (options.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
 
   if (options.search) {
     const regex = { $regex: options.search, $options: 'i' };
@@ -132,27 +137,12 @@ export async function updateServiceTask(
   return { data: updated ? serializeServiceTask(updated) : null, error: null };
 }
 
-/** Archive (soft-delete) a service task. */
+/** Permanently delete a service task. */
 export async function deleteServiceTask(tenantId: string, userId: string, taskId: string) {
   const collection = await getServiceTasksCollection();
-  const taskOid = ObjectId.createFromHexString(taskId);
+  const docOid = ObjectId.createFromHexString(taskId);
   const tenantOid = ObjectId.createFromHexString(tenantId);
 
-  const now = new Date();
-  const userOid = ObjectId.createFromHexString(userId);
-
-  const result = await collection.updateOne(
-    { _id: taskOid, tenantId: tenantOid, isArchived: { $ne: true } },
-    {
-      $set: {
-        isArchived: true,
-        archivedAt: now,
-        archivedBy: userOid,
-        updatedBy: userOid,
-        updatedAt: now,
-      },
-    },
-  );
-
-  return result.modifiedCount > 0;
+  const result = await collection.deleteOne({ _id: docOid, tenantId: tenantOid });
+  return result.deletedCount > 0;
 }

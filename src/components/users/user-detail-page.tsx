@@ -3,15 +3,16 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-import { ArrowLeft, User } from 'lucide-react';
+import { User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { PageBackButton } from '@/components/ui/page-back-button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import type { UserRow } from './types';
 
-const USER_TABS = ['General Details', 'Notifications', 'Team Management', 'Permissions'] as const;
+const USER_TABS = ['General Details', 'Notifications', 'Team Management'] as const;
 type UserTab = (typeof USER_TABS)[number];
 
 interface UserDetailPageProps {
@@ -64,9 +65,7 @@ export function UserDetailPage({ userId }: UserDetailPageProps) {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-4 px-6 pt-6 pb-4">
-        <Button variant="ghost" size="icon" onClick={() => router.push('/people/users')}>
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
+        <PageBackButton href="/people/users" />
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
             <User className="h-5 w-5" />
@@ -105,7 +104,6 @@ export function UserDetailPage({ userId }: UserDetailPageProps) {
         {activeTab === 'General Details' && <GeneralDetailsTab user={user} />}
         {activeTab === 'Notifications' && <PlaceholderTab label="Notifications" />}
         {activeTab === 'Team Management' && <PlaceholderTab label="Team Management" />}
-        {activeTab === 'Permissions' && <PlaceholderTab label="Permissions" />}
       </div>
     </div>
   );
@@ -130,7 +128,7 @@ function GeneralDetailsTab({ user }: { user: UserRow }) {
             <div>
               <p className="text-sm font-medium text-muted-foreground">Status</p>
               <div className="mt-1">
-                <Badge variant={user.isActive ? 'default' : 'secondary'}>
+                <Badge variant={user.isActive ? 'success' : 'secondary'}>
                   {user.isActive ? 'Active' : 'Inactive'}
                 </Badge>
               </div>

@@ -392,7 +392,7 @@ export async function getUserTenant(userId: string) {
     if (isOwnerByTenant) {
       roleName = 'Owner';
       isAdmin = true;
-      permissions = { scope: 'all', teamScoped: false, mobileOnly: false };
+      permissions = { v: 2, forms: ['*'], m: ['*'], sm: [] };
     }
 
     return {
@@ -446,7 +446,8 @@ export async function getUserRoleForTenant(
     const scopeAll =
       typeof role.permissions === 'object' &&
       role.permissions !== null &&
-      (role.permissions as { scope?: string }).scope === 'all';
+      Array.isArray((role.permissions as { forms?: unknown }).forms) &&
+      (role.permissions as { forms?: unknown[] }).forms?.[0] === '*';
 
     return { nameLower, isAdmin, isManager, isMechanic, fullAccess: isAdmin || isManager || scopeAll };
   } catch (error) {

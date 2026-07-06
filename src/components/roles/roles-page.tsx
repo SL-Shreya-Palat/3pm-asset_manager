@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   Plus,
-  Pencil,
+  Edit,
+  Archive,
+  ArchiveRestore,
   Trash2,
   Eye,
   Shield,
@@ -16,21 +18,21 @@ import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { SearchInput } from '@/components/ui/search-input';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { PageHeader } from '@/components/ui/page-header';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
-import { PERMISSION_TABS, ALL_ACTIONS } from './role-form';
+import { isWildcardPermissions } from '@/lib/rbac';
 import type { RoleRow, Pagination } from './types';
 
 export function RolesPage() {
@@ -49,11 +51,13 @@ export function RolesPage() {
     density, setDensity,
   } = useDataTable();
 
-  // View dialog
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [viewRole, setViewRole] = useState<RoleRow | null>(null);
+  // Archive state
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingRole, setArchivingRole] = useState<RoleRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
-  // Delete dialog
+  // Delete state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingRole, setDeletingRole] = useState<RoleRow | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -65,6 +69,7 @@ export function RolesPage() {
       params.set('page', String(page));
       params.set('limit', String(rowsPerPage));
       if (debouncedSearch) params.set('search', debouncedSearch);
+      if (showArchived) params.set('showArchived', 'true');
       const res = await axios.get(`/api/roles?${params.toString()}`, { withCredentials: true });
       const data = res.data.data;
       setRoles(data.items || []);
@@ -75,17 +80,35 @@ export function RolesPage() {
     } finally {
       setLoading(false);
     }
-  }, [rowsPerPage, debouncedSearch]);
+  }, [rowsPerPage, debouncedSearch, showArchived]);
 
   useEffect(() => {
     fetchRoles(1);
   }, [fetchRoles]);
 
-  const handleOpenView = (role: RoleRow) => {
-    setViewRole(role);
-    setViewDialogOpen(true);
+  // Archive handlers
+  const handleOpenArchive = (role: RoleRow) => {
+    setArchivingRole(role);
+    setArchiveDialogOpen(true);
   };
 
+  const handleArchive = async () => {
+    if (!archivingRole) return;
+    setArchiving(true);
+    try {
+      const archived = !showArchived; // If viewing active items, we archive. If viewing archived, we unarchive.
+      await axios.patch(`/api/roles/${archivingRole.id}/archive`, { archived }, { withCredentials: true });
+      setArchiveDialogOpen(false);
+      setArchivingRole(null);
+      fetchRoles(pagination.page);
+    } catch (err) {
+      console.error('Failed to archive/unarchive role:', err);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  // Delete handlers
   const handleOpenDelete = (role: RoleRow) => {
     setDeletingRole(role);
     setDeleteDialogOpen(true);
@@ -106,15 +129,13 @@ export function RolesPage() {
     }
   };
 
-  /** Count how many modules have at least one permission enabled. */
+  /** Summarize permissions for the table column. */
   const getPermissionSummary = (role: RoleRow): string => {
-    if (role.permissions.scope === 'all') return 'Full Access';
-    const modules = role.permissions.modules || {};
-    const count = Object.keys(modules).filter((mod) => {
-      const actions = modules[mod as keyof typeof modules];
-      return actions && Object.values(actions).some(Boolean);
-    }).length;
-    return `${count} module${count !== 1 ? 's' : ''}`;
+    if (isWildcardPermissions(role.permissions)) return 'Full Access';
+    const moduleCount = Array.isArray(role.permissions.m)
+      ? role.permissions.m.filter((k) => k !== '*').length
+      : 0;
+    return `${moduleCount} module${moduleCount !== 1 ? 's' : ''}`;
   };
 
   const roleColumns: DataTableColumn<RoleRow>[] = [
@@ -144,16 +165,33 @@ export function RolesPage() {
       key: 'description',
       header: 'Description',
       label: 'Description',
-      render: (role) => (
-        <span className="text-muted-foreground">{role.description || '—'}</span>
-      ),
+      render: (role) => {
+        const desc = role.description || '—';
+        if (!role.description) {
+          return <span className="text-muted-foreground">—</span>;
+        }
+        return (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-muted-foreground block max-w-[300px] truncate">
+                  {desc}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-xs">
+                <p>{desc}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        );
+      },
     },
     {
       key: 'permissions',
       header: 'Permissions',
       label: 'Permissions',
       render: (role) => (
-        <Badge variant={role.permissions.scope === 'all' ? 'default' : 'outline'}>
+        <Badge variant={isWildcardPermissions(role.permissions) ? 'default' : 'outline'}>
           {getPermissionSummary(role)}
         </Badge>
       ),
@@ -164,7 +202,7 @@ export function RolesPage() {
       label: 'Team Scoped',
       render: (role) => (
         <span className="text-muted-foreground">
-          {role.permissions.scope === 'all' ? 'No' : role.permissions.teamScoped ? 'Yes' : 'No'}
+          {role.teamScoped ? 'Yes' : 'No'}
         </span>
       ),
     },
@@ -174,10 +212,20 @@ export function RolesPage() {
       align: 'right',
       render: (role) => (
         <RowActions>
-          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(role)} />
-          {!role.isSystem && (
+          {!showArchived && (
             <>
-              <RowActionButton label="Edit" icon={<Pencil />} onClick={() => router.push(`/people/roles/${role.id}/edit`)} />
+              <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/people/roles/${role.id}`)} />
+              {!role.isSystem && (
+                <>
+                  <RowActionButton label="Edit" icon={<Edit />} onClick={() => router.push(`/people/roles/${role.id}/edit`)} />
+                  <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(role)} />
+                </>
+              )}
+            </>
+          )}
+          {showArchived && (
+            <>
+              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(role)} />
               <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(role)} />
             </>
           )}
@@ -189,12 +237,16 @@ export function RolesPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <PageHeader title="Roles" count={pagination.total}>
+      <PageHeader title="Roles and Permissions" description="Manage roles and configure module-level access for your team" count={pagination.total}>
         <Button onClick={() => router.push('/people/roles/new')}>
           <Plus className="h-4 w-4" />
           Add Role
         </Button>
       </PageHeader>
+
+      <div className="px-6 pb-3">
+        <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+      </div>
 
       {/* Toolbar + Table */}
       <div className="flex-1 overflow-auto px-6 pb-6">
@@ -216,7 +268,7 @@ export function RolesPage() {
           rowsPerPage={rowsPerPage}
           onPageChange={fetchRoles}
           onRowsPerPageChange={setRowsPerPage}
-          onRowClick={handleOpenView}
+          onRowClick={showArchived ? undefined : (role) => router.push(`/people/roles/${role.id}`)}
           rowKey={(r) => r.id}
           density={density}
           hiddenColumnKeys={hiddenColumnKeys}
@@ -228,142 +280,24 @@ export function RolesPage() {
         />
       </div>
 
-      {/* View Role Dialog */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>
-              {viewRole ? viewRole.name : 'Role Details'}
-              {viewRole?.isSystem && (
-                <Badge variant="secondary" className="ml-2 text-xs">System</Badge>
-              )}
-            </DialogTitle>
-            <DialogDescription>
-              {viewRole?.description || 'Role permission overview.'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-y-auto py-4">
-            {viewRole && <ViewRolePermissions role={viewRole} />}
-          </div>
-
-          <DialogFooter>
-            {viewRole && !viewRole.isSystem && (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setViewDialogOpen(false);
-                  router.push(`/people/roles/${viewRole.id}/edit`);
-                }}
-              >
-                <Pencil className="h-4 w-4 mr-1" />
-                Edit
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => setViewDialogOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Archive Role Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={archivingRole?.name}
+        action={showArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
 
       {/* Delete Role Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Role</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{deletingRole?.name}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-/** Read-only view of role permissions. */
-function ViewRolePermissions({ role }: { role: RoleRow }) {
-  if (role.permissions.scope === 'all') {
-    return (
-      <div className="space-y-4">
-        <div className="rounded-md bg-primary/5 border border-primary/20 p-4">
-          <p className="text-sm font-medium text-primary">Full Access</p>
-          <p className="text-sm text-muted-foreground mt-1">
-            This role has unrestricted access to all modules and actions.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  const { modules, teamScoped, mobileOnly } = role.permissions;
-
-  return (
-    <div className="space-y-4">
-      {/* Flags */}
-      <div className="flex gap-3">
-        {teamScoped && <Badge variant="outline">Team Scoped</Badge>}
-        {mobileOnly && <Badge variant="outline">Mobile Only</Badge>}
-        {!teamScoped && !mobileOnly && (
-          <span className="text-sm text-muted-foreground">No restrictions</span>
-        )}
-      </div>
-
-      <Separator />
-
-      {/* Permission grid */}
-      {PERMISSION_TABS.map((tab) => {
-        const hasAny = tab.modules.some((mod) => {
-          const perms = modules[mod.key];
-          return perms && Object.values(perms).some(Boolean);
-        });
-        if (!hasAny) return null;
-
-        return (
-          <div key={tab.key}>
-            <h3 className="text-sm font-semibold text-foreground mb-2">{tab.label}</h3>
-            <div className="rounded-md border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-muted/50">
-                    <th className="text-left px-3 py-2 font-medium text-muted-foreground">Module</th>
-                    {ALL_ACTIONS.map((a) => (
-                      <th key={a.key} className="text-center px-2 py-2 font-medium text-muted-foreground">
-                        {a.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {tab.modules.map((mod) => {
-                    const perms = modules[mod.key];
-                    if (!perms || !Object.values(perms).some(Boolean)) return null;
-                    return (
-                      <tr key={mod.key} className="border-t">
-                        <td className="px-3 py-2 font-medium">{mod.label}</td>
-                        {ALL_ACTIONS.map((a) => (
-                          <td key={a.key} className="text-center px-2 py-2">
-                            {perms[a.key] ? (
-                              <span className="text-primary font-bold">&#10003;</span>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
-                          </td>
-                        ))}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-      })}
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={deletingRole?.name}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
     </div>
   );
 }

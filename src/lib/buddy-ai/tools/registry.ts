@@ -12,17 +12,26 @@
 
 import { tool, type ToolSet } from "ai";
 import type { z } from "zod";
-import type { Action, ModuleKey } from "@/lib/rbac";
-import { roleHasPermission } from "@/lib/rbac";
+import { isWildcardPermissions } from "@/lib/rbac";
 import type { BuddyAIContext } from "../utils/rbac";
+
+/** Permission can be a colon-separated string ("assets:view") or an object. */
+type PermissionDef = string | { module: string; action: string } | null;
+
+/** Normalize a PermissionDef to the colon-separated string hasPermission expects. */
+function resolvePermission(p: PermissionDef): string | null {
+  if (!p) return null;
+  if (typeof p === "string") return p;
+  return `${p.module}:${p.action}`;
+}
 
 export interface BuddyToolDef {
   name: string;
   /** "read" auto-executes; "write" requires in-chat user confirmation. */
   access: "read" | "write";
   /** Permission the user must hold; null = available to everyone. */
-  permission: { module: ModuleKey; action: Action } | null;
-  /** Only expose to admin/owner roles (scope: "all") — mirrors nav adminOnly. */
+  permission: PermissionDef;
+  /** Only expose to admin/owner roles (wildcard permissions) — mirrors nav adminOnly. */
   adminOnly?: boolean;
   description: string;
   inputSchema: z.ZodType;
@@ -33,7 +42,7 @@ export interface BuddyToolDef {
 export function defineTool<S extends z.ZodType>(def: {
   name: string;
   access: "read" | "write";
-  permission: { module: ModuleKey; action: Action } | null;
+  permission: PermissionDef;
   adminOnly?: boolean;
   description: string;
   inputSchema: S;
@@ -44,9 +53,10 @@ export function defineTool<S extends z.ZodType>(def: {
 
 /** Can this user's role use this tool? (also used by the fleet snapshot) */
 export function canUseTool(def: BuddyToolDef, ctx: BuddyAIContext): boolean {
-  if (def.adminOnly && ctx.role.permissions.scope !== "all") return false;
-  if (def.permission) {
-    return roleHasPermission(ctx.role, def.permission.module, def.permission.action);
+  if (def.adminOnly && !isWildcardPermissions(ctx.role.permissions)) return false;
+  const perm = resolvePermission(def.permission);
+  if (perm) {
+    return ctx.checker.hasPermission(perm);
   }
   return true;
 }

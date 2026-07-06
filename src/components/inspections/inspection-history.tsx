@@ -115,7 +115,7 @@ export function InspectionHistory() {
 
   return (
     <div className="flex flex-col h-full">
-      <PageHeader title="Inspection History" count={pagination.total} />
+      <PageHeader title="Inspection History" description="Browse completed inspection submissions and their results" count={pagination.total} />
 
       <div className="px-6 pb-4">
         <FilterTabs

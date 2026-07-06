@@ -3,7 +3,6 @@
  */
 
 import { z } from "zod";
-import { roleHasPermission } from "@/lib/rbac";
 import { getAllAssets } from "@/controller/assets";
 import { getAllDefects, getDefectSummary } from "@/controller/defects";
 import { getAllWorkOrders } from "@/controller/work-orders";
@@ -20,7 +19,7 @@ export const getFleetSnapshot = defineTool({
   execute: async (_input, ctx) => {
     const snapshot: Record<string, unknown> = {};
 
-    if (roleHasPermission(ctx.role, "assets", "view")) {
+    if (ctx.checker.hasPermission("assets:view")) {
       const [inService, outOfService] = await Promise.all([
         getAllAssets(ctx.tenantId, { limit: 1, status: "in_service" }),
         getAllAssets(ctx.tenantId, { limit: 1, status: "out_of_service" }),
@@ -31,11 +30,11 @@ export const getFleetSnapshot = defineTool({
       };
     }
 
-    if (roleHasPermission(ctx.role, "defects", "view")) {
+    if (ctx.checker.hasPermission("maintenance:defects:view")) {
       snapshot.defects = await getDefectSummary(ctx.tenantId);
     }
 
-    if (roleHasPermission(ctx.role, "work_order", "view")) {
+    if (ctx.checker.hasPermission("maintenance:workOrders:view")) {
       const workOrders = await getAllWorkOrders(ctx.tenantId, { limit: 1 });
       snapshot.workOrders = { total: workOrders.pagination.total };
     }
@@ -50,7 +49,7 @@ export const getFleetSnapshot = defineTool({
 export const listWorkOrders = defineTool({
   name: "list_work_orders",
   access: "read",
-  permission: { module: "work_order", action: "view" },
+  permission: "maintenance:workOrders:view",
   description:
     "Returns work orders (repair/service jobs). Use for work order queries, open jobs, repairs in progress.",
   inputSchema: z.object({
@@ -70,7 +69,7 @@ export const listWorkOrders = defineTool({
 export const listDefects = defineTool({
   name: "list_defects",
   access: "read",
-  permission: { module: "defects", action: "view" },
+  permission: "maintenance:defects:view",
   description:
     "Returns reported defects (faults/problems on assets). Filter by status (new, in_progress, corrected, no_correction_needed), severity (critical, major, minor), or asset. Use for defect queries and safety checks.",
   inputSchema: z.object({
@@ -96,7 +95,7 @@ export const listDefects = defineTool({
 export const listServiceSchedule = defineTool({
   name: "list_service_schedule",
   access: "read",
-  permission: { module: "service_programs", action: "view" },
+  permission: "maintenance:servicePrograms:view",
   description:
     "Returns the per-asset service schedule (upcoming and overdue services from service programs). Use for 'what services are due/overdue', maintenance planning.",
   inputSchema: z.object({

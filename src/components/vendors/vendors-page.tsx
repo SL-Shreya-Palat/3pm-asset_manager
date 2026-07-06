@@ -1,10 +1,13 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   Plus,
-  Pencil,
+  Edit,
+  Archive,
+  ArchiveRestore,
   Trash2,
   Store,
   Eye,
@@ -17,15 +20,9 @@ import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import { PageHeader } from '@/components/ui/page-header';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import type { DataTableFilterDef } from '@/components/ui/data-table.types';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Separator } from '@/components/ui/separator';
+import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
@@ -45,6 +42,7 @@ const VENDOR_TYPE_FILTER: DataTableFilterDef[] = [
 ];
 
 export function VendorsPage() {
+  const router = useRouter();
   const [vendors, setVendors] = useState<VendorRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1, limit: 25, total: 0, hasMore: false,
@@ -65,11 +63,13 @@ export function VendorsPage() {
   const [panelMode, setPanelMode] = useState<'create' | 'edit'>('create');
   const [editingVendor, setEditingVendor] = useState<VendorRow | null>(null);
 
-  // View dialog
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [viewVendor, setViewVendor] = useState<VendorRow | null>(null);
+  // Archive state
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingVendor, setArchivingVendor] = useState<VendorRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
-  // Delete dialog
+  // Delete state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingVendor, setDeletingVendor] = useState<VendorRow | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -82,6 +82,7 @@ export function VendorsPage() {
       params.set('page', String(page));
       params.set('limit', String(rowsPerPage));
       if (debouncedSearch) params.set('search', debouncedSearch);
+      if (showArchived) params.set('showArchived', 'true');
 
       // Apply vendor type filter from toolbar
       const vendorTypeFilter = filters.vendorType;
@@ -99,7 +100,7 @@ export function VendorsPage() {
     } finally {
       setLoading(false);
     }
-  }, [rowsPerPage, debouncedSearch, filters.vendorType]);
+  }, [rowsPerPage, debouncedSearch, filters.vendorType, showArchived]);
 
   useEffect(() => {
     fetchVendors(1);
@@ -128,13 +129,29 @@ export function VendorsPage() {
     fetchVendors(panelMode === 'create' ? 1 : pagination.page);
   };
 
-  // ── View dialog ──
-  const handleOpenView = (vendor: VendorRow) => {
-    setViewVendor(vendor);
-    setViewDialogOpen(true);
+  // Archive handlers
+  const handleOpenArchive = (vendor: VendorRow) => {
+    setArchivingVendor(vendor);
+    setArchiveDialogOpen(true);
   };
 
-  // ── Delete dialog ──
+  const handleArchive = async () => {
+    if (!archivingVendor) return;
+    setArchiving(true);
+    try {
+      const archived = !showArchived; // If viewing active items, we archive. If viewing archived, we unarchive.
+      await axios.patch(`/api/vendors/${archivingVendor.id}/archive`, { archived }, { withCredentials: true });
+      setArchiveDialogOpen(false);
+      setArchivingVendor(null);
+      fetchVendors(pagination.page);
+    } catch (err) {
+      console.error('Failed to archive/unarchive vendor:', err);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  // Delete handlers
   const handleOpenDelete = (vendor: VendorRow) => {
     setDeletingVendor(vendor);
     setDeleteDialogOpen(true);
@@ -260,9 +277,19 @@ export function VendorsPage() {
       align: 'right',
       render: (vendor) => (
         <RowActions>
-          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(vendor)} />
-          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(vendor)} />
-          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(vendor)} />
+          {!showArchived && (
+            <>
+              <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/vendors/${vendor.id}`)} />
+              <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(vendor)} />
+              <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(vendor)} />
+            </>
+          )}
+          {showArchived && (
+            <>
+              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(vendor)} />
+              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(vendor)} />
+            </>
+          )}
         </RowActions>
       ),
     },
@@ -273,12 +300,16 @@ export function VendorsPage() {
       {/* Left — Main content */}
       <div className="flex flex-col flex-1 min-w-0">
         {/* Header */}
-        <PageHeader title="Vendors" count={pagination.total}>
+        <PageHeader title="Vendors" description="Manage suppliers and service providers for your operations" count={pagination.total}>
           <Button onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             Add Vendor
           </Button>
         </PageHeader>
+
+        <div className="px-6 pb-3">
+          <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+        </div>
 
         {/* Toolbar + Table */}
         <div className="flex-1 overflow-auto px-6 pb-6">
@@ -304,7 +335,7 @@ export function VendorsPage() {
             rowsPerPage={rowsPerPage}
             onPageChange={fetchVendors}
             onRowsPerPageChange={setRowsPerPage}
-            onRowClick={handleOpenView}
+            onRowClick={showArchived ? undefined : (vendor) => router.push(`/vendors/${vendor.id}`)}
             rowKey={(v) => v.id}
             density={density}
             hiddenColumnKeys={hiddenColumnKeys}
@@ -342,127 +373,25 @@ export function VendorsPage() {
         )}
       </div>
 
-      {/* View Vendor Dialog */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{viewVendor?.name || 'Vendor Details'}</DialogTitle>
-            <DialogDescription>Vendor information overview.</DialogDescription>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-y-auto py-4">
-            {viewVendor && <ViewVendorContent vendor={viewVendor} />}
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setViewDialogOpen(false);
-                if (viewVendor) handleOpenEdit(viewVendor);
-              }}
-            >
-              <Pencil className="h-4 w-4 mr-1" />
-              Edit
-            </Button>
-            <Button variant="outline" onClick={() => setViewDialogOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Archive Vendor Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={archivingVendor?.name}
+        action={showArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
 
       {/* Delete Vendor Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Vendor</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{deletingVendor?.name}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={deletingVendor?.name}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
     </div>
   );
 }
 
-/** Read-only view of vendor details shown in the view dialog. */
-function ViewVendorContent({ vendor }: { vendor: VendorRow }) {
-  return (
-    <div className="space-y-6">
-      {/* Vendor Details */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Vendor Details</h3>
-        <Separator className="mb-4" />
-        <div className="space-y-4">
-          <ViewField label="Vendor Name" value={vendor.name} />
-          <ViewField label="Address" value={vendor.address} />
-          <ViewField label="Website" value={vendor.website} />
-        </div>
-      </div>
-
-      {/* Primary Contact */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Primary Contact</h3>
-        <Separator className="mb-4" />
-        <div className="space-y-4">
-          <ViewField label="Name" value={vendor.contactName} />
-          <div className="grid grid-cols-2 gap-4">
-            <ViewField label="Phone" value={vendor.phone} />
-            <ViewField label="Email" value={vendor.email} />
-          </div>
-        </div>
-      </div>
-
-      {/* Vendor Type & Access */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Vendor Type & Access</h3>
-        <Separator className="mb-4" />
-        <div className="space-y-4">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground">Vendor Type</p>
-            <div className="flex items-center gap-1 mt-1">
-              {vendor.vendorTypes.length === 0 ? (
-                <span className="text-sm text-foreground">—</span>
-              ) : (
-                vendor.vendorTypes.map((t) => (
-                  <Badge key={t} variant="secondary" className="capitalize">
-                    {t}
-                  </Badge>
-                ))
-              )}
-            </div>
-          </div>
-          <ViewField
-            label="Public Edit Access"
-            value={vendor.publicEditAccess ? 'Enabled' : 'Disabled'}
-          />
-        </div>
-      </div>
-
-      {/* Labor Rate */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Labor Rate</h3>
-        <Separator className="mb-4" />
-        <ViewField
-          label="Rate per hour"
-          value={vendor.laborRatePerHour != null ? `$${vendor.laborRatePerHour.toFixed(2)}` : undefined}
-        />
-      </div>
-    </div>
-  );
-}
-
-function ViewField({ label, value }: { label: string; value?: string }) {
-  return (
-    <div>
-      <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <p className="text-sm text-foreground mt-0.5">{value || '—'}</p>
-    </div>
-  );
-}

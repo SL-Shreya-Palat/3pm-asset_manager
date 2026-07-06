@@ -1,10 +1,13 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   Plus,
-  Pencil,
+  Edit,
+  Archive,
+  ArchiveRestore,
   Trash2,
   Eye,
   Wrench,
@@ -16,15 +19,9 @@ import { PageHeader } from '@/components/ui/page-header';
 import { SearchInput } from '@/components/ui/search-input';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Separator } from '@/components/ui/separator';
+import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
@@ -32,6 +29,7 @@ import { ServiceTaskForm } from './service-task-form';
 import type { ServiceTaskRow, Pagination } from './types';
 
 export function ServiceTasksPage() {
+  const router = useRouter();
   const [tasks, setTasks] = useState<ServiceTaskRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1, limit: 25, total: 0, hasMore: false,
@@ -51,11 +49,13 @@ export function ServiceTasksPage() {
   const [panelMode, setPanelMode] = useState<'create' | 'edit'>('create');
   const [editingTask, setEditingTask] = useState<ServiceTaskRow | null>(null);
 
-  // View dialog
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [viewTask, setViewTask] = useState<ServiceTaskRow | null>(null);
+  // Archive state
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingTask, setArchivingTask] = useState<ServiceTaskRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
-  // Delete dialog
+  // Delete state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingTask, setDeletingTask] = useState<ServiceTaskRow | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -68,6 +68,7 @@ export function ServiceTasksPage() {
       params.set('page', String(page));
       params.set('limit', String(rowsPerPage));
       if (debouncedSearch) params.set('search', debouncedSearch);
+      if (showArchived) params.set('showArchived', 'true');
 
       const res = await axios.get(`/api/service-tasks?${params.toString()}`, { withCredentials: true });
       const data = res.data.data;
@@ -79,7 +80,7 @@ export function ServiceTasksPage() {
     } finally {
       setLoading(false);
     }
-  }, [rowsPerPage, debouncedSearch]);
+  }, [rowsPerPage, debouncedSearch, showArchived]);
 
   useEffect(() => {
     fetchTasks(1);
@@ -108,13 +109,28 @@ export function ServiceTasksPage() {
     fetchTasks(panelMode === 'create' ? 1 : pagination.page);
   };
 
-  // ── View dialog ──
-  const handleOpenView = (task: ServiceTaskRow) => {
-    setViewTask(task);
-    setViewDialogOpen(true);
+  // ── Archive handlers ──
+  const handleOpenArchive = (task: ServiceTaskRow) => {
+    setArchivingTask(task);
+    setArchiveDialogOpen(true);
   };
 
-  // ── Delete dialog ──
+  const handleArchive = async () => {
+    if (!archivingTask) return;
+    setArchiving(true);
+    try {
+      await axios.patch(`/api/service-tasks/${archivingTask.id}/archive`, { archived: !showArchived }, { withCredentials: true });
+      setArchiveDialogOpen(false);
+      setArchivingTask(null);
+      fetchTasks(pagination.page);
+    } catch (err) {
+      console.error('Failed to archive/unarchive service task:', err);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  // Delete handlers
   const handleOpenDelete = (task: ServiceTaskRow) => {
     setDeletingTask(task);
     setDeleteDialogOpen(true);
@@ -197,9 +213,19 @@ export function ServiceTasksPage() {
       align: 'right',
       render: (task) => (
         <RowActions>
-          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(task)} />
-          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(task)} />
-          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(task)} />
+          {!showArchived && (
+            <>
+              <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/maintenance/service-tasks/${task.id}`)} />
+              <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(task)} />
+              <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(task)} />
+            </>
+          )}
+          {showArchived && (
+            <>
+              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(task)} />
+              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(task)} />
+            </>
+          )}
         </RowActions>
       ),
     },
@@ -210,7 +236,7 @@ export function ServiceTasksPage() {
       {/* Left — Main content */}
       <div className="flex flex-col flex-1 min-w-0">
         {/* Header */}
-        <PageHeader title="Service Tasks" count={pagination.total}>
+        <PageHeader title="Service Tasks" description="Manage individual maintenance tasks and checklists" count={pagination.total}>
           <Button onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             Add Service Task
@@ -218,13 +244,16 @@ export function ServiceTasksPage() {
         </PageHeader>
 
         {/* Toolbar + Table */}
-        <div className="flex-1 overflow-auto px-6 pt-6 pb-6">
+        <div className="flex-1 overflow-auto px-6 pb-6">
           <DataTableToolbar
             columns={taskColumns}
             hiddenColumnKeys={hiddenColumnKeys}
             onHiddenColumnKeysChange={setHiddenColumnKeys}
             density={density}
             onDensityChange={setDensity}
+            afterControls={
+              <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+            }
             searchNode={
               <SearchInput value={search} onChange={setSearch} placeholder="Search service tasks..." />
             }
@@ -237,7 +266,7 @@ export function ServiceTasksPage() {
             rowsPerPage={rowsPerPage}
             onPageChange={fetchTasks}
             onRowsPerPageChange={setRowsPerPage}
-            onRowClick={handleOpenView}
+            onRowClick={showArchived ? undefined : (task) => router.push(`/maintenance/service-tasks/${task.id}`)}
             rowKey={(t) => t.id}
             density={density}
             hiddenColumnKeys={hiddenColumnKeys}
@@ -275,99 +304,25 @@ export function ServiceTasksPage() {
         )}
       </div>
 
-      {/* View Service Task Dialog */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{viewTask?.title || 'Service Task Details'}</DialogTitle>
-            <DialogDescription>Service task information overview.</DialogDescription>
-          </DialogHeader>
-
-          <div className="flex-1 overflow-y-auto py-4">
-            {viewTask && <ViewServiceTaskContent task={viewTask} />}
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setViewDialogOpen(false);
-                if (viewTask) handleOpenEdit(viewTask);
-              }}
-            >
-              <Pencil className="h-4 w-4 mr-1" />
-              Edit
-            </Button>
-            <Button variant="outline" onClick={() => setViewDialogOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Archive Service Task Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={archivingTask?.title}
+        action={showArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
 
       {/* Delete Service Task Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Service Task</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{deletingTask?.title}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={deletingTask?.title}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
     </div>
   );
 }
 
-/** Read-only view of service task details shown in the view dialog. */
-function ViewServiceTaskContent({ task }: { task: ServiceTaskRow }) {
-  return (
-    <div className="space-y-6">
-      {/* Details */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Details</h3>
-        <Separator className="mb-4" />
-        <div className="space-y-4">
-          <ViewField label="Title" value={task.title} />
-          <ViewField label="Description" value={task.description} />
-        </div>
-      </div>
-
-      {/* Cost */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Cost</h3>
-        <Separator className="mb-4" />
-        <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
-            <ViewField
-              label="Labor"
-              value={task.laborCost != null ? `$${task.laborCost.toFixed(2)}` : undefined}
-            />
-            <ViewField
-              label="Parts"
-              value={task.partsCost != null ? `$${task.partsCost.toFixed(2)}` : undefined}
-            />
-            <ViewField
-              label="Total"
-              value={task.totalCost != null ? `$${task.totalCost.toFixed(2)}` : undefined}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ViewField({ label, value }: { label: string; value?: string }) {
-  return (
-    <div>
-      <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <p className="text-sm text-foreground mt-0.5">{value || '—'}</p>
-    </div>
-  );
-}

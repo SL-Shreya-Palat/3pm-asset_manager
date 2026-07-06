@@ -1,8 +1,9 @@
 'use client';
 
-import { ArrowLeft, Camera } from 'lucide-react';
+import { Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { PageBackButton } from '@/components/ui/page-back-button';
 import type { BaseFormProps } from './base-form.types';
 
 export type { BaseFormProps, BaseFormSection } from './base-form.types';
@@ -27,10 +28,8 @@ export function BaseForm({
     <>
       <div className="p-6 w-full">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <Button variant="ghost" size="icon" onClick={onBack}>
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
+        <div className="flex items-center gap-3 mb-6">
+          <PageBackButton onClick={onBack} className="mt-0.5" />
           <div>
             <h1 className="text-2xl font-semibold text-foreground">{title}</h1>
             <p className="text-sm text-muted-foreground mt-0.5">{subtitle}</p>

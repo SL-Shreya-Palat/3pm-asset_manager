@@ -78,6 +78,7 @@ export interface UserProfile {
     isTeamManager: boolean | null;
     isMechanic: boolean | null;
     isDriver: boolean | null;
+    mobileOnly?: boolean;
   } | null;
   workspaces: Array<{
     id: string;

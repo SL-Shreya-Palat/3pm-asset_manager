@@ -37,7 +37,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  const deleted = await deleteAssetType(user.currentTenantId, user.id, id);
+  const deleted = await deleteAssetType(user.currentTenantId, id);
 
   if (!deleted) {
     return NextResponse.json({ data: null, error: 'Asset type not found' }, { status: 404 });

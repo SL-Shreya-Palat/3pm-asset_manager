@@ -99,6 +99,7 @@ export async function getAllFaults(
     severity?: string;
     teamId?: string;
     assetId?: string;
+    showArchived?: boolean;
   },
 ) {
   const collection = await getDefectsCollection();
@@ -110,9 +111,14 @@ export async function getAllFaults(
 
   const filter: Record<string, unknown> = {
     tenantId: tenantOid,
-    isArchived: { $ne: true },
     source: 'fault',
   };
+
+  if (options.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
 
   // Map fault status → defect status for the query
   if (options.status) {
@@ -452,35 +458,16 @@ export async function updateFault(
   };
 }
 
-// ─── Delete (soft) ───────────────────────────────────────────────────────────
+// ─── Delete ──────────────────────────────────────────────────────────────────
 
+/** Permanently delete a fault. */
 export async function deleteFault(tenantId: string, userId: string, id: string) {
   const collection = await getDefectsCollection();
+  const docOid = ObjectId.createFromHexString(id);
   const tenantOid = ObjectId.createFromHexString(tenantId);
-  const faultOid = ObjectId.createFromHexString(id);
-  const userOid = ObjectId.createFromHexString(userId);
-  const now = new Date();
 
-  // Since faults ARE defects now, just soft-delete the defect document
-  const result = await collection.updateOne(
-    {
-      _id: faultOid,
-      tenantId: tenantOid,
-      isArchived: { $ne: true },
-      source: 'fault',
-    },
-    {
-      $set: {
-        isArchived: true,
-        archivedAt: now,
-        archivedBy: userOid,
-        updatedBy: userOid,
-        updatedAt: now,
-      },
-    },
-  );
-
-  return result.modifiedCount > 0;
+  const result = await collection.deleteOne({ _id: docOid, tenantId: tenantOid });
+  return result.deletedCount > 0;
 }
 
 // ─── Bulk Status Update ──────────────────────────────────────────────────────

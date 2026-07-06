@@ -126,7 +126,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="invite-firstName">First Name *</Label>
+              <Label htmlFor="invite-firstName">First Name <span className="text-destructive">*</span></Label>
               <Input
                 id="invite-firstName"
                 value={form.firstName}
@@ -138,7 +138,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="invite-lastName">Last Name *</Label>
+              <Label htmlFor="invite-lastName">Last Name <span className="text-destructive">*</span></Label>
               <Input
                 id="invite-lastName"
                 value={form.lastName}
@@ -152,7 +152,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="invite-email">Email *</Label>
+            <Label htmlFor="invite-email">Email <span className="text-destructive">*</span></Label>
             <Input
               id="invite-email"
               type="email"
@@ -166,7 +166,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
           </div>
 
           <div className="space-y-2">
-            <Label>Role *</Label>
+            <Label>Role <span className="text-destructive">*</span></Label>
             <Select value={form.roleId} onValueChange={(v) => handleChange('roleId', v)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select a role" />

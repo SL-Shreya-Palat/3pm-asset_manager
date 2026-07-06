@@ -1,10 +1,13 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   Plus,
-  Pencil,
+  Edit,
+  Archive,
+  ArchiveRestore,
   Trash2,
   Eye,
   Wrench,
@@ -32,6 +35,9 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { FormSection } from '@/components/ui/form-section';
 import { PageHeader } from '@/components/ui/page-header';
 import { FilterTabs } from '@/components/ui/filter-tabs';
@@ -49,6 +55,7 @@ import type {
 } from './types';
 
 export function WorkOrdersPage() {
+  const router = useRouter();
   const [orders, setOrders] = useState<WorkOrderRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1, limit: 25, total: 0, hasMore: false,
@@ -77,11 +84,13 @@ export function WorkOrdersPage() {
   const [panelMode, setPanelMode] = useState<'create' | 'edit'>('create');
   const [editingOrder, setEditingOrder] = useState<WorkOrderRow | null>(null);
 
-  // View dialog
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [viewOrder, setViewOrder] = useState<WorkOrderRow | null>(null);
+  // Archive state
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingOrder, setArchivingOrder] = useState<WorkOrderRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
-  // Delete dialog
+  // Delete state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState<WorkOrderRow | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -121,7 +130,7 @@ export function WorkOrdersPage() {
         id: i.id as string,
         label: i.label as string,
         color: i.color as string,
-        approvalRequired: i.approvalRequired as boolean,
+        type: (i.type as string) || 'open',
         sequence: i.sequence as number,
       })));
     } catch {
@@ -138,6 +147,7 @@ export function WorkOrdersPage() {
       params.set('limit', String(rowsPerPage));
       if (debouncedSearch) params.set('search', debouncedSearch);
       if (activeTab !== 'all') params.set('statusId', activeTab);
+      if (showArchived) params.set('showArchived', 'true');
 
       const res = await axios.get(`/api/work-orders?${params.toString()}`, { withCredentials: true });
       const data = res.data.data;
@@ -148,7 +158,7 @@ export function WorkOrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [rowsPerPage, debouncedSearch, activeTab]);
+  }, [rowsPerPage, debouncedSearch, activeTab, showArchived]);
 
   useEffect(() => { fetchLookups(); }, [fetchLookups]);
   useEffect(() => { fetchOrders(1); }, [fetchOrders]);
@@ -162,23 +172,50 @@ export function WorkOrdersPage() {
     fetchOrders(panelMode === 'create' ? 1 : pagination.page);
   };
 
-  // View dialog
-  const handleOpenView = (order: WorkOrderRow) => { setViewOrder(order); setViewDialogOpen(true); };
-
   // Complete & sign off
-  const handleOpenComplete = (order: WorkOrderRow) => { setViewDialogOpen(false); setCompleteOrder(order); };
+  const handleOpenComplete = (order: WorkOrderRow) => { setCompleteOrder(order); };
   const handleCompleted = () => { setCompleteOrder(null); fetchOrders(pagination.page); };
 
-  // Delete
-  const handleOpenDelete = (order: WorkOrderRow) => { setDeletingOrder(order); setDeleteDialogOpen(true); };
+  // Archive
+  const handleOpenArchive = (order: WorkOrderRow) => {
+    setArchivingOrder(order);
+    setArchiveDialogOpen(true);
+  };
+
+  const handleArchive = async () => {
+    if (!archivingOrder) return;
+    setArchiving(true);
+    try {
+      await axios.patch(`/api/work-orders/${archivingOrder.id}/archive`, { archived: !showArchived }, { withCredentials: true });
+      setArchiveDialogOpen(false);
+      setArchivingOrder(null);
+      fetchOrders(pagination.page);
+    } catch (err) {
+      console.error('Failed to archive/unarchive work order:', err);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  // Delete handlers
+  const handleOpenDelete = (order: WorkOrderRow) => {
+    setDeletingOrder(order);
+    setDeleteDialogOpen(true);
+  };
+
   const handleDelete = async () => {
     if (!deletingOrder) return;
     setDeleting(true);
     try {
       await axios.delete(`/api/work-orders/${deletingOrder.id}`, { withCredentials: true });
-      setDeleteDialogOpen(false); setDeletingOrder(null);
+      setDeleteDialogOpen(false);
+      setDeletingOrder(null);
       fetchOrders(pagination.page);
-    } catch { /* silent */ } finally { setDeleting(false); }
+    } catch (err) {
+      console.error('Failed to delete work order:', err);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   // Build status color map for badges
@@ -287,9 +324,18 @@ export function WorkOrdersPage() {
       align: 'right',
       render: (order) => (
         <RowActions>
-          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(order)} />
-          <RowActionButton label="Edit" icon={<Pencil />} onClick={() => handleOpenEdit(order)} />
-          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(order)} />
+          {showArchived ? (
+            <>
+              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(order)} />
+              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(order)} />
+            </>
+          ) : (
+            <>
+              <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/maintenance/work-orders/${order.id}`)} />
+              <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(order)} />
+              <RowActionButton label="Archive" tone="destructive" icon={<Archive />} onClick={() => handleOpenArchive(order)} />
+            </>
+          )}
         </RowActions>
       ),
     },
@@ -299,15 +345,15 @@ export function WorkOrdersPage() {
     <div className="relative flex h-full">
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0">
-        <PageHeader title="Work Orders" count={pagination.total}>
+        <PageHeader title="Work Orders" description="Schedule, assign, and track maintenance and repair jobs" count={pagination.total}>
           <Button onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             Create Work Order
           </Button>
         </PageHeader>
 
-        {/* Dynamic Status Tabs */}
-        <div className="px-6 pb-4">
+        {/* Dynamic Status Tabs + Archive Toggle */}
+        <div className="px-6 pb-4 flex items-center gap-4">
           <FilterTabs
             value={activeTab}
             onChange={setActiveTab}
@@ -316,6 +362,7 @@ export function WorkOrdersPage() {
               ...statusTabs.map((tab) => ({ value: tab.id, label: tab.label, color: tab.color })),
             ]}
           />
+          <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
         </div>
 
         <div className="flex-1 overflow-auto px-6 pb-6">
@@ -337,7 +384,7 @@ export function WorkOrdersPage() {
             rowsPerPage={rowsPerPage}
             onPageChange={fetchOrders}
             onRowsPerPageChange={setRowsPerPage}
-            onRowClick={handleOpenView}
+            onRowClick={showArchived ? undefined : (order) => router.push(`/maintenance/work-orders/${order.id}`)}
             rowKey={(o) => o.id}
             density={density}
             hiddenColumnKeys={hiddenColumnKeys}
@@ -375,56 +422,24 @@ export function WorkOrdersPage() {
         )}
       </div>
 
-      {/* View WO Dialog */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{viewOrder?.workOrderNumber || 'Work Order Details'}</DialogTitle>
-            <DialogDescription>Work order overview.</DialogDescription>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto py-4">
-            {viewOrder && (
-              <ViewWOContent
-                order={viewOrder}
-                assetMap={assetMap}
-                serviceTaskMap={serviceTaskMap}
-                userMap={userMap}
-                statusColorMap={statusColorMap}
-                statusLabelMap={statusLabelMap}
-              />
-            )}
-          </div>
-          <DialogFooter>
-            {viewOrder && !viewOrder.isCompleted && (
-              <Button onClick={() => handleOpenComplete(viewOrder)}>
-                <CheckCircle2 className="h-4 w-4 mr-1" /> Complete &amp; Sign Off
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => { setViewDialogOpen(false); if (viewOrder) handleOpenEdit(viewOrder); }}>
-              <Pencil className="h-4 w-4 mr-1" /> Edit
-            </Button>
-            <Button variant="outline" onClick={() => setViewDialogOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Archive Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={archivingOrder?.workOrderNumber}
+        action={showArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
 
       {/* Delete Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Work Order</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{deletingOrder?.workOrderNumber}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={deletingOrder?.workOrderNumber}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
 
       {/* Complete & Sign Off Dialog (remounts per order so the form is always fresh) */}
       {completeOrder && (
@@ -554,159 +569,3 @@ function CompleteWorkOrderDialog({
   );
 }
 
-/** Read-only view of WO details. */
-function ViewWOContent({
-  order,
-  assetMap,
-  serviceTaskMap,
-  userMap,
-  statusColorMap,
-  statusLabelMap,
-}: {
-  order: WorkOrderRow;
-  assetMap: Record<string, string>;
-  serviceTaskMap: Record<string, string>;
-  userMap: Record<string, string>;
-  statusColorMap: Record<string, string>;
-  statusLabelMap: Record<string, string>;
-}) {
-  const assigneeTypeLabel = order.assigneeType === 'vendor'
-    ? 'Vendor'
-    : order.assigneeType === 'mechanic'
-      ? 'Mechanic'
-      : 'Third Party';
-
-  return (
-    <div className="space-y-6">
-      {/* Overview */}
-      <FormSection icon={ClipboardList} title="Overview">
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <ViewField label="WO Number" value={order.workOrderNumber} />
-            <div>
-              <p className="text-sm font-medium text-muted-foreground">Status</p>
-              <Badge
-                variant="outline"
-                className="mt-0.5 border"
-                style={{
-                  backgroundColor: `${statusColorMap[order.statusId] || '#6B7280'}20`,
-                  borderColor: statusColorMap[order.statusId] || '#6B7280',
-                  color: statusColorMap[order.statusId] || '#6B7280',
-                }}
-              >
-                {order.statusLabel || statusLabelMap[order.statusId] || '—'}
-              </Badge>
-            </div>
-          </div>
-          <ViewField label="Asset" value={order.assetName || assetMap[order.assetId]} />
-          <ViewField label="Due Date" value={order.dueDate ? new Date(order.dueDate).toLocaleDateString() : undefined} />
-          <ViewField label="Created" value={new Date(order.createdAt).toLocaleString()} />
-          {order.isCompleted && (
-            <ViewField label="Completed" value={order.completedAt ? new Date(order.completedAt).toLocaleString() : 'Yes'} />
-          )}
-          {order.description && <ViewField label="Description" value={order.description} />}
-        </div>
-      </FormSection>
-
-      {/* Service Tasks */}
-      {order.serviceTaskIds.length > 0 && (
-        <FormSection icon={Wrench} title="Items">
-          <div className="space-y-2">
-            {order.serviceTaskIds.map((taskId, i) => (
-              <div key={i} className="rounded-md border border-border px-3 py-2">
-                <span className="text-sm text-foreground">{serviceTaskMap[taskId] || taskId}</span>
-              </div>
-            ))}
-          </div>
-        </FormSection>
-      )}
-
-      {/* Parts */}
-      {order.parts && order.parts.length > 0 && (
-        <FormSection icon={Package} title="Parts">
-          <div className="rounded-md border border-border divide-y divide-border">
-            {order.parts.map((p, i) => (
-              <div key={i} className="flex items-center justify-between px-3 py-2">
-                <div className="min-w-0">
-                  <span className="text-sm text-foreground">{p.partName}</span>
-                  <span className="text-xs text-muted-foreground ml-2">×{p.quantity}</span>
-                </div>
-                <span className="text-sm text-foreground">{p.lineTotal.toFixed(2)}</span>
-              </div>
-            ))}
-            <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
-              <span className="text-sm font-medium">Parts total</span>
-              <span className="text-sm font-semibold">{(order.partsCost ?? 0).toFixed(2)}</span>
-            </div>
-          </div>
-        </FormSection>
-      )}
-
-      {/* Assignee */}
-      <FormSection icon={Users} title="Assignee">
-        <div className="space-y-4">
-          <ViewField label="Type" value={assigneeTypeLabel} />
-          <ViewField label="Name" value={order.assigneeName} />
-          {order.assigneeContact && <ViewField label="Contact" value={order.assigneeContact} />}
-          {order.assigneeEmail && <ViewField label="Email" value={order.assigneeEmail} />}
-          {order.assigneePhone && <ViewField label="Phone" value={order.assigneePhone} />}
-          {order.thirdPartyName && <ViewField label="Third Party Name" value={order.thirdPartyName} />}
-          {order.thirdPartyEmail && <ViewField label="Third Party Email" value={order.thirdPartyEmail} />}
-        </div>
-      </FormSection>
-
-      {/* Attachments */}
-      {order.attachments.length > 0 && (
-        <FormSection icon={Paperclip} title="Attachments">
-          <div className="space-y-2">
-            {order.attachments.map((att, i) => (
-              <div key={i} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
-                <span className="text-sm text-foreground">{att.originalName}</span>
-                <span className="text-xs text-muted-foreground">
-                  {att.size < 1024 * 1024
-                    ? `${(att.size / 1024).toFixed(1)} KB`
-                    : `${(att.size / (1024 * 1024)).toFixed(1)} MB`}
-                </span>
-              </div>
-            ))}
-          </div>
-        </FormSection>
-      )}
-
-      {/* Status History */}
-      {order.statusHistory.length > 0 && (
-        <FormSection icon={History} title="Status History">
-          <div className="space-y-2">
-            {order.statusHistory.map((entry, i) => (
-              <div key={i} className="flex items-start gap-3 text-sm">
-                <span className="text-xs text-muted-foreground whitespace-nowrap mt-0.5">
-                  {new Date(entry.changedAt).toLocaleString()}
-                </span>
-                <div>
-                  <span className="text-foreground">
-                    {entry.fromStatusLabel ? `${entry.fromStatusLabel} → ` : ''}
-                    {entry.toStatusLabel}
-                  </span>
-                  {entry.changedBy && (
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      by {userMap[entry.changedBy] || entry.changedBy}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </FormSection>
-      )}
-    </div>
-  );
-}
-
-function ViewField({ label, value }: { label: string; value?: string }) {
-  return (
-    <div>
-      <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <p className="text-sm text-foreground mt-0.5">{value || '—'}</p>
-    </div>
-  );
-}

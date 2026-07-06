@@ -82,6 +82,18 @@ export interface DefectRow {
   updatedAt: string;
 }
 
+export interface InspectionRow {
+  id: string;
+  inspectionNumber: string | null;
+  formTitle: string;
+  assetName: string | null;
+  operatorName: string | null;
+  result: 'pass' | 'fail';
+  defectCount: number;
+  submittedAt: string | null;
+  teamIds: string[];
+}
+
 export interface Pagination {
   page: number;
   limit: number;

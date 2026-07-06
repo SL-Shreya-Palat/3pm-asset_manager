@@ -6,23 +6,20 @@ import axios from 'axios';
 import {
   Plus,
   Trash2,
-  ChevronRight,
+  Eye,
   User,
+  Archive,
+  ArchiveRestore,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { SearchInput } from '@/components/ui/search-input';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/ui/page-header';
+import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { InviteUserDialog } from './invite-user-dialog';
 import type { UserRow, Pagination } from './types';
@@ -40,7 +37,13 @@ export function UsersPage() {
   // Invite dialog
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
 
-  // Delete dialog
+  // Archive state
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingUser, setArchivingUser] = useState<UserRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
+
+  // Delete state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingUser, setDeletingUser] = useState<UserRow | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -53,6 +56,7 @@ export function UsersPage() {
       params.set('page', String(page));
       params.set('limit', String(rowsPerPage));
       if (debouncedSearch) params.set('search', debouncedSearch);
+      if (showArchived) params.set('showArchived', 'true');
       const res = await axios.get(`/api/users?${params.toString()}`, { withCredentials: true });
       const data = res.data.data;
       setUsers(data.items || []);
@@ -63,12 +67,35 @@ export function UsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [rowsPerPage, debouncedSearch]);
+  }, [rowsPerPage, debouncedSearch, showArchived]);
 
   useEffect(() => {
     fetchUsers(1);
   }, [fetchUsers]);
 
+  // Archive handlers
+  const handleOpenArchive = (user: UserRow) => {
+    setArchivingUser(user);
+    setArchiveDialogOpen(true);
+  };
+
+  const handleArchive = async () => {
+    if (!archivingUser) return;
+    setArchiving(true);
+    try {
+      const archived = !showArchived; // If viewing active items, we archive. If viewing archived, we unarchive.
+      await axios.patch(`/api/users/${archivingUser.id}/archive`, { archived }, { withCredentials: true });
+      setArchiveDialogOpen(false);
+      setArchivingUser(null);
+      fetchUsers(pagination.page);
+    } catch (err) {
+      console.error('Failed to archive/unarchive user:', err);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  // Delete handlers
   const handleOpenDelete = (user: UserRow) => {
     setDeletingUser(user);
     setDeleteDialogOpen(true);
@@ -141,7 +168,7 @@ export function UsersPage() {
       key: 'status',
       header: 'Status',
       render: (user) => (
-        <Badge variant={user.isActive ? 'default' : 'secondary'}>
+        <Badge variant={user.isActive ? 'success' : 'secondary'}>
           {user.isActive ? 'Active' : 'Inactive'}
         </Badge>
       ),
@@ -152,8 +179,18 @@ export function UsersPage() {
       align: 'right',
       render: (user) => (
         <RowActions>
-          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(user)} />
-          <RowActionButton label="View" tone="primary" icon={<ChevronRight />} onClick={() => router.push(`/people/users/${user.id}`)} />
+          {!showArchived && (
+            <>
+              <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/people/users/${user.id}`)} />
+              <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(user)} />
+            </>
+          )}
+          {showArchived && (
+            <>
+              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(user)} />
+              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(user)} />
+            </>
+          )}
         </RowActions>
       ),
     },
@@ -162,20 +199,22 @@ export function UsersPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <PageHeader title="Users" count={pagination.total}>
+      <PageHeader title="Users" description="Invite, manage, and assign roles to your team members" count={pagination.total}>
         <Button onClick={() => setInviteDialogOpen(true)}>
           <Plus className="h-4 w-4" />
           Invite User
         </Button>
       </PageHeader>
 
-      {/* Search */}
-      <div className="px-6 pb-4">
+      {/* Show Archived Toggle + Search */}
+      <div className="px-6 pb-4 flex items-center gap-4">
         <SearchInput
           value={search}
           onChange={setSearch}
           placeholder="Search users..."
+          className="max-w-sm"
         />
+        <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
       </div>
 
       {/* Table */}
@@ -188,7 +227,7 @@ export function UsersPage() {
           rowsPerPage={rowsPerPage}
           onPageChange={fetchUsers}
           onRowsPerPageChange={setRowsPerPage}
-          onRowClick={(user) => router.push(`/people/users/${user.id}`)}
+          onRowClick={showArchived ? undefined : (user) => router.push(`/people/users/${user.id}`)}
           rowKey={(u) => u.id}
           emptyMessage={
             debouncedSearch
@@ -205,26 +244,24 @@ export function UsersPage() {
         onSuccess={handleInviteSuccess}
       />
 
+      {/* Archive User Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={archivingUser ? `${archivingUser.firstName} ${archivingUser.lastName}` : undefined}
+        action={showArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
+
       {/* Delete User Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete User</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{deletingUser?.firstName} {deletingUser?.lastName}&quot;?
-              This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={deletingUser ? `${deletingUser.firstName} ${deletingUser.lastName}` : undefined}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
     </div>
   );
 }

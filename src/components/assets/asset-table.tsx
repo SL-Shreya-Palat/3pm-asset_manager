@@ -6,14 +6,22 @@ import axios from 'axios';
 import {
   Plus,
   MoreHorizontal,
-  Pencil,
+  Edit,
   Users,
   ClipboardList,
   ClipboardCheck,
   KeyRound,
   Power,
+  Archive,
+  ArchiveRestore,
   Trash2,
   Barcode,
+  Eye,
+  Layers,
+  CheckCircle2,
+  Wrench,
+  ShieldAlert,
+  type LucideIcon,
 } from 'lucide-react';
 import { InspectFormPickerDialog } from '@/components/inspections/inspect-button';
 import { VinLookupDialog } from './vin-lookup-dialog';
@@ -48,24 +56,57 @@ import { DataTable, type DataTableColumn, type DataTableFilterDef } from '@/comp
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
-import { StatCard } from '@/components/ui/stat-card';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable, applyTableFilters } from '@/hooks/use-data-table';
 import { ASSET_STATUS_CONFIG, type AssetStatus } from '@/constants/assets';
 import type { AssetRow, TeamOption, Pagination } from './types';
 
-const STAT_CARDS = [
-  { label: 'Total Assets', key: 'total' },
-  { label: 'Assets Inspected', key: 'inspected' },
-  { label: 'Assets Followed', key: 'followed' },
-  { label: 'Assets with Active Defects', key: 'defects' },
-] as const;
+// ─── KPI tile ─────────────────────────────────────────────────────────────────
+type Tone = 'primary' | 'emerald' | 'amber' | 'red';
+const TONE: Record<Tone, { value: string; icon: string }> = {
+  primary: { value: 'text-primary-600', icon: 'bg-primary-100 text-primary-600' },
+  emerald: { value: 'text-emerald-600', icon: 'bg-emerald-100 text-emerald-600' },
+  amber: { value: 'text-amber-600', icon: 'bg-amber-100 text-amber-600' },
+  red: { value: 'text-red-600', icon: 'bg-red-100 text-red-600' },
+};
+
+function StatSeg({ tone, icon: Icon, label, value, loading }: {
+  tone: Tone; icon: LucideIcon; label: string; value?: number; loading?: boolean;
+}) {
+  const t = TONE[tone];
+  return (
+    <div className="flex min-w-[140px] flex-1 items-center gap-3 px-4 py-3">
+      <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg [&_svg]:h-4 [&_svg]:w-4', t.icon)}>
+        <Icon />
+      </span>
+      <div className="min-w-0">
+        {loading ? (
+          <Skeleton className="h-5 w-8" />
+        ) : (
+          <p className={cn('text-xl font-bold leading-none tabular-nums', t.value)}>{value ?? 0}</p>
+        )}
+        <p className="mt-1 truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+interface AssetSummary {
+  total: number;
+  inService: number;
+  outOfService: number;
+  nonCompliant: number;
+}
 
 export function AssetTable() {
   const router = useRouter();
@@ -84,6 +125,18 @@ export function AssetTable() {
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [inspectAssetId, setInspectAssetId] = useState<string | null>(null);
   const [vinDialogOpen, setVinDialogOpen] = useState(false);
+
+  // Summary counts for stat ribbon
+  const [summary, setSummary] = useState<AssetSummary | null>(null);
+
+  const fetchSummary = useCallback(async () => {
+    try {
+      const res = await axios.get('/api/assets/summary', { withCredentials: true });
+      setSummary(res.data.data);
+    } catch {
+      setSummary(null);
+    }
+  }, []);
 
   // Table features: filters, column visibility, density
   const {
@@ -186,6 +239,17 @@ export function AssetTable() {
   const [selectedDriverIds, setSelectedDriverIds] = useState<Set<string>>(new Set());
   const [savingDrivers, setSavingDrivers] = useState(false);
 
+  // Archive state
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingAsset, setArchivingAsset] = useState<AssetRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
+
+  // Delete state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingAsset, setDeletingAsset] = useState<AssetRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   // Row selection & barcode dialog
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [barcodeDialogOpen, setBarcodeDialogOpen] = useState(false);
@@ -203,6 +267,7 @@ export function AssetTable() {
       params.set('limit', String(rowsPerPage));
       if (debouncedSearch) params.set('search', debouncedSearch);
       if (complianceFilter !== 'all') params.set('complianceStatus', complianceFilter);
+      if (showArchived) params.set('showArchived', 'true');
 
       const res = await axios.get(`/api/assets?${params.toString()}`, {
         withCredentials: true,
@@ -216,19 +281,57 @@ export function AssetTable() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, rowsPerPage, complianceFilter]);
+  }, [debouncedSearch, rowsPerPage, complianceFilter, showArchived]);
 
   useEffect(() => {
     fetchAssets(1);
   }, [fetchAssets]);
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this asset?')) return;
+  useEffect(() => {
+    fetchSummary();
+  }, [fetchSummary]);
+
+  // Archive handlers
+  const handleOpenArchive = (asset: AssetRow) => {
+    setArchivingAsset(asset);
+    setArchiveDialogOpen(true);
+  };
+
+  const handleArchive = async () => {
+    if (!archivingAsset) return;
+    setArchiving(true);
     try {
-      await axios.delete(`/api/assets/${id}`, { withCredentials: true });
+      await axios.patch(`/api/assets/${archivingAsset.id}/archive`, { archived: !showArchived }, { withCredentials: true });
+      setArchiveDialogOpen(false);
+      setArchivingAsset(null);
       fetchAssets(pagination.page);
+      fetchSummary();
+    } catch (err) {
+      console.error('Failed to archive/unarchive asset:', err);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  // Delete handlers
+  const handleOpenDelete = (asset: AssetRow) => {
+    setDeletingAsset(asset);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!deletingAsset) return;
+    setDeleting(true);
+    try {
+      await axios.delete(`/api/assets/${deletingAsset.id}`, { withCredentials: true });
+      setDeleteDialogOpen(false);
+      setDeletingAsset(null);
+      fetchAssets(pagination.page);
+      fetchSummary();
     } catch (err) {
       console.error('Failed to delete asset:', err);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -276,6 +379,8 @@ export function AssetTable() {
   const fetchForms = useCallback(async () => {
     try {
       setFormsLoading(true);
+      // Auto-seed pre-start forms (idempotent — skips if already seeded)
+      await axios.post('/api/forms/seed-prestart', {}, { withCredentials: true }).catch(() => {});
       const res = await axios.get('/api/forms?includeSchema=false', { withCredentials: true });
       const allForms = res.data.data?.items || [];
       setFormsList(allForms.filter((f: { title: string }) => !f.title?.toLowerCase().includes('driver wellness')));
@@ -611,72 +716,107 @@ export function AssetTable() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                router.push(`/assets/${asset.id}/edit`);
-              }}
-            >
-              <Pencil className="h-4 w-4" />
-              Edit
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                setInspectAssetId(asset.id);
-              }}
-            >
-              <ClipboardCheck className="h-4 w-4" />
-              Inspect
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                handleOpenChangeTeam(asset);
-              }}
-            >
-              <Users className="h-4 w-4" />
-              Change Team
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                handleOpenAssignForms(asset);
-              }}
-            >
-              <ClipboardList className="h-4 w-4" />
-              Assign Forms
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                handleOpenDriverAccess(asset);
-              }}
-            >
-              <KeyRound className="h-4 w-4" />
-              Driver Access
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                handleToggleStatus(asset.id, asset.status);
-              }}
-            >
-              <Power className="h-4 w-4" />
-              {normalizeStatus(asset.status) === 'in_service'
-                ? 'Mark as Under Maintenance'
-                : 'Mark as Active'}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-destructive"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDelete(asset.id);
-              }}
-            >
-              <Trash2 className="h-4 w-4" />
-              Delete
-            </DropdownMenuItem>
+            {showArchived ? (
+              <>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenArchive(asset);
+                  }}
+                >
+                  <ArchiveRestore className="h-4 w-4" />
+                  Unarchive
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenDelete(asset);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </DropdownMenuItem>
+              </>
+            ) : (
+              <>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    router.push(`/assets/${asset.id}`);
+                  }}
+                >
+                  <Eye className="h-4 w-4" />
+                  View
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    router.push(`/assets/${asset.id}/edit`);
+                  }}
+                >
+                  <Edit className="h-4 w-4" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setInspectAssetId(asset.id);
+                  }}
+                >
+                  <ClipboardCheck className="h-4 w-4" />
+                  Inspect
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenChangeTeam(asset);
+                  }}
+                >
+                  <Users className="h-4 w-4" />
+                  Change Team
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenAssignForms(asset);
+                  }}
+                >
+                  <ClipboardList className="h-4 w-4" />
+                  Assign Forms
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenDriverAccess(asset);
+                  }}
+                >
+                  <KeyRound className="h-4 w-4" />
+                  Driver Access
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleToggleStatus(asset.id, asset.status);
+                  }}
+                >
+                  <Power className="h-4 w-4" />
+                  {normalizeStatus(asset.status) === 'in_service'
+                    ? 'Mark as Under Maintenance'
+                    : 'Mark as Active'}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-destructive"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenArchive(asset);
+                  }}
+                >
+                  <Archive className="h-4 w-4" />
+                  Archive
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ),
@@ -712,16 +852,14 @@ export function AssetTable() {
         </Button>
       </PageHeader>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-        {STAT_CARDS.map((card) => (
-          <StatCard
-            key={card.key}
-            label={card.label}
-            value={card.key === 'total' ? pagination.total : 0}
-            loading={loading}
-          />
-        ))}
+      {/* Summary ribbon */}
+      <div className="px-6 pb-1">
+        <div className="flex flex-wrap divide-x rounded-xl border bg-card shadow-sm">
+          <StatSeg tone="primary" icon={Layers} label="Total assets" value={summary?.total} loading={!summary} />
+          <StatSeg tone="emerald" icon={CheckCircle2} label="In service" value={summary?.inService} loading={!summary} />
+          <StatSeg tone="amber" icon={Wrench} label="Under maintenance" value={summary?.outOfService} loading={!summary} />
+          <StatSeg tone="red" icon={ShieldAlert} label="Non-compliant" value={summary?.nonCompliant} loading={!summary} />
+        </div>
       </div>
 
       {/* Toolbar + Search */}
@@ -749,6 +887,7 @@ export function AssetTable() {
                 <SelectItem value="none">No documents</SelectItem>
               </SelectContent>
             </Select>
+            <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
             {selectedKeys.size > 0 && (
               <Button
                 variant="outline"
@@ -783,7 +922,7 @@ export function AssetTable() {
         rowsPerPage={rowsPerPage}
         onPageChange={fetchAssets}
         onRowsPerPageChange={setRowsPerPage}
-        onRowClick={(asset) => router.push(`/assets/${asset.id}`)}
+        onRowClick={showArchived ? undefined : (asset) => router.push(`/assets/${asset.id}`)}
         rowKey={(a) => a.id}
         density={density}
         hiddenColumnKeys={hiddenColumnKeys}
@@ -968,6 +1107,25 @@ export function AssetTable() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Archive Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={archivingAsset?.name}
+        action={showArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
+
+      {/* Delete Dialog */}
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={deletingAsset?.name}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
 
       {/* Driver Access Dialog */}
       <Dialog open={driverAccessOpen} onOpenChange={setDriverAccessOpen}>

@@ -407,6 +407,9 @@ function serializeSubmission(
     defectCount: Array.isArray(doc.defects) ? (doc.defects as unknown[]).length : 0,
     submittedAt: doc.submittedAt ? new Date(doc.submittedAt as Date).toISOString() : null,
     source: (doc.source as string) ?? null,
+    teamIds: Array.isArray(doc.teamIds)
+      ? (doc.teamIds as ObjectId[]).map((id) => id.toString())
+      : [],
   };
   if (!opts.full) return base;
   return {
@@ -423,7 +426,7 @@ function serializeSubmission(
 /** Paginated inspection history for the tenant (newest first). */
 export async function listInspectionSubmissions(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; result?: string; assetId?: string; driverId?: string; full?: boolean },
+  options: { page?: number; limit?: number; search?: string; result?: string; assetId?: string; driverId?: string; teamId?: string; full?: boolean },
 ) {
   const col = await getInspectionSubmissionsCollection();
   const page = Math.max(1, options.page || 1);
@@ -438,6 +441,9 @@ export async function listInspectionSubmissions(
   }
   if (options.driverId && ObjectId.isValid(options.driverId)) {
     filter.driverId = ObjectId.createFromHexString(options.driverId);
+  }
+  if (options.teamId && ObjectId.isValid(options.teamId)) {
+    filter.teamIds = ObjectId.createFromHexString(options.teamId);
   }
   if (options.search) {
     const regex = { $regex: options.search, $options: 'i' };
@@ -469,4 +475,61 @@ export async function getInspectionSubmissionById(tenantId: string, id: string) 
     tenantId: ObjectId.createFromHexString(tenantId),
   });
   return doc ? serializeSubmission(doc as Record<string, unknown>, { full: true }) : null;
+}
+
+// ── Team assignment ─────────────────────────────────────────────────────────
+
+/** Bulk-add a team to multiple inspection submissions. */
+export async function addTeamToInspections(
+  tenantId: string,
+  userId: string,
+  teamId: string,
+  inspectionIds: string[],
+) {
+  const col = await getInspectionSubmissionsCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const teamOid = ObjectId.createFromHexString(teamId);
+  const userOid = ObjectId.createFromHexString(userId);
+  const inspectionOids = inspectionIds.map((id) => ObjectId.createFromHexString(id));
+
+  const result = await col.updateMany(
+    {
+      _id: { $in: inspectionOids },
+      tenantId: tenantOid,
+    },
+    {
+      $addToSet: { teamIds: teamOid },
+      $set: { updatedBy: userOid, updatedAt: new Date() },
+    },
+  );
+
+  return result.modifiedCount;
+}
+
+/** Remove a team from an inspection submission. */
+export async function removeTeamFromInspection(
+  tenantId: string,
+  userId: string,
+  teamId: string,
+  inspectionId: string,
+) {
+  const col = await getInspectionSubmissionsCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const teamOid = ObjectId.createFromHexString(teamId);
+  const inspectionOid = ObjectId.createFromHexString(inspectionId);
+  const userOid = ObjectId.createFromHexString(userId);
+
+  const result = await col.updateOne(
+    {
+      _id: inspectionOid,
+      tenantId: tenantOid,
+    },
+    {
+      $pull: { teamIds: teamOid },
+      $set: { updatedBy: userOid, updatedAt: new Date() },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any,
+  );
+
+  return result.modifiedCount > 0;
 }

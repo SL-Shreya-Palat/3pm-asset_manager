@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import axios from 'axios';
-import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { Plus, Edit, Trash2, Archive, ArchiveRestore } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { Input } from '@/components/ui/input';
@@ -23,6 +23,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
+import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 
 /** Generic settings item shape. */
 export interface SettingsItem {
@@ -66,6 +69,7 @@ export function InventorySettingsList({
   const [items, setItems] = useState<SettingsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch, debouncedSearch] = useDebouncedSearch(300);
+  const [showArchived, setShowArchived] = useState(false);
 
   // Table state
   const { hiddenColumnKeys, setHiddenColumnKeys, density, setDensity } = useDataTable();
@@ -80,7 +84,12 @@ export function InventorySettingsList({
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  // Delete dialog
+  // Archive dialog
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingItem, setArchivingItem] = useState<SettingsItem | null>(null);
+  const [archiving, setArchiving] = useState(false);
+
+  // Delete dialog (permanent delete for archived items)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingItem, setDeletingItem] = useState<SettingsItem | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -90,6 +99,7 @@ export function InventorySettingsList({
       setLoading(true);
       const params = new URLSearchParams();
       if (debouncedSearch) params.set('search', debouncedSearch);
+      if (showArchived) params.set('showArchived', 'true');
       const res = await axios.get(`${apiEndpoint}?${params.toString()}`, { withCredentials: true });
       setItems(res.data.data || []);
     } catch {
@@ -97,16 +107,16 @@ export function InventorySettingsList({
     } finally {
       setLoading(false);
     }
-  }, [apiEndpoint, debouncedSearch]);
+  }, [apiEndpoint, debouncedSearch, showArchived]);
 
   useEffect(() => {
     fetchItems();
   }, [fetchItems]);
 
-  // Reset to page 1 when search changes
+  // Reset to page 1 when search or showArchived changes
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch]);
+  }, [debouncedSearch, showArchived]);
 
   // Client-side pagination
   const paginatedData = useMemo(() => {
@@ -160,19 +170,36 @@ export function InventorySettingsList({
         pinned: true,
         render: (item) => (
           <RowActions>
-            <RowActionButton label="Edit" icon={<Pencil />} onClick={() => openEditDialog(item)} />
-            <RowActionButton
-              label="Delete"
-              tone="destructive"
-              icon={<Trash2 />}
-              onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
-            />
+            {showArchived ? (
+              <>
+                <RowActionButton
+                  label="Unarchive"
+                  icon={<ArchiveRestore />}
+                  onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
+                />
+                <RowActionButton
+                  label="Delete"
+                  tone="destructive"
+                  icon={<Trash2 />}
+                  onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
+                />
+              </>
+            ) : (
+              <>
+                <RowActionButton label="Edit" icon={<Edit />} onClick={() => openEditDialog(item)} />
+                <RowActionButton
+                  label="Archive"
+                  icon={<Archive />}
+                  onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
+                />
+              </>
+            )}
           </RowActions>
         ),
       },
     ];
     return cols;
-  }, [nameField, extraColumns]);
+  }, [nameField, extraColumns, showArchived]);
 
   // Dialog helpers
   const openCreateDialog = () => {
@@ -239,6 +266,22 @@ export function InventorySettingsList({
     }
   };
 
+  const handleArchive = async () => {
+    if (!archivingItem) return;
+    setArchiving(true);
+    try {
+      await axios.patch(apiEndpoint, { id: archivingItem.id, archived: !showArchived }, { withCredentials: true });
+      setArchiveDialogOpen(false);
+      setArchivingItem(null);
+      fetchItems();
+      onDataChange?.();
+    } catch {
+      // Silent fail
+    } finally {
+      setArchiving(false);
+    }
+  };
+
   const handleDelete = async () => {
     if (!deletingItem) return;
     setDeleting(true);
@@ -259,11 +302,16 @@ export function InventorySettingsList({
     <div>
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-        <Button size="sm" onClick={openCreateDialog}>
-          <Plus className="h-4 w-4" />
-          {createLabel}
-        </Button>
+        <div className="flex items-center gap-4">
+          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+          <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+        </div>
+        {!showArchived && (
+          <Button size="sm" onClick={openCreateDialog}>
+            <Plus className="h-4 w-4" />
+            {createLabel}
+          </Button>
+        )}
       </div>
 
       {/* Toolbar */}
@@ -293,7 +341,7 @@ export function InventorySettingsList({
         rowsPerPage={rowsPerPage}
         density={density}
         hiddenColumnKeys={hiddenColumnKeys}
-        emptyMessage={debouncedSearch ? 'No results match your search.' : `No ${title.toLowerCase()} yet.`}
+        emptyMessage={debouncedSearch ? 'No results match your search.' : showArchived ? `No archived ${title.toLowerCase()}.` : `No ${title.toLowerCase()} yet.`}
       />
 
       {/* Create / Edit Dialog */}
@@ -373,25 +421,24 @@ export function InventorySettingsList({
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Item</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{(deletingItem as unknown as Record<string, unknown>)?.[nameField] as string}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Archive / Unarchive Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={(archivingItem as unknown as Record<string, unknown>)?.[nameField] as string}
+        action={showArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
+
+      {/* Permanent Delete Dialog */}
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={(deletingItem as unknown as Record<string, unknown>)?.[nameField] as string}
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
     </div>
   );
 }

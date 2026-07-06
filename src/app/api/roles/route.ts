@@ -16,8 +16,9 @@ export async function GET(request: NextRequest) {
   const page = parseInt(searchParams.get('page') || '1', 10);
   const limit = parseInt(searchParams.get('limit') || '25', 10);
   const search = searchParams.get('search') || undefined;
+  const showArchived = searchParams.get('showArchived') === 'true';
 
-  const result = await getAllRoles(user.currentTenantId, { page, limit, search });
+  const result = await getAllRoles(user.currentTenantId, { page, limit, search, showArchived });
   return NextResponse.json({ data: result, error: null });
 }
 

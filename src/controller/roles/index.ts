@@ -10,7 +10,7 @@ import type { CreateRoleInput, UpdateRoleInput } from './types';
 /** List roles with pagination and search. */
 export async function getAllRoles(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string },
+  options: { page?: number; limit?: number; search?: string; showArchived?: boolean },
 ) {
   const collection = await getRolesCollection();
   const page = Math.max(1, options.page || 1);
@@ -19,8 +19,13 @@ export async function getAllRoles(
 
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
-    isActive: true,
   };
+
+  if (options.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
 
   if (options.search) {
     const regex = { $regex: options.search, $options: 'i' };
@@ -46,7 +51,7 @@ export async function getRoleById(tenantId: string, roleId: string) {
   const doc = await collection.findOne({
     _id: ObjectId.createFromHexString(roleId),
     tenantId: ObjectId.createFromHexString(tenantId),
-    isActive: true,
+    isArchived: { $ne: true },
   });
 
   if (!doc) return null;
@@ -67,7 +72,7 @@ export async function createRole(tenantId: string, userId: string, input: Create
   const existing = await collection.findOne({
     tenantId: tenantOid,
     nameLower: input.name.trim().toLowerCase(),
-    isActive: true,
+    isArchived: { $ne: true },
   });
   if (existing) {
     return { data: null, error: { name: 'A role with this name already exists' } };
@@ -84,6 +89,8 @@ export async function createRole(tenantId: string, userId: string, input: Create
     baseCostPerHour: input.baseCostPerHour ?? 0,
     chargeOutRate: input.chargeOutRate ?? 0,
     permissions: input.permissions,
+    teamScoped: input.teamScoped ?? false,
+    mobileOnly: input.mobileOnly ?? false,
     isSystem: false,
 
     createdBy: userOid,
@@ -91,6 +98,9 @@ export async function createRole(tenantId: string, userId: string, input: Create
     createdAt: now,
     updatedAt: now,
     isActive: true,
+    isArchived: false,
+    archivedAt: null,
+    archivedBy: null,
     isManager: input.isManager ?? null,
     isTeamManager: input.isTeamManager ?? null,
     isMechanic: input.isMechanic ?? null,
@@ -119,7 +129,7 @@ export async function updateRole(
   const existing = await collection.findOne({
     _id: roleOid,
     tenantId: tenantOid,
-    isActive: true,
+    isArchived: { $ne: true },
   });
   if (!existing) return { data: null, error: 'Role not found' };
 
@@ -142,7 +152,7 @@ export async function updateRole(
       tenantId: tenantOid,
       _id: { $ne: roleOid },
       nameLower: trimmed.toLowerCase(),
-      isActive: true,
+      isArchived: { $ne: true },
     });
     if (duplicate) {
       return { data: null, error: { name: 'A role with this name already exists' } };
@@ -156,6 +166,8 @@ export async function updateRole(
   if (input.permissions !== undefined) $set.permissions = input.permissions;
   if (input.baseCostPerHour !== undefined) $set.baseCostPerHour = input.baseCostPerHour ?? 0;
   if (input.chargeOutRate !== undefined) $set.chargeOutRate = input.chargeOutRate ?? 0;
+  if (input.teamScoped !== undefined) $set.teamScoped = input.teamScoped ?? false;
+  if (input.mobileOnly !== undefined) $set.mobileOnly = input.mobileOnly ?? false;
   if (input.isManager !== undefined) $set.isManager = input.isManager ?? null;
   if (input.isTeamManager !== undefined) $set.isTeamManager = input.isTeamManager ?? null;
   if (input.isMechanic !== undefined) $set.isMechanic = input.isMechanic ?? null;
@@ -168,33 +180,17 @@ export async function updateRole(
   return { data: updated ? serializeRole(updated) : null, error: null };
 }
 
-/** Delete a role (set isActive to false). */
+/** Permanently delete a role. */
 export async function deleteRole(tenantId: string, userId: string, roleId: string) {
   const collection = await getRolesCollection();
+  const roleOid = ObjectId.createFromHexString(roleId);
+  const tenantOid = ObjectId.createFromHexString(tenantId);
 
   // Prevent deleting system roles
-  const existing = await collection.findOne({
-    _id: ObjectId.createFromHexString(roleId),
-    tenantId: ObjectId.createFromHexString(tenantId),
-    isActive: true,
-  });
+  const existing = await collection.findOne({ _id: roleOid, tenantId: tenantOid });
   if (!existing) return false;
   if (existing.isSystem) return false;
 
-  const result = await collection.updateOne(
-    {
-      _id: ObjectId.createFromHexString(roleId),
-      tenantId: ObjectId.createFromHexString(tenantId),
-      isActive: true,
-    },
-    {
-      $set: {
-        isActive: false,
-        updatedBy: ObjectId.createFromHexString(userId),
-        updatedAt: new Date(),
-      },
-    },
-  );
-
-  return result.modifiedCount > 0;
+  const result = await collection.deleteOne({ _id: roleOid, tenantId: tenantOid });
+  return result.deletedCount > 0;
 }

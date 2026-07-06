@@ -1,7 +1,7 @@
 /**
- * 3PM Auth Data API client for invitations.
- * Delegates invitation creation to 3pm-auth so users get a direct login
- * experience (no registration flow) when they accept an invite.
+ * 3PM Auth Data API client for users and invitations.
+ * Pre-registers users and creates invitations on 3pm-auth so invited users
+ * get a direct login experience (no registration flow) when they accept.
  *
  * Mirrors construction-portal/lib/3pm-data-api.ts.
  */
@@ -23,6 +23,66 @@ function getConfig() {
 export function is3PMDataApiConfigured(): boolean {
   return !!(IDP_URL && DATA_API_KEY && AUTH_CLIENT_ID);
 }
+
+// ---------------------------------------------------------------------------
+// Users
+// ---------------------------------------------------------------------------
+
+export interface Create3PMUserParams {
+  email: string;
+  firstName: string;
+  lastName: string;
+  mobile?: string;
+}
+
+export interface ThreePMUserResult {
+  id: string;
+  email: string;
+  status: 'created' | 'skipped';
+  existingUserId?: string;
+}
+
+/**
+ * Pre-register a user in 3pm-auth via the Data API.
+ *
+ * The user is created with empty `providers: []` — they verify via OTP on
+ * first login. If the email already exists the endpoint returns
+ * `status: "skipped"` (not an error), so this is safe to call every time.
+ */
+export async function create3PMUser(
+  params: Create3PMUserParams,
+): Promise<ThreePMUserResult> {
+  const { idpUrl, apiKey } = getConfig();
+
+  const res = await fetch(`${idpUrl}/api/data/users`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': apiKey,
+    },
+    body: JSON.stringify({
+      email: params.email.toLowerCase().trim(),
+      firstName: params.firstName.trim(),
+      lastName: params.lastName.trim(),
+      ...(params.mobile?.trim() ? { mobile: params.mobile.trim() } : {}),
+    }),
+  });
+
+  const data = await res.json();
+
+  if (data.error) {
+    throw new Error(data.error);
+  }
+  if (!data.data) {
+    throw new Error('No data in 3PM user creation response');
+  }
+
+  return data.data;
+}
+
+// ---------------------------------------------------------------------------
+// Invitations
+// ---------------------------------------------------------------------------
 
 export interface ThreePMInvitation {
   id: string;

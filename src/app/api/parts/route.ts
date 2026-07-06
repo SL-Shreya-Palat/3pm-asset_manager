@@ -17,8 +17,9 @@ export async function GET(request: NextRequest) {
   const limit = parseInt(searchParams.get('limit') || '25', 10);
   const search = searchParams.get('search') || undefined;
   const categoryId = searchParams.get('categoryId') || undefined;
+  const showArchived = searchParams.get('showArchived') === 'true';
 
-  const result = await getAllParts(user.currentTenantId, { page, limit, search, categoryId });
+  const result = await getAllParts(user.currentTenantId, { page, limit, search, categoryId, showArchived });
   return NextResponse.json({ data: result, error: null });
 }
 

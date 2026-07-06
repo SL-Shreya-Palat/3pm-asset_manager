@@ -6,7 +6,7 @@ import axios from 'axios';
 import {
   ArrowLeft,
   Pencil,
-  Trash2,
+  Archive,
   Wrench,
   AlertTriangle,
   ClipboardCheck,
@@ -23,15 +23,8 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { DetailCard, DetailField } from '@/components/ui/detail-field';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DefectForm } from '@/components/defects/defect-form';
 import { WorkOrderForm } from '@/components/work-orders/work-order-form';
 import {
@@ -72,9 +65,9 @@ export default function DefectDetailPage() {
   // Work-order panel
   const [woPanelOpen, setWoPanelOpen] = useState(false);
 
-  // Delete dialog
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  // Archive dialog
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   const fetchDefect = useCallback(async () => {
     try {
@@ -91,15 +84,15 @@ export default function DefectDetailPage() {
     if (params.id) fetchDefect();
   }, [params.id, fetchDefect]);
 
-  const handleDelete = async () => {
-    setDeleting(true);
+  const handleArchive = async () => {
+    setArchiving(true);
     try {
-      await axios.delete(`/api/defects/${params.id}`, { withCredentials: true });
+      await axios.patch(`/api/defects/${params.id}/archive`, { archived: true }, { withCredentials: true });
       router.push('/maintenance/defects');
     } catch {
       // silent
     } finally {
-      setDeleting(false);
+      setArchiving(false);
     }
   };
 
@@ -212,9 +205,9 @@ export default function DefectDetailPage() {
               <Pencil className="h-4 w-4" />
               Edit
             </Button>
-            <Button variant="destructive" onClick={() => setDeleteDialogOpen(true)}>
-              <Trash2 className="h-4 w-4" />
-              Delete
+            <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
+              <Archive className="h-4 w-4" />
+              Archive
             </Button>
           </div>
         </div>
@@ -371,23 +364,15 @@ export default function DefectDetailPage() {
         )}
       </div>
 
-      {/* Delete Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Defect</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete &quot;{defectNumber}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Archive Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={defectNumber}
+        action="archive"
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
     </div>
   );
 }

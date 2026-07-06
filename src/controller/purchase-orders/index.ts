@@ -67,15 +67,20 @@ async function generatePONumber(tenantId: ObjectId): Promise<string> {
 
 export async function getAllPurchaseOrders(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; status?: string },
+  options: { page?: number; limit?: number; search?: string; status?: string; showArchived?: boolean },
 ) {
   const col = await getPurchaseOrdersCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
 
   const filter: Record<string, unknown> = {
     tenantId: tenantOid,
-    isArchived: { $ne: true },
   };
+
+  if (options.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
 
   // Status filter
   if (options.status && options.status !== 'all' && isValidStatusForName(options.status)) {
@@ -292,37 +297,17 @@ export async function updatePurchaseOrder(
 }
 
 // ---------------------------------------------------------------------------
-// Delete PO (soft, draft only)
+// Delete PO
 // ---------------------------------------------------------------------------
 
+/** Permanently delete a purchase order. */
 export async function deletePurchaseOrder(tenantId: string, userId: string, poId: string) {
   const col = await getPurchaseOrdersCollection();
+  const docOid = ObjectId.createFromHexString(poId);
   const tenantOid = ObjectId.createFromHexString(tenantId);
-  const poOid = ObjectId.createFromHexString(poId);
 
-  const existing = await col.findOne({
-    _id: poOid,
-    tenantId: tenantOid,
-    isArchived: { $ne: true },
-  });
-
-  if (!existing) return false;
-  if (existing.status !== 'draft') return false;
-
-  const result = await col.updateOne(
-    { _id: poOid, tenantId: tenantOid },
-    {
-      $set: {
-        isArchived: true,
-        archivedAt: new Date(),
-        archivedBy: ObjectId.createFromHexString(userId),
-        updatedBy: ObjectId.createFromHexString(userId),
-        updatedAt: new Date(),
-      },
-    },
-  );
-
-  return result.modifiedCount > 0;
+  const result = await col.deleteOne({ _id: docOid, tenantId: tenantOid });
+  return result.deletedCount > 0;
 }
 
 // ---------------------------------------------------------------------------
