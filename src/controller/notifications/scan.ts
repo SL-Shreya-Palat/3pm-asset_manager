@@ -25,7 +25,7 @@ import {
 import { getAssetServiceStatus } from '@/controller/service-programs/due-status';
 import { listExpiring } from '@/controller/documents';
 import { DOCUMENT_TYPE_LABELS } from '@/constants/documents';
-import { notifyTenantManagersOnce, notifyUsersOnce } from '@/controller/notifications';
+import { notifyTenantManagersOnce, notifyUsersOnce, notifyEventOnce } from '@/controller/notifications';
 
 /** Resolve the asset's assigned driver to a portal user id (if the driver is a member). */
 async function resolveDriverUserIds(
@@ -72,9 +72,10 @@ async function scanServiceDue(tenantId: string): Promise<number> {
 
     const asset = await assetsCol.findOne(
       { _id: assetOid, tenantId: tenantOid },
-      { projection: { name: 1, assignedDriverId: 1 } },
+      { projection: { name: 1, assignedDriverId: 1, teamIds: 1 } },
     );
     const assetName = (asset?.name as string) || 'An asset';
+    const teamIds = (asset?.teamIds as ObjectId[]) ?? [];
     const driverUserIds = await resolveDriverUserIds(tenantOid, asset?.assignedDriverId as ObjectId | undefined);
 
     for (const item of due) {
@@ -87,7 +88,7 @@ async function scanServiceDue(tenantId: string): Promise<number> {
         entityType: 'serviceProgram',
         entityId: item.programId,
       };
-      await notifyTenantManagersOnce(tenantId, payload);
+      await notifyEventOnce(tenantId, payload, { teamIds });
       if (driverUserIds.length) await notifyUsersOnce(tenantId, driverUserIds, payload);
       count++;
     }
@@ -161,7 +162,8 @@ async function scanLowStock(tenantId: string): Promise<number> {
       entityType: 'part',
       entityId: (p._id as ObjectId).toString(),
     };
-    await notifyTenantManagersOnce(tenantId, payload);
+    // Parts have no team → routes to all managers by default (admin can turn off).
+    await notifyEventOnce(tenantId, payload);
     count++;
   }
   return count;
@@ -181,18 +183,19 @@ async function scanComplianceExpiry(tenantId: string): Promise<number> {
   const assetIds = [
     ...new Set(items.filter((d) => d.scope === 'asset' && d.assetId).map((d) => d.assetId as string)),
   ];
-  const assetMap = new Map<string, { name: string; assignedDriverId?: ObjectId }>();
+  const assetMap = new Map<string, { name: string; assignedDriverId?: ObjectId; teamIds: ObjectId[] }>();
   if (assetIds.length) {
     const assets = await assetsCol
       .find(
         { _id: { $in: assetIds.map((id) => ObjectId.createFromHexString(id)) }, tenantId: tenantOid },
-        { projection: { name: 1, assignedDriverId: 1 } },
+        { projection: { name: 1, assignedDriverId: 1, teamIds: 1 } },
       )
       .toArray();
     for (const a of assets) {
       assetMap.set((a._id as ObjectId).toString(), {
         name: (a.name as string) || 'An asset',
         assignedDriverId: a.assignedDriverId as ObjectId | undefined,
+        teamIds: (a.teamIds as ObjectId[]) ?? [],
       });
     }
   }
@@ -218,7 +221,7 @@ async function scanComplianceExpiry(tenantId: string): Promise<number> {
       entityType: 'document',
       entityId: doc.id,
     };
-    await notifyTenantManagersOnce(tenantId, payload);
+    await notifyEventOnce(tenantId, payload, { teamIds: asset?.teamIds ?? [] });
     if (asset?.assignedDriverId) {
       const driverUserIds = await resolveDriverUserIds(tenantOid, asset.assignedDriverId);
       if (driverUserIds.length) await notifyUsersOnce(tenantId, driverUserIds, payload);

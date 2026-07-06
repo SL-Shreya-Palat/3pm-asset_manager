@@ -6,6 +6,12 @@ import { ObjectId } from 'mongodb';
 import { getAssetsCollection, getAssetTypesCollection, getTeamsCollection, getFormsCollection, getServiceProgramsCollection, getDocumentsCollection } from '@/lib/mongodb';
 import { validateCreateAssetInput, serializeAsset } from './utils';
 import { computeDocumentStatus } from '@/controller/documents/utils';
+import { writebackAvailabilityIfLinked } from '@/controller/command-connection/hooks';
+import {
+  isCommandConnectionEnabled,
+  stripCommandOwnedFields,
+  MASTER_DATA_MANAGED_MESSAGE,
+} from '@/controller/command-connection/guard';
 import type { CreateAssetInput, UpdateAssetInput } from './types';
 
 /** Worst-case compliance rank: expired (3) > expiring soon (2) > valid (1). */
@@ -230,6 +236,11 @@ export async function getAssetById(tenantId: string, assetId: string) {
 
 /** Create a new asset. */
 export async function createAsset(tenantId: string, userId: string, input: CreateAssetInput) {
+  // Connected tenants add assets in Command, then import — never locally.
+  if (await isCommandConnectionEnabled(tenantId)) {
+    return { data: null, error: MASTER_DATA_MANAGED_MESSAGE };
+  }
+
   const validation = validateCreateAssetInput(input);
   if (!validation.valid) {
     return { data: null, error: validation.errors };
@@ -316,6 +327,18 @@ export async function updateAsset(
   });
   if (!existing) return { data: null, error: 'Asset not found' };
 
+  // Command-sourced assets: identity fields are owned by Command — strip them
+  // from local edits (operational fields like status/teams/programs still save).
+  if (existing.source === 'command') {
+    const guarded = stripCommandOwnedFields(input as Record<string, unknown>, 'assets');
+    input = guarded.input as UpdateAssetInput;
+    if (guarded.stripped.length > 0) {
+      console.warn(
+        `[assets] Ignored Command-owned field edit on ${assetId}: ${guarded.stripped.join(', ')}`,
+      );
+    }
+  }
+
   const $set: Record<string, unknown> = {
     updatedBy: ObjectId.createFromHexString(userId),
     updatedAt: new Date(),
@@ -357,12 +380,36 @@ export async function updateAsset(
   await collection.updateOne({ _id: assetOid, tenantId: tenantOid }, { $set });
   const updated = await collection.findOne({ _id: assetOid });
 
+  // Command-linked assets: mirror a manual in/out-of-service toggle to Command.
+  if (input.status !== undefined && input.status !== existing.status) {
+    await writebackAvailabilityIfLinked(
+      tenantId,
+      assetOid,
+      input.status === 'out_of_service',
+      'Status changed in Asset Manager',
+    );
+  }
+
   return { data: updated ? serializeAsset(updated) : null, error: null };
 }
 
 /** Archive (soft-delete) an asset. */
 export async function deleteAsset(tenantId: string, userId: string, assetId: string) {
   const collection = await getAssetsCollection();
+
+  // Command-sourced assets are archived in Command (a re-import reflects it);
+  // archiving locally while connected would silently diverge the two systems.
+  const target = await collection.findOne(
+    {
+      _id: ObjectId.createFromHexString(assetId),
+      tenantId: ObjectId.createFromHexString(tenantId),
+    },
+    { projection: { source: 1 } },
+  );
+  if (target?.source === 'command' && (await isCommandConnectionEnabled(tenantId))) {
+    return false;
+  }
+
   const result = await collection.updateOne(
     {
       _id: ObjectId.createFromHexString(assetId),

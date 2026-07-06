@@ -8,6 +8,7 @@
  */
 import { ObjectId } from 'mongodb';
 import { getMeterReadingsCollection, getAssetsCollection } from '@/lib/mongodb';
+import { writebackMetersIfLinked } from '@/controller/command-connection/hooks';
 import { METER_TYPES, type AddMeterReadingInput, type MeterType } from './types';
 
 function serialize(doc: Record<string, unknown>) {
@@ -95,6 +96,14 @@ export async function addMeterReading(
       { $set: { [field]: value, updatedAt: now } },
     );
   }
+
+  // Command-linked assets: mirror the reading onto the Command asset (no-op otherwise).
+  await writebackMetersIfLinked(
+    tenantId,
+    assetOid,
+    meterType === 'engine_hours' ? { engineHours: value } : { odometer: value },
+    'meter_reading',
+  );
 
   return { data: serialize({ ...doc, _id: result.insertedId }), error: null };
 }

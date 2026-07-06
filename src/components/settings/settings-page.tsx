@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ChevronDown, ChevronRight, Ruler, Tag, MapPin, Wrench, CircleDot, Box, Layers } from 'lucide-react';
+import { ChevronDown, ChevronRight, Ruler, Tag, MapPin, Wrench, CircleDot, Box, Layers, Bell, Cable } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InventorySettingsList, type SettingsFieldConfig } from './inventory-settings-list';
 import { WorkOrderStatusesList } from './work-order-statuses-list';
+import { NotificationSettingsPage } from './notification-settings-page';
+import { CommandConnectionPanel } from './command-connection-panel';
 
 /** Settings tabs. */
 const TABS = [
@@ -49,6 +51,22 @@ const ADMIN_SIDEBAR: SidebarItem[] = [
       { key: 'work-order-statuses', label: 'Work Order Statuses' },
     ],
   },
+  {
+    key: 'notifications',
+    label: 'Notifications',
+    icon: Bell,
+    children: [
+      { key: 'notification-routing', label: 'Routing' },
+    ],
+  },
+  {
+    key: 'connections',
+    label: 'Connections',
+    icon: Cable,
+    children: [
+      { key: 'command-connection', label: 'Command' },
+    ],
+  },
 ];
 
 // Field configs for each settings type
@@ -79,7 +97,7 @@ const ASSET_TYPE_FIELDS: SettingsFieldConfig[] = [
   { key: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional description' },
 ];
 
-const VALID_SIDEBAR_KEYS = new Set(['asset-types', 'measurement-units', 'part-categories', 'part-locations', 'work-order-statuses']);
+const VALID_SIDEBAR_KEYS = new Set(['asset-types', 'measurement-units', 'part-categories', 'part-locations', 'work-order-statuses', 'notification-routing', 'command-connection']);
 
 export function SettingsPage() {
   const searchParams = useSearchParams();
@@ -99,6 +117,10 @@ export function SettingsPage() {
         setExpandedKeys((prev) => new Set([...prev, 'inventory']));
       } else if (['work-order-statuses'].includes(section)) {
         setExpandedKeys((prev) => new Set([...prev, 'work-orders']));
+      } else if (['notification-routing'].includes(section)) {
+        setExpandedKeys((prev) => new Set([...prev, 'notifications']));
+      } else if (['command-connection'].includes(section)) {
+        setExpandedKeys((prev) => new Set([...prev, 'connections']));
       }
     }
   }, [searchParams]);
@@ -153,6 +175,10 @@ export function SettingsPage() {
         );
       case 'work-order-statuses':
         return <WorkOrderStatusesList />;
+      case 'notification-routing':
+        return <NotificationSettingsPage />;
+      case 'command-connection':
+        return <CommandConnectionPanel />;
       default:
         return null;
     }
@@ -165,6 +191,8 @@ export function SettingsPage() {
       case 'part-categories': return Tag;
       case 'part-locations': return MapPin;
       case 'work-order-statuses': return CircleDot;
+      case 'notification-routing': return Bell;
+      case 'command-connection': return Cable;
       default: return Tag;
     }
   };

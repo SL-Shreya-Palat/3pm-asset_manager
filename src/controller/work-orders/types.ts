@@ -19,12 +19,23 @@ export interface WOAttachment {
 
 /** A part consumed on a work order (denormalized line). */
 export interface WOPart {
-  partId: ObjectId;
+  /** Local part id — null for Command stock lines. */
+  partId: ObjectId | null;
   partName: string;
   partNumber: string;
   quantity: number;
   unitCost: number;
   lineTotal: number;
+  /** 'command' = consumes Command stock (pushed on completion); default local. */
+  source?: 'local' | 'command';
+  /** Command stock item id (hex string) for source === 'command'. */
+  commandStockId?: string;
+  /** Optional Command stock location to draw from. */
+  commandLocationId?: string;
+  /** Set once the OUT was pushed to Command (strict lockstep on completion). */
+  pushedToCommand?: boolean;
+  /** Command stockTransaction id returned by the push (audit link). */
+  commandTransactionId?: string | null;
 }
 
 /** Status history entry. */
@@ -99,8 +110,16 @@ export interface CreateWorkOrderInput {
   statusId: string;
   dueDate?: string;
   description?: string;
-  /** Parts to record on the WO — quantities are deducted from inventory. */
-  parts?: Array<{ partId: string; quantity: number; unitCost?: number }>;
+  /** Parts to record on the WO. Local parts (`partId`) are deducted from AM
+   * inventory; Command stock lines (`commandStockId`) are pushed to Command as
+   * RECEIPTED_OUT transactions when the WO is completed. */
+  parts?: Array<{
+    partId?: string;
+    commandStockId?: string;
+    commandLocationId?: string;
+    quantity: number;
+    unitCost?: number;
+  }>;
   attachments?: Array<{
     url: string;
     filename: string;

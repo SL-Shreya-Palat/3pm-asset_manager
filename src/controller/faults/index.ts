@@ -21,7 +21,11 @@ import {
   FAULT_TO_DEFECT_STATUS,
 } from './utils';
 import { generateDefectNumber } from '@/controller/defects/utils';
-import { notifyTenantManagers } from '@/controller/notifications';
+import { notifyEvent } from '@/controller/notifications';
+import {
+  writebackActivityIfLinked,
+  writebackAvailabilityIfLinked,
+} from '@/controller/command-connection/hooks';
 
 // ── Helpers — resolve names on READ ─────────────────────────────────────────
 
@@ -234,8 +238,9 @@ export async function createFault(
   const priority = input.priority || 'medium';
   const severity = input.severity || priority;
 
-  // Resolve asset name for denormalized storage
+  // Resolve asset name (denormalized storage) + its teams (notification routing).
   let assetName = '';
+  let assetTeamIds: ObjectId[] = [];
   try {
     const assetsCol = await getAssetsCollection();
     const asset = await assetsCol.findOne({
@@ -243,6 +248,7 @@ export async function createFault(
       tenantId: tenantOid,
     });
     assetName = (asset?.name as string) || '';
+    assetTeamIds = (asset?.teamIds as ObjectId[]) ?? [];
   } catch {
     // Silent — assetName stays empty
   }
@@ -257,6 +263,9 @@ export async function createFault(
     comment: input.description?.trim() || input.title.trim(), // description → comment
     assetId: ObjectId.createFromHexString(input.assetId),
     assetName,
+    // Inherit the asset's teams so the Defects tab is populated and fault
+    // notifications route to the responsible team(s).
+    teamIds: assetTeamIds,
     driverId: null as ObjectId | null,
     driverName: null as string | null,
     priority,
@@ -297,10 +306,24 @@ export async function createFault(
         { _id: ObjectId.createFromHexString(input.assetId), tenantId: tenantOid },
         { $set: { status: 'out_of_service', updatedAt: now } },
       );
+      // Command-linked assets: mirror the grounding to Command.
+      await writebackAvailabilityIfLinked(
+        tenantId,
+        input.assetId,
+        true,
+        `Fault ${defectNumber}: ${input.title.trim()}`,
+      );
     } catch {
       // Best-effort
     }
   }
+
+  // Command-linked assets: append the fault to the Command activity timeline.
+  await writebackActivityIfLinked(tenantId, input.assetId, {
+    type: 'fault_raised',
+    summary: `Fault ${defectNumber} reported — ${input.title.trim()}`,
+    details: { defectNumber, ...(doc.takeOutOfService ? { takeOutOfService: true } : {}) },
+  });
 
   // Resolve names for the response
   const assetNameMap = await resolveAssetNames(tenantOid, [ObjectId.createFromHexString(input.assetId)]);
@@ -308,15 +331,19 @@ export async function createFault(
     { reportedByType: (input.reportedByType ?? 'member') as string, reportedById: ObjectId.createFromHexString(input.reportedById) },
   ]);
 
-  // Notify managers (best-effort)
-  await notifyTenantManagers(tenantId, {
-    type: 'fault_reported',
-    title: `Fault ${defectNumber} reported`,
-    body: `${assetNameMap.get(input.assetId) || 'Asset'} — ${input.title.trim()}${doc.takeOutOfService ? ' (asset grounded)' : ''}`,
-    link: '/maintenance/faults',
-    entityType: 'fault',
-    entityId: result.insertedId.toString(),
-  });
+  // Notify the responsible team (best-effort; falls back to all managers).
+  await notifyEvent(
+    tenantId,
+    {
+      type: 'fault_reported',
+      title: `Fault ${defectNumber} reported`,
+      body: `${assetNameMap.get(input.assetId) || 'Asset'} — ${input.title.trim()}${doc.takeOutOfService ? ' (asset grounded)' : ''}`,
+      link: '/maintenance/faults',
+      entityType: 'fault',
+      entityId: result.insertedId.toString(),
+    },
+    { teamIds: assetTeamIds },
+  );
 
   return {
     data: serializeFault({ ...doc, _id: result.insertedId } as unknown as Record<string, unknown>, {

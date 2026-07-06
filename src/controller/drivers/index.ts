@@ -13,6 +13,11 @@ import {
 import { validateCreateDriverInput, serializeDriver } from './utils';
 import { createInvitation } from '@/controller/invitations';
 import { sendInvitationEmail } from '@/lib/email';
+import {
+  isCommandConnectionEnabled,
+  stripCommandOwnedFields,
+  MASTER_DATA_MANAGED_MESSAGE,
+} from '@/controller/command-connection/guard';
 import type { CreateDriverInput, UpdateDriverInput } from './types';
 
 /** List drivers with pagination and search. */
@@ -117,6 +122,11 @@ async function resolveDriverRoleId(tenantOid: ObjectId, createdByOid: ObjectId):
 
 /** Create a new driver. */
 export async function createDriver(tenantId: string, userId: string, input: CreateDriverInput) {
+  // Connected tenants add people in Command (staff), then import as drivers.
+  if (await isCommandConnectionEnabled(tenantId)) {
+    return { data: null, error: MASTER_DATA_MANAGED_MESSAGE };
+  }
+
   const validation = validateCreateDriverInput(input);
   if (!validation.valid) {
     return { data: null, error: validation.errors };
@@ -320,6 +330,18 @@ export async function updateDriver(
     isArchived: { $ne: true },
   });
   if (!existing) return { data: null, error: 'Driver not found' };
+
+  // Command-sourced drivers: name/email/mobile are owned by Command staff —
+  // strip them from local edits (licence & AM-only fields still save).
+  if (existing.source === 'command') {
+    const guarded = stripCommandOwnedFields(input as Record<string, unknown>, 'drivers');
+    input = guarded.input as UpdateDriverInput;
+    if (guarded.stripped.length > 0) {
+      console.warn(
+        `[drivers] Ignored Command-owned field edit on ${driverId}: ${guarded.stripped.join(', ')}`,
+      );
+    }
+  }
 
   const $set: Record<string, unknown> = {
     updatedBy: ObjectId.createFromHexString(userId),

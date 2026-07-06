@@ -9,10 +9,13 @@
  */
 import { ObjectId } from 'mongodb';
 import { getPartsCollection } from '@/lib/mongodb';
+import { getCommandStockItem } from '@/lib/command/stock';
 import type { WOPart } from './types';
 
 interface PartInput {
-  partId: string;
+  partId?: string;
+  commandStockId?: string;
+  commandLocationId?: string;
   quantity: number;
   unitCost?: number;
 }
@@ -33,7 +36,7 @@ export async function resolveWorkOrderParts(
 ): Promise<{ parts: WOPart[]; partsCost: number }> {
   const byId = new Map<string, { quantity: number; unitCost?: number }>();
   for (const it of inputs || []) {
-    if (!it || !ObjectId.isValid(it.partId)) continue;
+    if (!it || it.commandStockId || !it.partId || !ObjectId.isValid(it.partId)) continue;
     const qty = Number(it.quantity);
     if (!Number.isFinite(qty) || qty <= 0) continue;
     const prev = byId.get(it.partId);
@@ -68,6 +71,82 @@ export async function resolveWorkOrderParts(
       lineTotal,
     });
     partsCost += lineTotal;
+  }
+  return { parts, partsCost: money(partsCost) };
+}
+
+/**
+ * Resolve Command stock inputs into denormalized WO lines (source 'command').
+ * Name/code/cost come from Command (`financialInfo.costPrice` is the cost
+ * basis unless the caller supplied one). Nothing is consumed here — the OUT is
+ * pushed to Command at COMPLETION (strict lockstep, see completeWorkOrder).
+ * Carries over pushed-state from `existing` lines so an edit never re-pushes.
+ * Throws when a Command item can't be resolved (caller surfaces the error).
+ */
+export async function resolveCommandStockParts(
+  authTenantId: string,
+  inputs: PartInput[] | undefined,
+  existing?: WOPart[],
+): Promise<{ parts: WOPart[]; partsCost: number }> {
+  const byId = new Map<
+    string,
+    { quantity: number; unitCost?: number; commandLocationId?: string }
+  >();
+  for (const it of inputs || []) {
+    if (!it?.commandStockId) continue;
+    const qty = Number(it.quantity);
+    if (!Number.isFinite(qty) || qty <= 0) continue;
+    const prev = byId.get(it.commandStockId);
+    if (prev) {
+      prev.quantity += qty;
+      if (it.unitCost != null) prev.unitCost = it.unitCost;
+      if (it.commandLocationId) prev.commandLocationId = it.commandLocationId;
+    } else {
+      byId.set(it.commandStockId, {
+        quantity: qty,
+        unitCost: it.unitCost,
+        commandLocationId: it.commandLocationId,
+      });
+    }
+  }
+  if (byId.size === 0) return { parts: [], partsCost: 0 };
+
+  const pushedBefore = new Map(
+    (existing || [])
+      .filter((p) => p.source === 'command' && p.commandStockId)
+      .map((p) => [p.commandStockId as string, p]),
+  );
+
+  const parts: WOPart[] = [];
+  let partsCost = 0;
+  for (const [stockId, agg] of byId) {
+    const res = await getCommandStockItem(stockId, authTenantId);
+    if (!res.ok) {
+      throw new Error(
+        `Could not resolve Command stock item ${stockId} (${res.reason}${res.status ? ` ${res.status}` : ''})`,
+      );
+    }
+    const unitCost =
+      agg.unitCost != null && agg.unitCost >= 0 ? agg.unitCost : res.data.costPrice;
+    const lineTotal = money(unitCost * agg.quantity);
+    const prior = pushedBefore.get(stockId);
+    // A line already pushed to Command must keep its pushed state and quantity —
+    // changing it after the OUT was applied would desync the two ledgers.
+    const alreadyPushed = prior?.pushedToCommand === true;
+    parts.push({
+      partId: null,
+      partName: res.data.name,
+      partNumber: res.data.code,
+      quantity: alreadyPushed ? prior!.quantity : agg.quantity,
+      unitCost: alreadyPushed ? prior!.unitCost : unitCost,
+      lineTotal: alreadyPushed ? prior!.lineTotal : lineTotal,
+      source: 'command',
+      commandStockId: stockId,
+      commandLocationId: agg.commandLocationId ?? prior?.commandLocationId,
+      pushedToCommand: alreadyPushed,
+      commandTransactionId: prior?.commandTransactionId ?? null,
+    });
+    partsCost += alreadyPushed ? prior!.lineTotal : lineTotal;
   }
   return { parts, partsCost: money(partsCost) };
 }
@@ -113,6 +192,8 @@ export async function applyInventoryDelta(
   const sumByPart = (list: WOPart[] | undefined) => {
     const m = new Map<string, number>();
     for (const p of list || []) {
+      // Command stock lines live in Command's ledger — never touch AM inventory.
+      if (!p.partId || p.source === 'command') continue;
       const key = p.partId.toString();
       m.set(key, (m.get(key) || 0) + p.quantity);
     }

@@ -13,7 +13,7 @@ import {
 } from '@/lib/mongodb';
 import { DEFAULT_REMINDER_DAYS, DOCUMENT_TYPE_LABELS, type DocumentStatus } from '@/constants/documents';
 import { validateCreateDocumentInput, serializeDocument, computeDocumentStatus, daysUntil } from './utils';
-import { notifyTenantManagersOnce } from '@/controller/notifications';
+import { notifyEventOnce } from '@/controller/notifications';
 import type { CreateDocumentInput, UpdateDocumentInput, DocumentResponse } from './types';
 
 /** Owner-scope filter (asset/driver/team) → the id field on the doc. */
@@ -134,24 +134,30 @@ async function notifyDocumentCompliance(tenantId: string, doc: Record<string, un
 
     let ownerName = 'A record';
     let link = '/assets';
+    let teamIds: ObjectId[] = [];
     if (doc.scope === 'asset' && doc.assetId) {
       const assetsCol = await getAssetsCollection();
       const asset = await assetsCol.findOne(
         { _id: doc.assetId as ObjectId, tenantId: ObjectId.createFromHexString(tenantId) },
-        { projection: { name: 1 } },
+        { projection: { name: 1, teamIds: 1 } },
       );
       ownerName = (asset?.name as string) || 'An asset';
+      teamIds = (asset?.teamIds as ObjectId[]) ?? [];
       link = `/assets/${(doc.assetId as ObjectId).toString()}`;
     }
 
-    await notifyTenantManagersOnce(tenantId, {
-      type: expired ? 'document_expired' : 'document_expiring',
-      title: `${expired ? 'Compliance expired' : 'Compliance expiring'}: ${label}`,
-      body: `${ownerName} — ${label} ${when}.`,
-      link,
-      entityType: 'document',
-      entityId: (doc._id as ObjectId).toString(),
-    });
+    await notifyEventOnce(
+      tenantId,
+      {
+        type: expired ? 'document_expired' : 'document_expiring',
+        title: `${expired ? 'Compliance expired' : 'Compliance expiring'}: ${label}`,
+        body: `${ownerName} — ${label} ${when}.`,
+        link,
+        entityType: 'document',
+        entityId: (doc._id as ObjectId).toString(),
+      },
+      { teamIds },
+    );
   } catch (err) {
     console.error('[documents] compliance notify failed:', err);
   }

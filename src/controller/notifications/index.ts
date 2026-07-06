@@ -14,6 +14,8 @@ import {
   getTenantsCollection,
 } from '@/lib/mongodb';
 import { publishNotification } from '@/lib/notificationHub';
+import { getRuleForType } from '@/controller/notification-settings';
+import type { TeamRole } from '@/controller/notification-settings/types';
 
 export type NotificationType =
   | 'defect_created'
@@ -127,6 +129,101 @@ async function resolveTenantManagerIds(tenantOid: ObjectId): Promise<ObjectId[]>
   return ids;
 }
 
+/**
+ * Resolve the tenant's Admins/Owner ONLY (owner + admin role members + owner id).
+ * Used as the "CC Admins" safety net for team-scoped rules — deliberately excludes
+ * plain managers so team routing doesn't re-notify the whole manager pool.
+ */
+async function resolveTenantAdminIds(tenantOid: ObjectId): Promise<ObjectId[]> {
+  const [rolesCol, membersCol, tenantsCol] = await Promise.all([
+    getRolesCollection(),
+    getTenantMembersCollection(),
+    getTenantsCollection(),
+  ]);
+
+  const adminRoles = await rolesCol
+    .find({ tenantId: tenantOid, nameLower: { $in: ['owner', 'admin'] } }, { projection: { _id: 1 } })
+    .toArray();
+  const roleIds = adminRoles.map((r) => r._id);
+
+  const ids: ObjectId[] = [];
+  if (roleIds.length > 0) {
+    const members = await membersCol
+      .find(
+        { tenantId: tenantOid, roleId: { $in: roleIds }, isActive: true, portalUser: { $ne: false } },
+        { projection: { userId: 1 } },
+      )
+      .toArray();
+    for (const m of members) if (m.userId) ids.push(m.userId as ObjectId);
+  }
+
+  const tenant = await tenantsCol.findOne({ _id: tenantOid }, { projection: { ownerId: 1 } });
+  if (tenant?.ownerId) ids.push(tenant.ownerId as ObjectId);
+
+  return ids;
+}
+
+/**
+ * Resolve members of the given teams whose per-team role is in `roles`
+ * (`managing` / `following`), from `tenantMembers.teamMemberships[]`.
+ */
+async function resolveTeamMemberIds(
+  tenantOid: ObjectId,
+  teamIds: ObjectId[],
+  roles: TeamRole[],
+): Promise<ObjectId[]> {
+  if (teamIds.length === 0 || roles.length === 0) return [];
+  const membersCol = await getTenantMembersCollection();
+  const members = await membersCol
+    .find(
+      {
+        tenantId: tenantOid,
+        isActive: true,
+        portalUser: { $ne: false },
+        teamMemberships: { $elemMatch: { teamId: { $in: teamIds }, role: { $in: roles } } },
+      },
+      { projection: { userId: 1 } },
+    )
+    .toArray();
+
+  const ids: ObjectId[] = [];
+  for (const m of members) if (m.userId) ids.push(m.userId as ObjectId);
+  return ids;
+}
+
+/**
+ * Resolve recipients for an event according to the tenant's admin-configured rule.
+ * Falls back to all managers whenever a team rule would otherwise notify nobody
+ * (unassigned asset, empty team, no admins) — so an alert is never silently dropped.
+ */
+async function resolveEventRecipients(
+  tenantId: string,
+  tenantOid: ObjectId,
+  type: NotificationType,
+  ctx: { teamIds?: (string | ObjectId)[] },
+): Promise<ObjectId[]> {
+  const rule = await getRuleForType(tenantId, type);
+
+  // Not admin-configurable → keep legacy behaviour (all managers).
+  if (!rule) return resolveTenantManagerIds(tenantOid);
+  if (rule.audience === 'off') return [];
+  if (rule.audience === 'all_managers') return resolveTenantManagerIds(tenantOid);
+
+  // audience === 'team'
+  const teamIds = (ctx.teamIds ?? [])
+    .map((t) => (typeof t === 'string' ? (ObjectId.isValid(t) ? ObjectId.createFromHexString(t) : null) : t))
+    .filter((t): t is ObjectId => t !== null);
+
+  if (teamIds.length === 0) return resolveTenantManagerIds(tenantOid); // unassigned asset → don't drop
+
+  const teamMembers = await resolveTeamMemberIds(tenantOid, teamIds, rule.teamRoles);
+  const admins = rule.ccAdmins ? await resolveTenantAdminIds(tenantOid) : [];
+  const combined = [...teamMembers, ...admins];
+
+  if (combined.length === 0) return resolveTenantManagerIds(tenantOid); // team empty → don't drop
+  return combined;
+}
+
 /** Notify the tenant's managers (Owner/Admin). Best-effort. */
 export async function notifyTenantManagers(
   tenantId: string,
@@ -153,6 +250,26 @@ export async function notifyUser(
     await createNotifications(tenantOid, [recipient], payload);
   } catch (err) {
     console.error('[notifications] notifyUser failed:', err);
+  }
+}
+
+/**
+ * Notify the recipients configured for this event type. Team-scoped by default:
+ * pass the entity's `teamIds` (e.g. the asset's) so the responsible team is
+ * targeted instead of every portal manager. Admin routing rules are honoured;
+ * unresolved team scopes fall back to all managers. Best-effort.
+ */
+export async function notifyEvent(
+  tenantId: string,
+  payload: NotificationPayload,
+  ctx: { teamIds?: (string | ObjectId)[] } = {},
+): Promise<void> {
+  try {
+    const tenantOid = ObjectId.createFromHexString(tenantId);
+    const recipients = await resolveEventRecipients(tenantId, tenantOid, payload.type, ctx);
+    await createNotifications(tenantOid, recipients, payload);
+  } catch (err) {
+    console.error('[notifications] notifyEvent failed:', err);
   }
 }
 
@@ -214,6 +331,22 @@ export async function notifyUsersOnce(
     await createNotificationsOnce(tenantOid, recipients, payload, windowMs);
   } catch (err) {
     console.error('[notifications] notifyUsersOnce failed:', err);
+  }
+}
+
+/** Deduped variant of notifyEvent (for the periodic scan). Best-effort. */
+export async function notifyEventOnce(
+  tenantId: string,
+  payload: NotificationPayload,
+  ctx: { teamIds?: (string | ObjectId)[] } = {},
+  windowMs?: number,
+): Promise<void> {
+  try {
+    const tenantOid = ObjectId.createFromHexString(tenantId);
+    const recipients = await resolveEventRecipients(tenantId, tenantOid, payload.type, ctx);
+    await createNotificationsOnce(tenantOid, recipients, payload, windowMs);
+  } catch (err) {
+    console.error('[notifications] notifyEventOnce failed:', err);
   }
 }
 
