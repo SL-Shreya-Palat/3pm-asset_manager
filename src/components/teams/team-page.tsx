@@ -45,7 +45,7 @@ import { TableSkeleton } from '@/components/ui/skeleton';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable, applyTableFilters } from '@/hooks/use-data-table';
 import { ASSET_STATUS_CONFIG, type AssetStatus } from '@/constants/assets';
-import type { TeamRow, AssetRow, DriverRow, UserRow, DefectRow, Pagination } from './types';
+import type { TeamRow, AssetRow, DriverRow, UserRow, DefectRow, InspectionRow, Pagination } from './types';
 
 const TEAM_TABS = ['Users', 'Drivers', 'Assets', 'Inspections', 'Defects', 'Documents'] as const;
 type TeamTab = (typeof TEAM_TABS)[number];
@@ -63,6 +63,9 @@ export function TeamPage() {
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TeamTab>('Users');
   const [rowsPerPage, setRowsPerPage] = useState(25);
+
+  // Tab content search (shared across all tabs, resets on tab change)
+  const [tabSearch, setTabSearch, debouncedTabSearch] = useDebouncedSearch(300);
 
   // Team create/edit dialog
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -163,6 +166,26 @@ export function TeamPage() {
   const [selectedDefectIds, setSelectedDefectIds] = useState<Set<string>>(new Set());
   const [addingDefects, setAddingDefects] = useState(false);
 
+  // Inspections tab state
+  const [teamInspections, setTeamInspections] = useState<InspectionRow[]>([]);
+  const [teamInspectionsPagination, setTeamInspectionsPagination] = useState<Pagination>({
+    page: 1, limit: 25, total: 0, hasMore: false,
+  });
+  const [teamInspectionsLoading, setTeamInspectionsLoading] = useState(false);
+  const [teamInspectionsRowsPerPage, setTeamInspectionsRowsPerPage] = useState(25);
+
+  // Add Inspections dialog
+  const [addInspectionsDialogOpen, setAddInspectionsDialogOpen] = useState(false);
+  const [allInspections, setAllInspections] = useState<InspectionRow[]>([]);
+  const [allInspectionsPagination, setAllInspectionsPagination] = useState<Pagination>({
+    page: 1, limit: 25, total: 0, hasMore: false,
+  });
+  const [allInspectionsLoading, setAllInspectionsLoading] = useState(false);
+  const [allInspectionsSearch, setAllInspectionsSearch, debouncedAllInspectionsSearch] = useDebouncedSearch(300);
+  const [allInspectionsRowsPerPage, setAllInspectionsRowsPerPage] = useState(25);
+  const [selectedInspectionIds, setSelectedInspectionIds] = useState<Set<string>>(new Set());
+  const [addingInspections, setAddingInspections] = useState(false);
+
   // Table features: teams table
   const teamsTable = useDataTable();
   // Table features: team assets table
@@ -173,6 +196,8 @@ export function TeamPage() {
   const teamUsersTable = useDataTable();
   // Table features: team defects table
   const teamDefectsTable = useDataTable();
+  // Table features: team inspections table
+  const teamInspectionsTable = useDataTable();
 
   const teamAssetFilterDefs: DataTableFilterDef[] = useMemo(() => [
     {
@@ -256,6 +281,7 @@ export function TeamPage() {
       params.set('page', String(page));
       params.set('limit', String(teamAssetsRowsPerPage));
       params.set('teamId', selectedTeamId);
+      if (debouncedTabSearch) params.set('search', debouncedTabSearch);
       const res = await axios.get(`/api/assets?${params.toString()}`, { withCredentials: true });
       const data = res.data.data;
       setTeamAssets(data.items || []);
@@ -266,7 +292,7 @@ export function TeamPage() {
     } finally {
       setTeamAssetsLoading(false);
     }
-  }, [selectedTeamId, teamAssetsRowsPerPage]);
+  }, [selectedTeamId, teamAssetsRowsPerPage, debouncedTabSearch]);
 
   useEffect(() => {
     if (activeTab === 'Assets' && selectedTeamId) {
@@ -286,6 +312,7 @@ export function TeamPage() {
       params.set('page', String(page));
       params.set('limit', String(teamDriversRowsPerPage));
       params.set('teamId', selectedTeamId);
+      if (debouncedTabSearch) params.set('search', debouncedTabSearch);
       const res = await axios.get(`/api/drivers?${params.toString()}`, { withCredentials: true });
       const data = res.data.data;
       setTeamDrivers(data.items || []);
@@ -296,7 +323,7 @@ export function TeamPage() {
     } finally {
       setTeamDriversLoading(false);
     }
-  }, [selectedTeamId, teamDriversRowsPerPage]);
+  }, [selectedTeamId, teamDriversRowsPerPage, debouncedTabSearch]);
 
   useEffect(() => {
     if (activeTab === 'Drivers' && selectedTeamId) {
@@ -316,6 +343,7 @@ export function TeamPage() {
       params.set('page', String(page));
       params.set('limit', String(teamUsersRowsPerPage));
       params.set('teamId', selectedTeamId);
+      if (debouncedTabSearch) params.set('search', debouncedTabSearch);
       const res = await axios.get(`/api/users?${params.toString()}`, { withCredentials: true });
       const data = res.data.data;
       setTeamUsers(data.items || []);
@@ -326,7 +354,7 @@ export function TeamPage() {
     } finally {
       setTeamUsersLoading(false);
     }
-  }, [selectedTeamId, teamUsersRowsPerPage]);
+  }, [selectedTeamId, teamUsersRowsPerPage, debouncedTabSearch]);
 
   useEffect(() => {
     if (activeTab === 'Users' && selectedTeamId) {
@@ -346,6 +374,7 @@ export function TeamPage() {
       params.set('page', String(page));
       params.set('limit', String(teamDefectsRowsPerPage));
       params.set('teamId', selectedTeamId);
+      if (debouncedTabSearch) params.set('search', debouncedTabSearch);
       const res = await axios.get(`/api/defects?${params.toString()}`, { withCredentials: true });
       const data = res.data.data;
       setTeamDefects(data.items || []);
@@ -356,13 +385,44 @@ export function TeamPage() {
     } finally {
       setTeamDefectsLoading(false);
     }
-  }, [selectedTeamId, teamDefectsRowsPerPage]);
+  }, [selectedTeamId, teamDefectsRowsPerPage, debouncedTabSearch]);
 
   useEffect(() => {
     if (activeTab === 'Defects' && selectedTeamId) {
       fetchTeamDefects(1);
     }
   }, [activeTab, selectedTeamId, fetchTeamDefects]);
+
+  // ── Fetch team inspections ──
+  const fetchTeamInspections = useCallback(async (page: number) => {
+    if (!selectedTeamId) {
+      setTeamInspections([]);
+      return;
+    }
+    try {
+      setTeamInspectionsLoading(true);
+      const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('limit', String(teamInspectionsRowsPerPage));
+      params.set('teamId', selectedTeamId);
+      if (debouncedTabSearch) params.set('search', debouncedTabSearch);
+      const res = await axios.get(`/api/inspection-submissions?${params.toString()}`, { withCredentials: true });
+      const data = res.data.data;
+      setTeamInspections(data.items || []);
+      setTeamInspectionsPagination(data.pagination || { page: 1, limit: teamInspectionsRowsPerPage, total: 0, hasMore: false });
+    } catch (err) {
+      console.error('Failed to fetch team inspections:', err);
+      setTeamInspections([]);
+    } finally {
+      setTeamInspectionsLoading(false);
+    }
+  }, [selectedTeamId, teamInspectionsRowsPerPage, debouncedTabSearch]);
+
+  useEffect(() => {
+    if (activeTab === 'Inspections' && selectedTeamId) {
+      fetchTeamInspections(1);
+    }
+  }, [activeTab, selectedTeamId, fetchTeamInspections]);
 
   // ── Fetch all drivers for add dialog ──
   const fetchAllDrivers = useCallback(async (page: number) => {
@@ -467,6 +527,32 @@ export function TeamPage() {
       fetchAllDefects(1);
     }
   }, [addDefectsDialogOpen, fetchAllDefects]);
+
+  // ── Fetch all inspections for add dialog ──
+  const fetchAllInspections = useCallback(async (page: number) => {
+    try {
+      setAllInspectionsLoading(true);
+      const params = new URLSearchParams();
+      params.set('page', String(page));
+      params.set('limit', String(allInspectionsRowsPerPage));
+      if (debouncedAllInspectionsSearch) params.set('search', debouncedAllInspectionsSearch);
+      const res = await axios.get(`/api/inspection-submissions?${params.toString()}`, { withCredentials: true });
+      const data = res.data.data;
+      setAllInspections(data.items || []);
+      setAllInspectionsPagination(data.pagination || { page: 1, limit: allInspectionsRowsPerPage, total: 0, hasMore: false });
+    } catch (err) {
+      console.error('Failed to fetch inspections:', err);
+      setAllInspections([]);
+    } finally {
+      setAllInspectionsLoading(false);
+    }
+  }, [debouncedAllInspectionsSearch, allInspectionsRowsPerPage]);
+
+  useEffect(() => {
+    if (addInspectionsDialogOpen) {
+      fetchAllInspections(1);
+    }
+  }, [addInspectionsDialogOpen, fetchAllInspections]);
 
   // ── Sidebar helpers ──
   const filteredTeams = teams.filter((team) =>
@@ -766,6 +852,52 @@ export function TeamPage() {
     }
   };
 
+  // ── Inspection assignment handlers ──
+  const handleOpenAddInspections = () => {
+    setSelectedInspectionIds(new Set());
+    setAllInspectionsSearch('');
+    setAddInspectionsDialogOpen(true);
+  };
+
+  const toggleInspectionSelection = (inspectionId: string) => {
+    setSelectedInspectionIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(inspectionId)) next.delete(inspectionId);
+      else next.add(inspectionId);
+      return next;
+    });
+  };
+
+  const handleAddInspections = async () => {
+    if (!selectedTeamId || selectedInspectionIds.size === 0) return;
+    setAddingInspections(true);
+    try {
+      await axios.post(
+        `/api/teams/${selectedTeamId}/inspections`,
+        { inspectionIds: [...selectedInspectionIds] },
+        { withCredentials: true },
+      );
+      setAddInspectionsDialogOpen(false);
+      fetchTeamInspections(1);
+      fetchTeams(pagination.page);
+    } catch (err) {
+      console.error('Failed to add inspections:', err);
+    } finally {
+      setAddingInspections(false);
+    }
+  };
+
+  const handleRemoveInspectionFromTeam = async (inspectionId: string) => {
+    if (!selectedTeamId) return;
+    try {
+      await axios.delete(`/api/teams/${selectedTeamId}/inspections?inspectionId=${inspectionId}`, { withCredentials: true });
+      fetchTeamInspections(teamInspectionsPagination.page);
+      fetchTeams(pagination.page);
+    } catch (err) {
+      console.error('Failed to remove inspection:', err);
+    }
+  };
+
   // ── Status badge helper ──
   const getStatusBadge = (status: string) => {
     const normalized = status === 'active' ? 'in_service' : status;
@@ -812,6 +944,14 @@ export function TeamPage() {
         <Button onClick={handleOpenAddDefects}>
           <Plus className="h-4 w-4" />
           Add Defects
+        </Button>
+      );
+    }
+    if (activeTab === 'Inspections') {
+      return (
+        <Button onClick={handleOpenAddInspections}>
+          <Plus className="h-4 w-4" />
+          Add Inspections
         </Button>
       );
     }
@@ -1349,6 +1489,88 @@ export function TeamPage() {
     },
   ];
 
+  // ── Inspection columns ──
+  const teamInspectionColumns: DataTableColumn<InspectionRow>[] = [
+    {
+      key: 'inspectionNumber',
+      header: 'Inspection #',
+      label: 'Inspection Number',
+      render: (item) => (
+        <span className="font-medium text-foreground">{item.inspectionNumber || '—'}</span>
+      ),
+    },
+    {
+      key: 'formTitle',
+      header: 'Form',
+      label: 'Form Title',
+      render: (item) => (
+        <span className="text-foreground">{item.formTitle || '—'}</span>
+      ),
+    },
+    {
+      key: 'assetName',
+      header: 'Asset',
+      label: 'Asset',
+      render: (item) => (
+        <span className="text-muted-foreground">{item.assetName || '—'}</span>
+      ),
+    },
+    {
+      key: 'operatorName',
+      header: 'Operator',
+      label: 'Operator',
+      render: (item) => (
+        <span className="text-muted-foreground">{item.operatorName || '—'}</span>
+      ),
+    },
+    {
+      key: 'result',
+      header: 'Result',
+      label: 'Result',
+      render: (item) => (
+        <Badge variant={item.result === 'pass' ? 'success' : 'destructive'}>
+          {item.result === 'pass' ? 'Pass' : 'Fail'}
+        </Badge>
+      ),
+    },
+    {
+      key: 'defectCount',
+      header: 'Defects',
+      label: 'Defect Count',
+      align: 'center',
+      render: (item) => (
+        <span className="text-muted-foreground">{item.defectCount}</span>
+      ),
+    },
+    {
+      key: 'submittedAt',
+      header: 'Submitted',
+      label: 'Submitted At',
+      render: (item) => (
+        <span className="text-muted-foreground">
+          {item.submittedAt ? new Date(item.submittedAt).toLocaleDateString() : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      align: 'right',
+      render: (item) => (
+        <div className="flex items-center justify-end">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => handleRemoveInspectionFromTeam(item.id)}
+            className="text-destructive hover:text-destructive"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div className="flex h-full">
       {/* Left Sidebar */}
@@ -1413,7 +1635,7 @@ export function TeamPage() {
               {TEAM_TABS.map((tab) => (
                 <button
                   key={tab}
-                  onClick={() => setActiveTab(tab)}
+                  onClick={() => { setActiveTab(tab); setTabSearch(''); }}
                   className={cn(
                     'px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px',
                     activeTab === tab
@@ -1467,6 +1689,7 @@ export function TeamPage() {
                 onHiddenColumnKeysChange={teamUsersTable.setHiddenColumnKeys}
                 density={teamUsersTable.density}
                 onDensityChange={teamUsersTable.setDensity}
+                searchNode={<SearchInput value={tabSearch} onChange={setTabSearch} placeholder="Search users..." />}
               />
               <DataTable<UserRow>
                 columns={teamUserColumns}
@@ -1497,6 +1720,7 @@ export function TeamPage() {
                 filters={teamAssetsTable.filters}
                 onFilterChange={teamAssetsTable.setFilter}
                 onFiltersClear={teamAssetsTable.clearFilters}
+                searchNode={<SearchInput value={tabSearch} onChange={setTabSearch} placeholder="Search assets..." />}
               />
               <DataTable<AssetRow>
                 columns={teamAssetColumns}
@@ -1523,6 +1747,7 @@ export function TeamPage() {
                 onHiddenColumnKeysChange={teamDriversTable.setHiddenColumnKeys}
                 density={teamDriversTable.density}
                 onDensityChange={teamDriversTable.setDensity}
+                searchNode={<SearchInput value={tabSearch} onChange={setTabSearch} placeholder="Search drivers..." />}
               />
               <DataTable<DriverRow>
                 columns={teamDriverColumns}
@@ -1553,6 +1778,7 @@ export function TeamPage() {
                 filters={teamDefectsTable.filters}
                 onFilterChange={teamDefectsTable.setFilter}
                 onFiltersClear={teamDefectsTable.clearFilters}
+                searchNode={<SearchInput value={tabSearch} onChange={setTabSearch} placeholder="Search defects..." />}
               />
               <DataTable<DefectRow>
                 columns={teamDefectColumns}
@@ -1570,8 +1796,35 @@ export function TeamPage() {
             </>
           )}
 
+          {/* Inspections tab */}
+          {selectedTeamId && activeTab === 'Inspections' && (
+            <>
+              <DataTableToolbar
+                columns={teamInspectionColumns}
+                hiddenColumnKeys={teamInspectionsTable.hiddenColumnKeys}
+                onHiddenColumnKeysChange={teamInspectionsTable.setHiddenColumnKeys}
+                density={teamInspectionsTable.density}
+                onDensityChange={teamInspectionsTable.setDensity}
+                searchNode={<SearchInput value={tabSearch} onChange={setTabSearch} placeholder="Search inspections..." />}
+              />
+              <DataTable<InspectionRow>
+                columns={teamInspectionColumns}
+                data={teamInspections}
+                pagination={teamInspectionsPagination}
+                loading={teamInspectionsLoading}
+                rowsPerPage={teamInspectionsRowsPerPage}
+                onPageChange={fetchTeamInspections}
+                onRowsPerPageChange={setTeamInspectionsRowsPerPage}
+                rowKey={(i) => i.id}
+                density={teamInspectionsTable.density}
+                hiddenColumnKeys={teamInspectionsTable.hiddenColumnKeys}
+                emptyMessage='No inspections assigned. Click "Add Inspections" to assign inspections to this team.'
+              />
+            </>
+          )}
+
           {/* Other tabs */}
-          {selectedTeamId && activeTab !== 'Users' && activeTab !== 'Assets' && activeTab !== 'Drivers' && activeTab !== 'Defects' && (
+          {selectedTeamId && activeTab !== 'Users' && activeTab !== 'Assets' && activeTab !== 'Drivers' && activeTab !== 'Defects' && activeTab !== 'Inspections' && (
             <div className="flex items-center justify-center h-40 rounded-lg border bg-card text-muted-foreground">
               {activeTab} coming soon
             </div>
@@ -1955,6 +2208,92 @@ export function TeamPage() {
             </Button>
             <Button onClick={handleAddDefects} disabled={addingDefects || selectedDefectIds.size === 0}>
               {addingDefects ? 'Adding...' : `Add Defects (${selectedDefectIds.size})`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Inspections Dialog */}
+      <Dialog open={addInspectionsDialogOpen} onOpenChange={setAddInspectionsDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Add Inspections</DialogTitle>
+            <DialogDescription>Select the inspections to add to the team.</DialogDescription>
+          </DialogHeader>
+
+          <SearchInput
+            value={allInspectionsSearch}
+            onChange={setAllInspectionsSearch}
+            placeholder="Search inspections..."
+          />
+
+          <div className="rounded-lg border overflow-hidden mt-2 max-h-[400px] overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0">
+                <tr className="border-b bg-muted/50">
+                  <th className="w-10 px-4 py-3" />
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3">Inspection #</th>
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3">Form</th>
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3">Asset</th>
+                  <th className="text-left font-medium text-muted-foreground px-4 py-3">Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allInspectionsLoading ? (
+                  <TableSkeleton columns={5} rows={5} />
+                ) : allInspections.length === 0 ? (
+                  <tr><td colSpan={5} className="text-center py-8 text-muted-foreground">No inspections found</td></tr>
+                ) : (
+                  allInspections.map((inspection) => {
+                    const isAlreadyInTeam = selectedTeamId ? inspection.teamIds?.includes(selectedTeamId) : false;
+                    const isSelected = selectedInspectionIds.has(inspection.id);
+                    return (
+                      <tr
+                        key={inspection.id}
+                        className={cn(
+                          'border-b last:border-0 transition-colors cursor-pointer',
+                          isSelected ? 'bg-primary/5' : 'hover:bg-muted/30',
+                          isAlreadyInTeam && 'opacity-50',
+                        )}
+                        onClick={() => { if (!isAlreadyInTeam) toggleInspectionSelection(inspection.id); }}
+                      >
+                        <td className="px-4 py-3">
+                          <Checkbox
+                            checked={isSelected || isAlreadyInTeam}
+                            disabled={isAlreadyInTeam}
+                            onCheckedChange={() => { if (!isAlreadyInTeam) toggleInspectionSelection(inspection.id); }}
+                          />
+                        </td>
+                        <td className="px-4 py-3 font-medium text-foreground">{inspection.inspectionNumber || '—'}</td>
+                        <td className="px-4 py-3 text-foreground">{inspection.formTitle}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{inspection.assetName || '—'}</td>
+                        <td className="px-4 py-3">
+                          <Badge variant={inspection.result === 'pass' ? 'success' : 'destructive'}>
+                            {inspection.result === 'pass' ? 'Pass' : 'Fail'}
+                          </Badge>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <TablePagination
+            page={allInspectionsPagination.page}
+            limit={allInspectionsRowsPerPage}
+            total={allInspectionsPagination.total}
+            onPageChange={fetchAllInspections}
+            onRowsPerPageChange={setAllInspectionsRowsPerPage}
+          />
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddInspectionsDialogOpen(false)} disabled={addingInspections}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddInspections} disabled={addingInspections || selectedInspectionIds.size === 0}>
+              {addingInspections ? 'Adding...' : `Add Inspections (${selectedInspectionIds.size})`}
             </Button>
           </DialogFooter>
         </DialogContent>

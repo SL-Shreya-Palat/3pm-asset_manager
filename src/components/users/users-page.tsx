@@ -6,7 +6,7 @@ import axios from 'axios';
 import {
   Plus,
   Trash2,
-  ChevronRight,
+  Eye,
   User,
   Archive,
   ArchiveRestore,
@@ -168,7 +168,7 @@ export function UsersPage() {
       key: 'status',
       header: 'Status',
       render: (user) => (
-        <Badge variant={user.isActive ? 'default' : 'secondary'}>
+        <Badge variant={user.isActive ? 'success' : 'secondary'}>
           {user.isActive ? 'Active' : 'Inactive'}
         </Badge>
       ),
@@ -181,7 +181,7 @@ export function UsersPage() {
         <RowActions>
           {!showArchived && (
             <>
-              <RowActionButton label="View" tone="primary" icon={<ChevronRight />} onClick={() => router.push(`/people/users/${user.id}`)} />
+              <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/people/users/${user.id}`)} />
               <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(user)} />
             </>
           )}
@@ -212,6 +212,7 @@ export function UsersPage() {
           value={search}
           onChange={setSearch}
           placeholder="Search users..."
+          className="max-w-sm"
         />
         <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
       </div>

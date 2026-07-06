@@ -12,7 +12,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 import type { UserRow } from './types';
 
-const USER_TABS = ['General Details', 'Notifications', 'Team Management', 'Permissions'] as const;
+const USER_TABS = ['General Details', 'Notifications', 'Team Management'] as const;
 type UserTab = (typeof USER_TABS)[number];
 
 interface UserDetailPageProps {
@@ -104,7 +104,6 @@ export function UserDetailPage({ userId }: UserDetailPageProps) {
         {activeTab === 'General Details' && <GeneralDetailsTab user={user} />}
         {activeTab === 'Notifications' && <PlaceholderTab label="Notifications" />}
         {activeTab === 'Team Management' && <PlaceholderTab label="Team Management" />}
-        {activeTab === 'Permissions' && <PlaceholderTab label="Permissions" />}
       </div>
     </div>
   );
@@ -129,7 +128,7 @@ function GeneralDetailsTab({ user }: { user: UserRow }) {
             <div>
               <p className="text-sm font-medium text-muted-foreground">Status</p>
               <div className="mt-1">
-                <Badge variant={user.isActive ? 'default' : 'secondary'}>
+                <Badge variant={user.isActive ? 'success' : 'secondary'}>
                   {user.isActive ? 'Active' : 'Inactive'}
                 </Badge>
               </div>

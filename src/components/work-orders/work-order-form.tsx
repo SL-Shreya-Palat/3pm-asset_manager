@@ -359,16 +359,7 @@ export function WorkOrderForm({
     clearFieldError('thirdPartyEmail');
   };
 
-  // Service task search
-  const [taskSearch, setTaskSearch] = useState('');
-
-  // Service task toggle
-  const toggleServiceTask = (taskId: string) => {
-    setServiceTaskIds((prev) =>
-      prev.includes(taskId) ? prev.filter((id) => id !== taskId) : [...prev, taskId],
-    );
-    clearFieldError('serviceTaskIds');
-  };
+  // Service task helpers removed — now handled by SearchableSelect.
 
   // A WO can correct one or more of the asset's defects, chosen from the dropdown.
   const addDefect = (defectId: string) => {
@@ -532,69 +523,44 @@ export function WorkOrderForm({
           <FormSection icon={Wrench} title="Items">
             <div>
               <Label>Items {!isItemsOptional && <span className="text-destructive">*</span>}</Label>
-              <div className="mt-1.5 space-y-2">
-                {serviceTasks.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No service tasks available.</p>
-                ) : (
-                  <div className="rounded-lg border border-border bg-card shadow-sm overflow-hidden">
-                    <div className="px-3 py-2 border-b border-border">
-                      <div className="relative">
-                        <Wrench className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                        <input
-                          type="text"
-                          value={taskSearch}
-                          onChange={(e) => setTaskSearch(e.target.value)}
-                          placeholder="Search items..."
-                          className="w-full rounded-md border border-input bg-background px-8 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-                        />
-                        {taskSearch && (
-                          <button
-                            type="button"
-                            onClick={() => setTaskSearch('')}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="max-h-[200px] overflow-y-auto">
-                      {(() => {
-                        const filtered = serviceTasks.filter((t) =>
-                          t.name.toLowerCase().includes(taskSearch.toLowerCase()),
-                        );
-                        if (filtered.length === 0) {
-                          return (
-                            <p className="px-3 py-3 text-sm text-muted-foreground text-center">
-                              No items match &ldquo;{taskSearch}&rdquo;
-                            </p>
-                          );
-                        }
-                        return filtered.map((task) => {
-                          const checked = serviceTaskIds.includes(task.id);
-                          return (
-                            <label
-                              key={task.id}
-                              className={cn(
-                                'flex items-center gap-3 px-3 py-2.5 cursor-pointer border-b border-border last:border-0 transition-colors',
-                                checked ? 'bg-primary/5' : 'hover:bg-muted/40',
-                              )}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleServiceTask(task.id)}
-                                className="h-4 w-4 rounded border-border accent-primary focus:ring-primary"
-                              />
-                              <span className={cn('text-sm text-foreground', checked && 'font-medium')}>{task.name}</span>
-                            </label>
-                          );
-                        });
-                      })()}
-                    </div>
-                  </div>
-                )}
+              <div className="mt-1.5">
+                <SearchableSelect
+                  isMulti
+                  options={serviceTasks.map((t) => ({
+                    label: t.name,
+                    value: t.id,
+                  }))}
+                  value={serviceTaskIds}
+                  onValueChange={(ids) => { setServiceTaskIds(ids); clearFieldError('serviceTaskIds'); }}
+                  placeholder="Search and select service tasks..."
+                  searchPlaceholder="Search service tasks..."
+                  emptyMessage="No service tasks found"
+                />
               </div>
+              {serviceTaskIds.length > 0 && (
+                <div className="space-y-2 mt-3">
+                  {serviceTaskIds.map((taskId) => {
+                    const task = serviceTasks.find((t) => t.id === taskId);
+                    return (
+                      <div
+                        key={taskId}
+                        className="flex items-center justify-between rounded-md border border-border bg-white dark:bg-background px-3 py-2"
+                      >
+                        <span className="text-sm text-foreground">{task?.name || 'Unknown Task'}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => setServiceTaskIds((prev) => prev.filter((id) => id !== taskId))}
+                          className="text-muted-foreground hover:text-destructive shrink-0"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
               {fieldErrors.serviceTaskIds && (
                 <p className="text-sm text-destructive mt-1">{fieldErrors.serviceTaskIds}</p>
               )}
@@ -1081,11 +1047,11 @@ export function WorkOrderForm({
           {/* ── Attachments ── */}
           <FormSection icon={Paperclip} title="Attachments">
             <AttachmentUploader
+              variant="dropzone"
               files={attachments}
               onChange={setAttachments}
               accept=".doc,.docx,.pdf,.csv,.xls,.xlsx,.jpg,.jpeg,.png,.heic"
-              hint="Supported: DOC, PDF, CSV, XLS, JPG, HEIC or PNG — Max 50 MB per file"
-              emptyText="No attachments uploaded."
+              hint="DOC, PDF, CSV, XLS, JPG, HEIC or PNG (max. 50 MB)"
               onError={setError}
             />
           </FormSection>
