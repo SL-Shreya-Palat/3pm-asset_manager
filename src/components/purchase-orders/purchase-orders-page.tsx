@@ -35,7 +35,7 @@ import {
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
 import { PurchaseOrderForm } from './purchase-order-form';
@@ -355,7 +355,7 @@ export function PurchaseOrdersPage() {
       sortValue: (order) => new Date(order.createdAt).getTime(),
       render: (order) => (
         <span className="text-muted-foreground text-xs">
-          {new Date(order.createdAt).toLocaleDateString()}
+          {formatDate(order.createdAt)}
         </span>
       ),
     },

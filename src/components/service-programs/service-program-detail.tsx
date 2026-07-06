@@ -12,6 +12,7 @@ import {
   Truck,
   Bell,
 } from 'lucide-react';
+import { formatDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DetailCard, DetailField } from '@/components/ui/detail-field';
@@ -190,7 +191,7 @@ export function ServiceProgramDetail() {
                     label="Next Due / Ends"
                     value={
                       iv.ends.type === 'on' && iv.ends.date
-                        ? `Ends on ${new Date(iv.ends.date).toLocaleDateString()}`
+                        ? `Ends on ${formatDate(iv.ends.date)}`
                         : iv.ends.type === 'after' && iv.ends.occurrences
                           ? `Ends after ${iv.ends.occurrences} occurrences`
                           : iv.ends.type === 'meter_reading' && iv.ends.meterReading
@@ -222,7 +223,7 @@ export function ServiceProgramDetail() {
                   label="Target Date"
                   value={
                     iv.dueOnDate?.enabled && iv.dueOnDate.date
-                      ? new Date(iv.dueOnDate.date).toLocaleDateString()
+                      ? formatDate(iv.dueOnDate.date)
                       : undefined
                   }
                 />

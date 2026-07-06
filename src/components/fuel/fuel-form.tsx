@@ -15,6 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
+import { getTodayDateString } from '@/lib/utils';
 import type { FuelTransactionRow } from './types';
 
 interface FuelFormProps {
@@ -27,6 +29,9 @@ interface FuelFormProps {
 interface AssetOption {
   id: string;
   name: string;
+  assetNumber?: string;
+  make?: string;
+  model?: string;
 }
 
 interface DriverOption {
@@ -46,7 +51,7 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
   // Form fields
   const [assetId, setAssetId] = useState('');
   const [driverId, setDriverId] = useState('');
-  const [date, setDate] = useState('');
+  const [date, setDate] = useState(getTodayDateString());
   const [fuelType, setFuelType] = useState('diesel');
   const [volume, setVolume] = useState('');
   const [unitCost, setUnitCost] = useState('');
@@ -69,6 +74,9 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
         assetItems.map((a: Record<string, unknown>) => ({
           id: (a.id || a._id) as string,
           name: (a.name || a.assetName || `${a.year || ''} ${a.make || ''} ${a.model || ''}`) as string,
+          assetNumber: a.assetNumber as string | undefined,
+          make: a.make as string | undefined,
+          model: a.model as string | undefined,
         })),
       );
 
@@ -205,24 +213,22 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
             <h3 className="text-sm font-semibold text-foreground mb-3">Asset & Driver</h3>
             <Separator className="mb-4" />
             <div className="space-y-4">
-              <div>
-                <Label htmlFor="assetId">
-                  Asset <span className="text-destructive">*</span>
-                </Label>
-                <Select value={assetId} onValueChange={(v) => { setAssetId(v); clearFieldError('assetId'); }}>
-                  <SelectTrigger className={`mt-1.5 ${fieldErrors.assetId ? 'border-destructive' : ''}`}>
-                    <SelectValue placeholder="Select asset" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {assets.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {fieldErrors.assetId && (
-                  <p className="text-sm text-destructive mt-1">{fieldErrors.assetId}</p>
-                )}
-              </div>
+              <SearchableSelect
+                options={assets.map((a) => ({
+                  label: a.name,
+                  value: a.id,
+                  meta: [a.assetNumber ? `#${a.assetNumber}` : '', a.make, a.model].filter(Boolean).join(' · '),
+                }))}
+                value={assetId || null}
+                onValueChange={(v) => { setAssetId(v || ''); clearFieldError('assetId'); }}
+                placeholder="Search and select asset..."
+                searchPlaceholder="Search by name, number, make, or model..."
+                emptyMessage="No assets found"
+                label="Asset"
+                required
+                error={fieldErrors.assetId}
+                className="mt-0"
+              />
               <div>
                 <Label htmlFor="driverId">Driver</Label>
                 <Select value={driverId} onValueChange={setDriverId}>

@@ -31,7 +31,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { WorkOrderForm } from './work-order-form';
 import type { WorkOrderRow, WOStatusOption } from './types';
 
@@ -210,7 +210,7 @@ export function WorkOrderDetail() {
           <DetailField label="Asset" value={order.assetName} />
           <DetailField
             label="Due Date"
-            value={order.dueDate ? new Date(order.dueDate).toLocaleDateString() : undefined}
+            value={order.dueDate ? formatDate(order.dueDate) : undefined}
           />
           <DetailField
             label="Created"

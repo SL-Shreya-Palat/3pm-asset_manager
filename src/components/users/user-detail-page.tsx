@@ -9,7 +9,7 @@ import { PageBackButton } from '@/components/ui/page-back-button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import type { UserRow } from './types';
 
 const USER_TABS = ['General Details', 'Notifications', 'Team Management'] as const;
@@ -138,7 +138,7 @@ function GeneralDetailsTab({ user }: { user: UserRow }) {
               value={user.portalUser ? 'Yes' : 'No'}
             />
           </div>
-          <DetailField label="Created At" value={user.createdAt ? new Date(user.createdAt).toLocaleDateString() : undefined} />
+          <DetailField label="Created At" value={user.createdAt ? formatDate(user.createdAt) : undefined} />
         </div>
       </div>
     </div>

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { AddressInput } from '@/components/ui/address-input';
 import { Separator } from '@/components/ui/separator';
 import type { VendorRow } from './types';
 
@@ -160,12 +161,12 @@ export function VendorForm({ mode, vendor, onClose, onSaved }: VendorFormProps) 
               </div>
               <div>
                 <Label htmlFor="address">Address</Label>
-                <Input
+                <AddressInput
                   id="address"
                   value={address}
-                  onChange={(e) => { setAddress(e.target.value); clearFieldError('address'); }}
-                  placeholder="Enter address"
-                  className={`mt-1.5 ${fieldErrors.address ? 'border-destructive' : ''}`}
+                  onChange={(v) => { setAddress(v); clearFieldError('address'); }}
+                  placeholder="Search address..."
+                  className={`mt-1.5 ${fieldErrors.address ? '[&_input]:border-destructive' : ''}`}
                 />
                 {fieldErrors.address && (
                   <p className="text-sm text-destructive mt-1">{fieldErrors.address}</p>

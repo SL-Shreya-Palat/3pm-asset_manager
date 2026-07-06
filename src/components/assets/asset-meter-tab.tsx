@@ -30,7 +30,7 @@ interface Reading {
 
 function formatDate(iso: string | null) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 const UNIT: Record<string, string> = { odometer: 'mi/km', engine_hours: 'hrs' };

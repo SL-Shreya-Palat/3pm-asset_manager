@@ -33,7 +33,7 @@ import {
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
@@ -363,7 +363,7 @@ export function DefectsPage() {
       sortValue: (defect) => defect.date ? new Date(defect.date).getTime() : null,
       render: (defect) => (
         <span className="text-muted-foreground text-xs">
-          {defect.date ? new Date(defect.date).toLocaleDateString() : '—'}
+          {formatDate(defect.date)}
         </span>
       ),
     },

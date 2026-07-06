@@ -23,7 +23,7 @@ import {
   DetailPageHeaderSkeleton,
 } from '@/components/ui/detail-page-header';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { FaultForm } from './fault-form';
 import { WorkOrderForm } from '@/components/work-orders/work-order-form';
 import type { FaultRow } from './types';
@@ -155,7 +155,7 @@ export function FaultDetail() {
           } />
           <DetailField
             label="Reported At"
-            value={fault.reportedAt ? new Date(fault.reportedAt).toLocaleDateString() : undefined}
+            value={fault.reportedAt ? formatDate(fault.reportedAt) : undefined}
           />
           <DetailField label="Description" value={fault.description} className="col-span-full" />
           {fault.workOrderNumber && (

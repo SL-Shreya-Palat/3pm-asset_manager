@@ -42,14 +42,19 @@ interface ProvisioningResult {
 }
 
 /** Map 3pm-auth role string to local role name and metadata. */
-function mapAuthRole(authRole: string): { name: string; isSystem: boolean; description: string } {
+function mapAuthRole(authRole: string): {
+  name: string;
+  isSystem: boolean;
+  type: 'system' | 'custom';
+  description: string;
+} {
   switch (authRole) {
     case 'owner':
-      return { name: 'Owner', isSystem: true, description: 'Tenant owner — full access' };
+      return { name: 'Owner', isSystem: true, type: 'system', description: 'Tenant owner — full access' };
     case 'admin':
-      return { name: 'Admin', isSystem: true, description: 'Administrator — full access' };
+      return { name: 'Admin', isSystem: true, type: 'system', description: 'Administrator — full access' };
     default:
-      return { name: 'Member', isSystem: false, description: 'Standard member' };
+      return { name: 'Member', isSystem: false, type: 'custom', description: 'Standard member' };
   }
 }
 
@@ -263,6 +268,7 @@ export async function ensureLocalRecords(
             {
               $set: {
                 updatedAt: now,
+                type: roleInfo.type,
               },
               $setOnInsert: {
                 tenantId: localTenantId,

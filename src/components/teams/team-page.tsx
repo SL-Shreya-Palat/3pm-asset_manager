@@ -33,7 +33,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import {
   Tooltip,
   TooltipContent,
@@ -1143,9 +1143,7 @@ export function TeamPage() {
       header: 'Last Service',
       render: (asset) => (
         <span className="text-muted-foreground">
-          {asset.lastServiceDate
-            ? new Date(asset.lastServiceDate).toLocaleDateString()
-            : '—'}
+          {formatDate(asset.lastServiceDate)}
         </span>
       ),
     },
@@ -1444,7 +1442,7 @@ export function TeamPage() {
       label: 'Date',
       render: (defect) => (
         <span className="text-muted-foreground">
-          {defect.date ? new Date(defect.date).toLocaleDateString() : '—'}
+          {formatDate(defect.date)}
         </span>
       ),
     },
@@ -1548,7 +1546,7 @@ export function TeamPage() {
       label: 'Submitted At',
       render: (item) => (
         <span className="text-muted-foreground">
-          {item.submittedAt ? new Date(item.submittedAt).toLocaleDateString() : '—'}
+          {formatDate(item.submittedAt)}
         </span>
       ),
     },

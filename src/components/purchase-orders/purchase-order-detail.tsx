@@ -19,7 +19,7 @@ import {
   DetailPageHeaderSkeleton,
 } from '@/components/ui/detail-page-header';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { PurchaseOrderForm } from './purchase-order-form';
 import type { PurchaseOrderRow } from './types';
 import {
@@ -142,7 +142,7 @@ export function PurchaseOrderDetail() {
           <DetailField label="Approver" value={order.approverId} />
           <DetailField
             label="Created"
-            value={order.createdAt ? new Date(order.createdAt).toLocaleDateString() : undefined}
+            value={order.createdAt ? formatDate(order.createdAt) : undefined}
           />
         </DetailCard>
 

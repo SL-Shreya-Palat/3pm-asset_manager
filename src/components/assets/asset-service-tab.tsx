@@ -72,7 +72,7 @@ const TRIGGER_CONFIG: Record<ServiceStatus, string> = {
 
 function formatDate(iso: string | null) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 export function AssetServiceTab({ assetId }: { assetId: string }) {

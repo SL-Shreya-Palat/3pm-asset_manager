@@ -1,4 +1,5 @@
 import type { SparsePermissions } from '@/lib/rbac';
+import type { RoleType } from '@/controller/roles/types';
 
 // ---------------------------------------------------------------------------
 // Role row (API response shape used in the list/view pages)
@@ -13,6 +14,8 @@ export interface RoleRow {
   chargeOutRate: number;
   permissions: SparsePermissions;
   isSystem: boolean;
+  /** Whether this is a built-in system role (Owner/Admin) or a custom role. */
+  type: RoleType;
   isActive: boolean;
   teamScoped: boolean;
   mobileOnly: boolean;

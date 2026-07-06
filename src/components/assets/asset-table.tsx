@@ -55,7 +55,7 @@ import { SearchInput } from '@/components/ui/search-input';
 import { DataTable, type DataTableColumn, type DataTableFilterDef } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import { Spinner } from '@/components/ui/spinner';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Tooltip,
@@ -651,9 +651,7 @@ export function AssetTable() {
       sortValue: (asset) => asset.lastServiceDate ? new Date(asset.lastServiceDate).getTime() : null,
       render: (asset) => (
         <span className="text-muted-foreground">
-          {asset.lastServiceDate
-            ? new Date(asset.lastServiceDate).toLocaleDateString()
-            : '—'}
+          {formatDate(asset.lastServiceDate)}
         </span>
       ),
     },

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 import { CalendarClock, AlertTriangle, Clock, CheckCircle2 } from 'lucide-react';
+import { formatDate } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { CountBadge } from '@/components/ui/count-badge';
 import { PageHeader } from '@/components/ui/page-header';
@@ -47,7 +48,7 @@ function getDueInfoText(row: ServiceScheduleRow) {
   const absRemaining = Math.abs(mostUrgent.remaining);
 
   if (mostUrgent.type === 'calendar') {
-    const dateStr = new Date(mostUrgent.nextDueValue as string).toLocaleDateString();
+    const dateStr = formatDate(mostUrgent.nextDueValue as string);
     return {
       primary: isOverdue
         ? `${absRemaining} days overdue`

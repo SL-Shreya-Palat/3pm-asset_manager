@@ -43,7 +43,7 @@ import { PageHeader } from '@/components/ui/page-header';
 import { FilterTabs } from '@/components/ui/filter-tabs';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { MeterTypeSelect, ProgramChecklist } from '@/components/maintenance/service-fields';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
 import { WorkOrderForm } from './work-order-form';
@@ -294,7 +294,7 @@ export function WorkOrdersPage() {
       sortValue: (order) => order.dueDate ? new Date(order.dueDate).getTime() : null,
       render: (order) => (
         <span className="text-muted-foreground text-xs">
-          {order.dueDate ? new Date(order.dueDate).toLocaleDateString() : '—'}
+          {formatDate(order.dueDate)}
         </span>
       ),
     },
@@ -314,7 +314,7 @@ export function WorkOrdersPage() {
       sortValue: (order) => new Date(order.createdAt).getTime(),
       render: (order) => (
         <span className="text-muted-foreground text-xs">
-          {new Date(order.createdAt).toLocaleDateString()}
+          {formatDate(order.createdAt)}
         </span>
       ),
     },

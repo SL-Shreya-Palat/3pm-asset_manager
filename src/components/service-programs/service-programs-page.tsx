@@ -23,7 +23,7 @@ import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
 import type { ServiceProgramRow, Pagination } from './types';
@@ -180,7 +180,7 @@ export function ServiceProgramsPage() {
       const parts: string[] = [];
       if (iv.dueMileage?.enabled && iv.dueMileage.value) parts.push(`${iv.dueMileage.mode === 'in' ? 'In' : 'At'} ${iv.dueMileage.value} km`);
       if (iv.dueEngineHours?.enabled && iv.dueEngineHours.value) parts.push(`${iv.dueEngineHours.mode === 'in' ? 'In' : 'At'} ${iv.dueEngineHours.value} hrs`);
-      if (iv.dueOnDate?.enabled && iv.dueOnDate.date) parts.push(`On ${new Date(iv.dueOnDate.date).toLocaleDateString()}`);
+      if (iv.dueOnDate?.enabled && iv.dueOnDate.date) parts.push(`On ${formatDate(iv.dueOnDate.date)}`);
       return { type: 'One Time', parts };
     }
     return { type: 'Repeat', parts: [] };
