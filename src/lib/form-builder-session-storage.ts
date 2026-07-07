@@ -111,33 +111,3 @@ export async function upsertFormBuilderSession(
     throw error;
   }
 }
-
-/**
- * Delete the cached session for a user+tenant (e.g. on logout or revoke).
- */
-export async function deleteFormBuilderSession(
-  tenantId: string | ObjectId,
-  userId: string | ObjectId,
-): Promise<boolean> {
-  try {
-    const collection = await getFormBuilderSessionsCollection();
-    const tenantObjectId =
-      typeof tenantId === 'string'
-        ? ObjectId.createFromHexString(tenantId)
-        : tenantId;
-    const userObjectId =
-      typeof userId === 'string' ? ObjectId.createFromHexString(userId) : userId;
-
-    const result = await collection.deleteOne({
-      tenantId: tenantObjectId,
-      userId: userObjectId,
-    });
-    return result.deletedCount > 0;
-  } catch (error) {
-    console.error(
-      '[FORM_BUILDER_SESSION_STORAGE] Error deleting session:',
-      error,
-    );
-    return false;
-  }
-}

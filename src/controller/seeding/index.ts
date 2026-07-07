@@ -164,6 +164,7 @@ export async function seedInspectionForms(params: {
       createdBy: userId,
       status: 'published',
       source: 'embed',
+      inspectionType: template.templateKey === 'driver_wellness' ? 'driver' : 'asset',
       schema: {
         formId,
         organizationId,

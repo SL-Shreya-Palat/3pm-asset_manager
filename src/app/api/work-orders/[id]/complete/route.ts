@@ -1,6 +1,6 @@
 /**
  * PUT /api/work-orders/:id/complete -- Complete & sign off a work order.
- * Body: { servicePrograms?: string[], meterAtService?: number, meterType?: string, notes?: string }
+ * Body: { servicePlanId?: string, servicePlanSchedule?: string, meterAtService?: number, meterType?: string, notes?: string }
  * Resolves linked defects, returns the asset to service, and logs a service
  * entry when scheduled work was fulfilled.
  */
@@ -20,7 +20,8 @@ export async function PUT(request: NextRequest, context: RouteContext) {
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
     const result = await completeWorkOrder(user.currentTenantId, user.id, id, {
-      servicePrograms: Array.isArray(body.servicePrograms) ? body.servicePrograms : undefined,
+      servicePlanId: typeof body.servicePlanId === 'string' ? body.servicePlanId : undefined,
+      servicePlanSchedule: typeof body.servicePlanSchedule === 'string' ? body.servicePlanSchedule : undefined,
       meterAtService: typeof body.meterAtService === 'number' ? body.meterAtService : undefined,
       meterType: typeof body.meterType === 'string' ? body.meterType : undefined,
       notes: typeof body.notes === 'string' ? body.notes : undefined,

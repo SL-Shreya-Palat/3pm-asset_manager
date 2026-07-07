@@ -14,7 +14,7 @@
 export const WIDGET_BUILDER_APP_NAME = 'widget-builder';
 
 export const WIDGET_BUILDER_BASE_URL =
-  process.env.NEXT_PUBLIC_WIDGET_BUILDER_URL || 'http://localhost:3003';
+  process.env.NEXT_PUBLIC_WIDGET_BUILDER_URL || 'http://localhost:3008';
 export const WIDGET_BUILDER_APP_ID = process.env.WIDGET_BUILDER_APP_ID || '';
 export const WIDGET_BUILDER_APP_SECRET = process.env.WIDGET_BUILDER_APP_SECRET || '';
 

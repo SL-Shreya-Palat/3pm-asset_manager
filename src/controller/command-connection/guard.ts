@@ -112,6 +112,8 @@ export const COMMAND_OWNED_FIELDS = {
   ],
   drivers: ['firstName', 'lastName', 'email', 'mobileNumber'],
   vendors: ['name', 'contactName', 'email', 'phone'],
+  // Command stock: identity + quantities live in Command's ledger.
+  parts: ['name', 'partNumber', 'description', 'stockLocations'],
 } as const;
 
 /**

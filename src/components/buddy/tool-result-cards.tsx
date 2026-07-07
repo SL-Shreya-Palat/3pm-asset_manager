@@ -6,11 +6,15 @@ import { formatDate, formatNumber, humanize } from "./format";
 const CARD_TOOLS = new Set([
   "list_assets",
   "list_defects",
+  "list_faults",
   "list_work_orders",
   "list_inspections",
   "list_service_schedule",
+  "list_service_plans",
+  "list_compliance_documents",
   "list_drivers",
   "list_parts",
+  "list_purchase_orders",
   "list_fuel_transactions",
   "list_teams",
   "list_vendors",
@@ -56,6 +60,30 @@ function defectTone(status: unknown, severity: unknown): Tone {
   return "neutral";
 }
 
+function faultTone(status: unknown, severity: unknown): Tone {
+  if (str(severity).toLowerCase() === "high") return "red";
+  const s = str(status).toLowerCase();
+  if (s === "resolved" || s === "wont_fix") return "green";
+  if (s === "in_progress") return "amber";
+  return "neutral";
+}
+
+function documentTone(status: unknown): Tone {
+  const s = str(status).toLowerCase();
+  if (s === "expired") return "red";
+  if (s === "expiring_soon") return "amber";
+  if (s === "valid") return "green";
+  return "neutral";
+}
+
+function purchaseOrderTone(status: unknown): Tone {
+  const s = str(status).toLowerCase();
+  if (s === "received" || s === "closed") return "green";
+  if (s === "rejected") return "red";
+  if (s === "draft") return "neutral";
+  return "amber";
+}
+
 function scheduleTone(status: unknown): Tone {
   const s = str(status).toLowerCase();
   if (s.includes("overdue")) return "red";
@@ -91,6 +119,19 @@ function mapItem(name: string, item: Item): Mapped {
           item.assetName ? `Asset · ${str(item.assetName)}` : "",
           item.severity ? `Severity · ${humanize(item.severity)}` : "",
           item.date ? `Reported · ${formatDate(item.date)}` : "",
+          item.workOrderNumber ? `WO · ${str(item.workOrderNumber)}` : "",
+        ].filter(Boolean),
+      };
+    case "list_faults":
+      return {
+        title: str(item.faultNumber) || str(item.title) || "Fault",
+        status: item.status ? humanize(item.status) : undefined,
+        tone: faultTone(item.status, item.severity),
+        meta: [
+          item.title && item.faultNumber ? str(item.title) : "",
+          item.assetName ? `Asset · ${str(item.assetName)}` : "",
+          item.severity ? `Severity · ${humanize(item.severity)}` : "",
+          item.reportedAt ? `Reported · ${formatDate(item.reportedAt)}` : "",
           item.workOrderNumber ? `WO · ${str(item.workOrderNumber)}` : "",
         ].filter(Boolean),
       };
@@ -138,6 +179,35 @@ function mapItem(name: string, item: Item): Mapped {
           item.nextDueValue != null ? `Next due · ${str(item.nextDueValue)}` : "",
         ].filter(Boolean),
       };
+    case "list_service_plans":
+      return {
+        title: str(item.name) || "Service plan",
+        status: item.isActive === false ? "Inactive" : "Active",
+        tone: item.isActive === false ? "neutral" : "green",
+        meta: [
+          Array.isArray(item.schedules) && item.schedules.length
+            ? `Schedules · ${(item.schedules as unknown[]).length}`
+            : "",
+          item.assignedAssets != null
+            ? `Assets · ${formatNumber(item.assignedAssets)}`
+            : "",
+        ].filter(Boolean),
+      };
+    case "list_compliance_documents":
+      return {
+        title: str(item.title) || humanize(item.docType) || "Document",
+        status: item.status ? humanize(item.status) : undefined,
+        tone: documentTone(item.status),
+        meta: [
+          item.docType ? `Type · ${humanize(item.docType)}` : "",
+          item.expiryDate ? `Expires · ${formatDate(item.expiryDate)}` : "",
+          item.daysUntilExpiry != null
+            ? Number(item.daysUntilExpiry) < 0
+              ? `${formatNumber(Math.abs(Number(item.daysUntilExpiry)))} days overdue`
+              : `${formatNumber(item.daysUntilExpiry)} days left`
+            : "",
+        ].filter(Boolean),
+      };
     case "list_drivers":
       return {
         title:
@@ -157,6 +227,17 @@ function mapItem(name: string, item: Item): Mapped {
         meta: [
           item.partNumber ? `No. ${str(item.partNumber)}` : "",
           item.reorderPoint != null ? `Reorder at · ${formatNumber(item.reorderPoint)}` : "",
+        ].filter(Boolean),
+      };
+    case "list_purchase_orders":
+      return {
+        title: str(item.poNumber) || "Purchase Order",
+        status: item.status ? humanize(item.status) : undefined,
+        tone: purchaseOrderTone(item.status),
+        meta: [
+          item.vendorName ? `Vendor · ${str(item.vendorName)}` : "",
+          item.total != null ? `Total · ${formatNumber(item.total)}` : "",
+          item.createdAt ? `Created · ${formatDate(item.createdAt)}` : "",
         ].filter(Boolean),
       };
     case "list_fuel_transactions":

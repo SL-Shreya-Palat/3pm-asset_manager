@@ -11,6 +11,7 @@ import { z } from "zod";
 import { updateAsset } from "@/controller/assets";
 import { addMeterReading } from "@/controller/meter-readings";
 import { updateDefect } from "@/controller/defects";
+import { updateFault } from "@/controller/faults";
 import { createWorkOrder } from "@/controller/work-orders";
 import { getAllWorkOrderStatuses } from "@/controller/work-order-statuses";
 import { defineTool } from "./registry";
@@ -34,7 +35,7 @@ function toResult(
 export const updateAssetStatus = defineTool({
   name: "update_asset_status",
   access: "write",
-  permission: { module: "assets", action: "update" },
+  permission: "assets:assets:asset:edit",
   description:
     "Set an asset in service or out of service. Resolve the asset id first via list_assets. Use for 'take X off the road', 'return X to service'.",
   inputSchema: z.object({
@@ -53,7 +54,7 @@ export const updateAssetStatus = defineTool({
 export const updateDefectStatus = defineTool({
   name: "update_defect_status",
   access: "write",
-  permission: { module: "defects", action: "update" },
+  permission: "maintenance:defects:defect:edit",
   description:
     "Update a defect's status. Resolve the defect id first via list_defects. Statuses: new, in_progress, corrected, no_correction_needed.",
   inputSchema: z.object({
@@ -71,10 +72,28 @@ export const updateDefectStatus = defineTool({
   },
 });
 
+export const updateFaultStatus = defineTool({
+  name: "update_fault_status",
+  access: "write",
+  permission: "maintenance:faults:fault:edit",
+  description:
+    "Update a fault's status. Resolve the fault id first via list_faults. Statuses: open, in_progress, resolved, wont_fix.",
+  inputSchema: z.object({
+    faultId: z.string().describe("Fault id from list_faults"),
+    status: z.enum(["open", "in_progress", "resolved", "wont_fix"]),
+  }),
+  execute: async (input, ctx) => {
+    const res = await updateFault(ctx.tenantId, ctx.userId, input.faultId, {
+      status: input.status,
+    });
+    return toResult(res, `Fault marked ${input.status.replace(/_/g, " ")}`);
+  },
+});
+
 export const recordMeterReading = defineTool({
   name: "add_meter_reading",
   access: "write",
-  permission: { module: "assets", action: "update" },
+  permission: "assets:assets:asset:edit",
   description:
     "Record an odometer (km) or engine-hours reading for an asset. Resolve the asset id first via list_assets. Advances the asset's current meter if higher.",
   inputSchema: z.object({
@@ -97,7 +116,7 @@ export const recordMeterReading = defineTool({
 export const createWorkOrderAction = defineTool({
   name: "create_work_order",
   access: "write",
-  permission: { module: "work_order", action: "create" },
+  permission: "maintenance:workOrders:workOrder:create",
   description:
     "Create a work order for an asset, assigned to a vendor or a named third party. Must be raised from at least one defect (defectIds) OR at least one service task (serviceTaskIds). Resolve asset/defect/vendor ids first via list_assets, list_defects, list_vendors. The initial status is set automatically.",
   inputSchema: z

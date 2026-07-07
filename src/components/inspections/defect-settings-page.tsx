@@ -41,6 +41,7 @@ interface DefectSettingsData {
   formId: string;
   formTitle: string;
   formVersion: number;
+  inspectionType?: 'asset' | 'driver';
   fields: EligibleField[];
   savedSettings: unknown;
 }
@@ -59,6 +60,7 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
   const [success, setSuccess] = useState('');
 
   const [formTitle, setFormTitle] = useState('');
+  const [inspectionType, setInspectionType] = useState<'asset' | 'driver'>('asset');
   const [fields, setFields] = useState<EligibleField[]>([]);
 
   // Track user edits: fieldKey → set of ticked defect values
@@ -85,6 +87,7 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
 
       const data = res.data.data;
       setFormTitle(data.formTitle);
+      setInspectionType(data.inspectionType || 'asset');
       setFields(data.fields);
 
       // Initialize state from saved ticks
@@ -179,7 +182,7 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
         { withCredentials: true },
       );
 
-      setSuccess('Defect settings saved successfully');
+      setSuccess('Inspection settings saved successfully');
     } catch (err) {
       const msg = axios.isAxiosError(err) ? err.response?.data?.error : 'Failed to save';
       setError(msg || 'Failed to save');
@@ -198,6 +201,7 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
     );
   }
 
+  const isDriver = inspectionType === 'driver';
   const totalTicked = Object.values(defectAnswers).reduce((sum, s) => sum + s.size, 0);
   const flaggedFieldCount = Object.values(defectAnswers).filter((s) => s.size > 0).length;
 
@@ -219,7 +223,19 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
         <div className="flex items-start gap-3">
           <PageBackButton onClick={() => router.back()} className="mt-1" />
           <div className="space-y-1">
-            <h1 className="text-2xl font-semibold tracking-tight">Defect Settings</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-semibold tracking-tight">Inspection Settings</h1>
+              <span
+                className={cn(
+                  'rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                  isDriver
+                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                    : 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300',
+                )}
+              >
+                {isDriver ? 'Driver inspection' : 'Asset inspection'}
+              </span>
+            </div>
             <p className="text-sm text-muted-foreground">{formTitle}</p>
           </div>
         </div>
@@ -246,14 +262,25 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
         <div className="flex gap-3 rounded-xl border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm dark:border-blue-900 dark:bg-blue-950/40">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
           <div>
-            <p className="font-medium text-blue-900 dark:text-blue-200">How defects are created</p>
+            <p className="font-medium text-blue-900 dark:text-blue-200">
+              {isDriver ? 'How driver checks are handled' : 'How defects are created'}
+            </p>
             <p className="mt-0.5 leading-relaxed text-blue-800/90 dark:text-blue-300/90">
-              For each question, tick the answer(s) that mean a <span className="font-medium">fault</span>.
-              When someone submits the form and picks a ticked answer, a defect is raised automatically for
-              that asset. Set the <span className="font-medium">severity</span>, turn on{' '}
-              <span className="font-medium">Under maintenance</span> to flag the asset, or{' '}
-              <span className="font-medium">Ignore</span> a question so it does nothing. Only choice questions
-              (dropdown, radio, multi-select, checkbox, toggle) can trigger defects.
+              For each question, tick the answer(s) that mean a <span className="font-medium">problem</span>.
+              When someone submits the form and picks a ticked answer,{' '}
+              {isDriver ? (
+                <>the driver is <span className="font-medium">flagged unfit for duty</span> and managers are notified.</>
+              ) : (
+                <>a defect is raised automatically for that asset.</>
+              )}{' '}
+              Set the <span className="font-medium">severity</span>
+              {isDriver ? (
+                ''
+              ) : (
+                <>, turn on <span className="font-medium">Under maintenance</span> to take the asset off the road,</>
+              )}{' '}
+              or <span className="font-medium">Ignore</span> a question so it does nothing. Only choice questions
+              (dropdown, radio, multi-select, checkbox, toggle) can be configured.
             </p>
           </div>
         </div>
@@ -308,7 +335,7 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
                     <div
                       key={field.fieldKey}
                       className={cn(
-                        'flex flex-col gap-3 rounded-xl border px-4 py-3 transition-colors md:flex-row md:items-center md:gap-4',
+                        'flex flex-col gap-3 rounded-xl border px-4 py-3 transition-colors',
                         ignored
                           ? 'border-dashed border-border bg-muted/30'
                           : hasTicks
@@ -316,8 +343,8 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
                             : 'border-border bg-card hover:border-foreground/20',
                       )}
                     >
-                      {/* Left: label + plain-language summary */}
-                      <div className="min-w-0 flex-1">
+                      {/* Row 1: question label + plain-language summary */}
+                      <div className="min-w-0">
                         <p
                           className={cn(
                             'text-sm font-medium',
@@ -328,10 +355,10 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
                         </p>
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           {ignored ? (
-                            'Ignored — never raises a defect'
+                            isDriver ? 'Ignored — never flags the driver' : 'Ignored — never raises a defect'
                           ) : hasTicks ? (
                             <>
-                              Raises a{' '}
+                              {isDriver ? 'Flags the driver — ' : 'Raises a '}
                               <span
                                 className={cn(
                                   'font-medium',
@@ -340,8 +367,8 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
                               >
                                 {sev === 'high' ? 'High' : sev === 'medium' ? 'Medium' : 'Low'}
                               </span>{' '}
-                              severity defect
-                              {oos && (
+                              {isDriver ? 'severity' : 'severity defect'}
+                              {!isDriver && oos && (
                                 <>
                                   {' · '}
                                   <span className="font-medium text-amber-600 dark:text-amber-400">
@@ -351,13 +378,13 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
                               )}
                             </>
                           ) : (
-                            'No fault answer set'
+                            'No answer flagged yet'
                           )}
                         </p>
                       </div>
 
-                      {/* Right: controls */}
-                      <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                      {/* Row 2: controls */}
+                      <div className="flex flex-wrap items-center gap-2 border-t border-border/50 pt-3">
                         {ignored ? (
                           <button
                             type="button"
@@ -396,7 +423,7 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
 
                             {/* Consequence cluster — severity + under maintenance */}
                             {hasTicks && (
-                              <div className="flex items-center gap-1.5 md:ml-1 md:border-l md:border-border/70 md:pl-2.5">
+                              <div className="flex items-center gap-1.5">
                                 <TooltipProvider delayDuration={200}>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
@@ -427,27 +454,30 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
                                   </Tooltip>
                                 </TooltipProvider>
 
-                                <TooltipProvider delayDuration={200}>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <button
-                                        type="button"
-                                        onClick={() => toggleOutOfService(field.fieldKey)}
-                                        aria-pressed={oos}
-                                        className={cn(
-                                          'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer',
-                                          oos
-                                            ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-400 dark:hover:bg-amber-950/60'
-                                            : 'border-border bg-background text-muted-foreground hover:border-amber-300 hover:text-amber-600',
-                                        )}
-                                      >
-                                        <Wrench className="h-3.5 w-3.5" />
-                                        Under maintenance
-                                      </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Mark the asset as under maintenance when this answer is submitted</TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
+                                {/* Under maintenance only applies to assets — hidden for driver forms. */}
+                                {!isDriver && (
+                                  <TooltipProvider delayDuration={200}>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleOutOfService(field.fieldKey)}
+                                          aria-pressed={oos}
+                                          className={cn(
+                                            'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer',
+                                            oos
+                                              ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-400 dark:hover:bg-amber-950/60'
+                                              : 'border-border bg-background text-muted-foreground hover:border-amber-300 hover:text-amber-600',
+                                          )}
+                                        >
+                                          <Wrench className="h-3.5 w-3.5" />
+                                          Under maintenance
+                                        </button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>Mark the asset as under maintenance when this answer is submitted</TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
+                                )}
                               </div>
                             )}
 
@@ -483,8 +513,8 @@ export function DefectSettingsPage({ formId }: DefectSettingsPageProps) {
       {fields.length > 0 && (
         <div className="sticky bottom-4 flex items-center justify-between gap-3 rounded-xl border bg-card/95 px-4 py-3 text-sm shadow-lg backdrop-blur supports-backdrop-filter:bg-card/80">
           <span className="text-muted-foreground">
-            <span className="font-medium text-foreground">{totalTicked}</span> defect trigger
-            {totalTicked !== 1 ? 's' : ''} across{' '}
+            <span className="font-medium text-foreground">{totalTicked}</span>{' '}
+            {isDriver ? 'flag' : 'defect'} trigger{totalTicked !== 1 ? 's' : ''} across{' '}
             <span className="font-medium text-foreground">{flaggedFieldCount}</span> question
             {flaggedFieldCount !== 1 ? 's' : ''}
           </span>

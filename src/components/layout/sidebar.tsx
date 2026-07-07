@@ -93,7 +93,7 @@ export function Sidebar() {
           </div>
           {!collapsed && (
             <span className="brand-wordmark truncate text-lg font-bold leading-none">
-              Asset Manager
+              Drive
             </span>
           )}
         </Link>

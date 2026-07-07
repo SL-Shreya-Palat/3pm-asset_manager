@@ -19,6 +19,8 @@ import {
   Users,
   Calendar,
   Shield,
+  AlertTriangle,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -63,6 +65,9 @@ export default function DriverDetailPage() {
   const [inspectLoading, setInspectLoading] = useState(false);
   const [inspectForms, setInspectForms] = useState<{ formId: string; title: string }[]>([]);
 
+  // Fitness flag
+  const [markingFit, setMarkingFit] = useState(false);
+
   const fetchDriver = useCallback(async () => {
     try {
       const res = await axios.get(`/api/drivers/${params.id}`, { withCredentials: true });
@@ -106,6 +111,19 @@ export default function DriverDetailPage() {
     }
   };
 
+  // ── Mark-fit handler (clears the unfit flag) ──
+  const handleMarkFit = async () => {
+    setMarkingFit(true);
+    try {
+      await axios.post(`/api/drivers/${params.id}/fitness`, { status: 'fit' }, { withCredentials: true });
+      await fetchDriver();
+    } catch (err) {
+      console.error('Failed to mark driver fit:', err);
+    } finally {
+      setMarkingFit(false);
+    }
+  };
+
   // ── Inspect handler ──
   const handleOpenInspect = async () => {
     setInspectDialogOpen(true);
@@ -115,16 +133,14 @@ export default function DriverDetailPage() {
       await axios.post('/api/forms/seed-prestart', {}, { withCredentials: true }).catch(() => {});
       const res = await axios.get('/api/forms?status=published&includeSchema=false', { withCredentials: true });
       const allForms = res.data?.data?.items || [];
-      const wellness = allForms
-        .filter(
-          (f: Record<string, unknown>) =>
-            (f.title || f.formTitle) === 'Driver Wellness Pre-Start Check',
-        )
+      // Show every DRIVER-type form (not just the seeded wellness template).
+      const driverForms = allForms
+        .filter((f: Record<string, unknown>) => f.inspectionType === 'driver')
         .map((f: Record<string, unknown>) => ({
           formId: String(f.formId || f.id),
           title: String(f.title || f.formTitle || 'Untitled form'),
         }));
-      setInspectForms(wellness);
+      setInspectForms(driverForms);
     } catch {
       setInspectForms([]);
     } finally {
@@ -189,6 +205,15 @@ export default function DriverDetailPage() {
   const healthCertificate = String(driver.healthCertificate || '');
   const createdAt = driver.createdAt ? new Date(String(driver.createdAt)).toLocaleDateString() : '';
 
+  const isUnfit = driver.fitnessStatus === 'unfit';
+  const fitnessFlag = (driver.fitnessFlag as {
+    severity?: string;
+    reasons?: string[];
+    date?: string;
+  } | null) || null;
+  const flagDate = fitnessFlag?.date ? new Date(fitnessFlag.date).toLocaleString() : '';
+  const flagReasons = Array.isArray(fitnessFlag?.reasons) ? fitnessFlag!.reasons : [];
+
   return (
     <div className="p-6 max-w-4xl">
       {/* Back */}
@@ -222,11 +247,17 @@ export default function DriverDetailPage() {
                 {jobPosition && employeeNumber && <span>·</span>}
                 {employeeNumber && <span className="font-mono">#{employeeNumber}</span>}
               </div>
-              {teamName && (
-                <div className="mt-2">
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {teamName && (
                   <Badge variant="secondary" className="font-normal">{teamName}</Badge>
-                </div>
-              )}
+                )}
+                {isUnfit && (
+                  <Badge className="border-red-300 bg-red-100 font-medium text-red-700 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300">
+                    <AlertTriangle className="mr-1 h-3 w-3" />
+                    Unfit for duty
+                  </Badge>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -242,6 +273,47 @@ export default function DriverDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Unfit-for-duty banner */}
+      {isUnfit && (
+        <div className="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/40">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600 dark:text-red-400" />
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 text-sm font-semibold text-red-800 dark:text-red-200">
+                  Unfit for duty
+                  {fitnessFlag?.severity && (
+                    <span className="rounded-full bg-red-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-800 dark:bg-red-900 dark:text-red-200">
+                      {fitnessFlag.severity} severity
+                    </span>
+                  )}
+                </p>
+                <p className="mt-0.5 text-xs text-red-700/80 dark:text-red-300/80">
+                  Flagged from a failed wellness check{flagDate ? ` on ${flagDate}` : ''}.
+                </p>
+                {flagReasons.length > 0 && (
+                  <ul className="mt-2 list-disc space-y-0.5 pl-4 text-xs text-red-700 dark:text-red-300">
+                    {flagReasons.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleMarkFit}
+              disabled={markingFit}
+              className="shrink-0 border-red-300 text-red-700 hover:bg-red-100 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950"
+            >
+              <ShieldCheck className="mr-1.5 h-4 w-4" />
+              {markingFit ? 'Saving...' : 'Mark fit for duty'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="border-b border-border mb-6">

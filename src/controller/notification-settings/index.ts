@@ -8,32 +8,46 @@
 import { ObjectId } from 'mongodb';
 import { getNotificationSettingsCollection } from '@/lib/mongodb';
 import {
-  AUDIENCE_VALUES,
-  TEAM_ROLE_VALUES,
+  SCOPE_VALUES,
+  NOTIFY_ROLE_VALUES,
   CONFIGURABLE_EVENTS,
   CONFIGURABLE_EVENT_TYPES,
   defaultRuleFor,
-  type Audience,
-  type TeamRole,
+  type NotificationScope,
+  type NotifyRole,
   type NotificationRule,
   type NotificationSettingsDocument,
 } from './types';
 
-/** Coerce arbitrary stored/posted data into a valid rule (never throws). */
+/**
+ * Coerce arbitrary stored/posted data into a valid rule (never throws).
+ * Also migrates the legacy `{ audience, teamRoles, ccAdmins }` shape:
+ *   audience 'all_managers' → scope 'company'; ccAdmins true → add the 'admin' role.
+ */
 function normalizeRule(raw: unknown, fallback: NotificationRule): NotificationRule {
-  const r = (raw ?? {}) as Partial<NotificationRule>;
-  const audience: Audience = (AUDIENCE_VALUES as readonly string[]).includes(r.audience as string)
-    ? (r.audience as Audience)
-    : fallback.audience;
-  const teamRoles = Array.isArray(r.teamRoles)
-    ? r.teamRoles.filter((x): x is TeamRole => (TEAM_ROLE_VALUES as readonly string[]).includes(x as string))
-    : [];
-  return {
-    audience,
-    // A team rule with no roles selected would notify nobody — fall back to both.
-    teamRoles: teamRoles.length > 0 ? teamRoles : ['managing', 'following'],
-    ccAdmins: r.ccAdmins !== false, // default true
-  };
+  const r = (raw ?? {}) as Record<string, unknown>;
+
+  // scope — prefer the new field, else map the legacy `audience`.
+  let scope = r.scope as NotificationScope;
+  if (!(SCOPE_VALUES as readonly string[]).includes(scope)) {
+    const legacy = r.audience as string;
+    scope = legacy === 'all_managers'
+      ? 'company'
+      : (SCOPE_VALUES as readonly string[]).includes(legacy)
+        ? (legacy as NotificationScope)
+        : fallback.scope;
+  }
+
+  // roles — valid new array, else fall back to the event default (+ legacy ccAdmins).
+  let roles: NotifyRole[];
+  if (Array.isArray(r.roles)) {
+    roles = r.roles.filter((x): x is NotifyRole => (NOTIFY_ROLE_VALUES as readonly string[]).includes(x as string));
+  } else {
+    roles = [...fallback.roles];
+    if (r.ccAdmins === true && !roles.includes('admin')) roles.push('admin');
+  }
+
+  return { scope, roles };
 }
 
 /** Effective rules for every configurable event = saved merged over defaults. */

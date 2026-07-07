@@ -103,13 +103,14 @@ export async function getOptions(
 export async function getPage(
   entity: CommandEntity,
   authTenantId: string,
-  opts: { page: number; limit: number; search?: string },
+  opts: { page: number; limit: number; search?: string; query?: Record<string, string> },
 ): Promise<CommandResult<CommandPage>> {
   const params = new URLSearchParams({
     page: String(Math.max(1, opts.page)),
     limit: String(Math.max(1, opts.limit)),
   });
   if (opts.search?.trim()) params.set('search', opts.search.trim());
+  for (const [k, v] of Object.entries(opts.query ?? {})) params.set(k, v);
   const res = await commandRequest<any>(
     `${LIST_ENDPOINTS[entity]}?${params.toString()}`,
     authTenantId,

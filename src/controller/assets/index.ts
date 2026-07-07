@@ -8,7 +8,6 @@ import {
   getAssetTypesCollection,
   getTeamsCollection,
   getFormsCollection,
-  getServiceProgramsCollection,
   getDocumentsCollection,
 } from "@/lib/mongodb";
 import { validateCreateAssetInput, serializeAsset } from "./utils";
@@ -324,24 +323,10 @@ export async function getAssetById(tenantId: string, assetId: string) {
     formNames = forms.map((f) => (f.formTitle as string) || "");
   }
 
-  // Populate service program names
-  let serviceProgramNames: string[] = [];
-  const docSpIds = Array.isArray(doc.serviceProgramIds)
-    ? (doc.serviceProgramIds as ObjectId[])
-    : [];
-  if (docSpIds.length > 0) {
-    const spCollection = await getServiceProgramsCollection();
-    const programs = await spCollection
-      .find({ _id: { $in: docSpIds } })
-      .toArray();
-    serviceProgramNames = programs.map((p) => (p.title as string) || "");
-  }
-
   return serializeAsset({
     ...doc,
     assetTypeName,
     formNames,
-    serviceProgramNames,
   });
 }
 
@@ -406,9 +391,6 @@ export async function createAsset(
     primaryMeter: input.primaryMeter || "odometer",
     photoUrls: input.photoUrls || [],
     formIds: (input.formIds || []).map((id) =>
-      ObjectId.createFromHexString(id),
-    ),
-    serviceProgramIds: (input.serviceProgramIds || []).map((id) =>
       ObjectId.createFromHexString(id),
     ),
     assetGroupIds: [],
@@ -520,10 +502,11 @@ export async function updateAsset(
   if (input.photoUrls !== undefined) $set.photoUrls = input.photoUrls;
   if (input.formIds !== undefined)
     $set.formIds = input.formIds.map((id) => ObjectId.createFromHexString(id));
-  if (input.serviceProgramIds !== undefined)
-    $set.serviceProgramIds = input.serviceProgramIds.map((id) =>
-      ObjectId.createFromHexString(id),
-    );
+  if (input.servicePlanId !== undefined)
+    $set.servicePlanId =
+      input.servicePlanId && ObjectId.isValid(input.servicePlanId)
+        ? ObjectId.createFromHexString(input.servicePlanId)
+        : null;
   if (input.driverAccessIds !== undefined)
     $set.driverAccessIds = input.driverAccessIds.map((id) =>
       ObjectId.createFromHexString(id),
@@ -538,7 +521,7 @@ export async function updateAsset(
       tenantId,
       assetOid,
       input.status === "out_of_service",
-      "Status changed in Asset Manager",
+      "Status changed in Drive",
     );
   }
 

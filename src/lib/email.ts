@@ -53,7 +53,7 @@ export async function sendInvitationEmail(params: InvitationEmailParams): Promis
           <!-- Header -->
           <tr>
             <td style="background-color:#18181b;padding:32px 40px;text-align:center;">
-              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:600;">3PM Asset Manager</h1>
+              <h1 style="margin:0;color:#ffffff;font-size:22px;font-weight:600;">3PM Drive</h1>
             </td>
           </tr>
           <!-- Body -->
@@ -102,11 +102,11 @@ export async function sendInvitationEmail(params: InvitationEmailParams): Promis
       to: recipientEmail,
       from: {
         email: env.sendgrid!.fromEmail,
-        name: '3PM Asset Manager',
+        name: '3PM Drive',
       },
       subject: `${inviterName} invited you to join ${tenantName}`,
       html,
-      text: `Hi ${recipientName},\n\n${inviterName} has invited you to join ${tenantName} as a ${roleName}.\n\nAccept the invitation: ${acceptUrl}\n\nThis invitation expires in 7 days.\n\n- 3PM Asset Manager`,
+      text: `Hi ${recipientName},\n\n${inviterName} has invited you to join ${tenantName} as a ${roleName}.\n\nAccept the invitation: ${acceptUrl}\n\nThis invitation expires in 7 days.\n\n- 3PM Drive`,
     });
     console.log(`[email] Invitation sent to ${recipientEmail}`);
     return true;

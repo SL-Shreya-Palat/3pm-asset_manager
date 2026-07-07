@@ -439,6 +439,19 @@ export async function updateFault(
 
   if (!updated) return { data: null, error: null };
 
+  // Command-linked assets: mirror a resolve (open → corrected/no-correction).
+  const RESOLVED = ['corrected', 'no_correction_needed'];
+  const newDefectStatus =
+    input.status !== undefined ? FAULT_TO_DEFECT_STATUS[input.status] || input.status : undefined;
+  const wasResolved = RESOLVED.includes(existing.status as string);
+  if (newDefectStatus && RESOLVED.includes(newDefectStatus) && !wasResolved) {
+    await writebackActivityIfLinked(tenantId, (updated.assetId as ObjectId).toString(), {
+      type: 'fault_resolved',
+      summary: `Fault ${(existing.defectNumber as string) || ''} resolved`.trim(),
+      details: { defectNumber: existing.defectNumber, status: newDefectStatus },
+    });
+  }
+
   // Resolve names for the response
   const assetNameMap = await resolveAssetNames(tenantOid, [updated.assetId as ObjectId]);
   const reporterNameMap = updated.reportedById
@@ -490,14 +503,22 @@ export async function bulkUpdateFaultStatus(
 
   // Map fault status → defect status before persisting
   const defectStatus = FAULT_TO_DEFECT_STATUS[status] || status;
+  const oids = ids.map((id) => ObjectId.createFromHexString(id));
+  const RESOLVED = ['corrected', 'no_correction_needed'];
+
+  // Capture faults transitioning INTO a resolved state for the Command timeline.
+  let transitioning: Array<{ assetId: ObjectId; defectNumber: unknown }> = [];
+  if (RESOLVED.includes(defectStatus)) {
+    transitioning = (await collection
+      .find(
+        { _id: { $in: oids }, tenantId: tenantOid, source: 'fault', status: { $nin: RESOLVED } },
+        { projection: { assetId: 1, defectNumber: 1 } },
+      )
+      .toArray()) as unknown as Array<{ assetId: ObjectId; defectNumber: unknown }>;
+  }
 
   const result = await collection.updateMany(
-    {
-      _id: { $in: ids.map((id) => ObjectId.createFromHexString(id)) },
-      tenantId: tenantOid,
-      isArchived: { $ne: true },
-      source: 'fault',
-    },
+    { _id: { $in: oids }, tenantId: tenantOid, isArchived: { $ne: true }, source: 'fault' },
     {
       $set: {
         status: defectStatus,
@@ -506,6 +527,15 @@ export async function bulkUpdateFaultStatus(
       },
     },
   );
+
+  for (const f of transitioning) {
+    if (!f.assetId) continue;
+    await writebackActivityIfLinked(tenantId, f.assetId.toString(), {
+      type: 'fault_resolved',
+      summary: `Fault ${(f.defectNumber as string) || ''} resolved`.trim(),
+      details: { defectNumber: f.defectNumber, status: defectStatus },
+    });
+  }
 
   return { data: { modifiedCount: result.modifiedCount }, error: null };
 }

@@ -42,7 +42,7 @@ import { FormSection } from '@/components/ui/form-section';
 import { PageHeader } from '@/components/ui/page-header';
 import { FilterTabs } from '@/components/ui/filter-tabs';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
-import { MeterTypeSelect, ProgramChecklist } from '@/components/maintenance/service-fields';
+import { MeterTypeSelect } from '@/components/maintenance/service-fields';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
@@ -454,8 +454,7 @@ export function WorkOrdersPage() {
   );
 }
 
-/** Complete & sign-off dialog — captures meter reading, notes, and which of the
- *  asset's scheduled service programs this WO fulfilled. */
+/** Complete & sign-off dialog — captures meter reading and sign-off notes. */
 function CompleteWorkOrderDialog({
   order,
   onClose,
@@ -465,37 +464,11 @@ function CompleteWorkOrderDialog({
   onClose: () => void;
   onCompleted: () => void;
 }) {
-  const [programs, setPrograms] = useState<{ programId: string; title: string }[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [meter, setMeter] = useState('');
   const [meterType, setMeterType] = useState('odometer');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-
-  // Load the asset's service programs so the user can mark which were fulfilled.
-  // No state reset needed — the dialog is remounted per WO via a `key`.
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const res = await axios.get(`/api/assets/${order.assetId}/service-status`, { withCredentials: true });
-        if (active) {
-          setPrograms((res.data.data?.programs ?? []).map((p: { programId: string; title: string }) => ({ programId: p.programId, title: p.title })));
-        }
-      } catch {
-        if (active) setPrograms([]);
-      }
-    })();
-    return () => { active = false; };
-  }, [order.assetId]);
-
-  const toggle = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
 
   const handleComplete = async () => {
     if (!order) return;
@@ -503,7 +476,6 @@ function CompleteWorkOrderDialog({
     try {
       setSaving(true);
       await axios.put(`/api/work-orders/${order.id}/complete`, {
-        servicePrograms: [...selected],
         meterType,
         meterAtService: meter ? parseFloat(meter) : undefined,
         notes: notes.trim() || undefined,
@@ -527,18 +499,6 @@ function CompleteWorkOrderDialog({
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4 py-2">
-          <div>
-            <ProgramChecklist
-              programs={programs}
-              selected={selected}
-              onToggle={toggle}
-              label="Scheduled services fulfilled"
-            />
-            {programs.length > 0 && (
-              <p className="text-xs text-muted-foreground mt-1">Selected programs&apos; schedules reset from this service.</p>
-            )}
-          </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="cmpMeter">Meter reading</Label>

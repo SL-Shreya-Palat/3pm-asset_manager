@@ -60,7 +60,16 @@ export async function resolveWorkOrderParts(
     const doc = docById.get(id);
     if (!doc) continue;
     const vendors = (doc.vendors as Array<{ unitCost: number }>) || [];
-    const unitCost = agg.unitCost != null && agg.unitCost >= 0 ? agg.unitCost : vendors[0]?.unitCost ?? 0;
+    // Imported Command stock: consumption belongs to Command's ledger, not the
+    // local inventory — mark the line so the delta skips it and completion
+    // pushes a RECEIPTED_OUT to Command. Cost basis = Command's costPrice.
+    const isCommandStock = doc.source === 'command' && doc.commandStockId;
+    const unitCost =
+      agg.unitCost != null && agg.unitCost >= 0
+        ? agg.unitCost
+        : isCommandStock
+          ? Number(doc.commandUnitCost ?? 0)
+          : vendors[0]?.unitCost ?? 0;
     const lineTotal = money(unitCost * agg.quantity);
     parts.push({
       partId: doc._id as ObjectId,
@@ -69,6 +78,14 @@ export async function resolveWorkOrderParts(
       quantity: agg.quantity,
       unitCost,
       lineTotal,
+      ...(isCommandStock
+        ? {
+            source: 'command' as const,
+            commandStockId: String(doc.commandStockId),
+            pushedToCommand: false,
+            commandTransactionId: null,
+          }
+        : {}),
     });
     partsCost += lineTotal;
   }

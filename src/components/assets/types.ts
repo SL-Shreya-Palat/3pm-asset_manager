@@ -29,6 +29,8 @@ export interface AssetRow {
   createdAt: string;
   /** Worst-case compliance status across the asset's documents. */
   complianceStatus?: 'expired' | 'expiring_soon' | 'valid' | 'none';
+  /** 'command' = imported master data — archived/unarchived in Command only. */
+  source?: string;
 }
 
 export interface AssetTypeOption {

@@ -157,7 +157,7 @@ export function InspectionHistory() {
   );
 }
 
-function InspectionDetailDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
+export function InspectionDetailDialog({ id, onClose }: { id: string | null; onClose: () => void }) {
   const [record, setRecord] = useState<DetailRecord | null>(null);
   const [loading, setLoading] = useState(false);
 

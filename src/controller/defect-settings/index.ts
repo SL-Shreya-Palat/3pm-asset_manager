@@ -10,6 +10,7 @@ import {
   getFormsCollection,
 } from '@/lib/mongodb';
 import { fetchLiveFormSchema } from '@/lib/form-builder-integration';
+import { classifyInspectionType } from '@/controller/forms';
 import type {
   DefectSettingsDocument,
   DefectSettingsResponse,
@@ -174,6 +175,9 @@ export async function getDefectSettings(
       formId,
       formTitle: form.formTitle as string,
       formVersion,
+      inspectionType:
+        (form.inspectionType as 'asset' | 'driver' | undefined) ||
+        classifyInspectionType(form.formTitle as string),
       fields: eligible,
       savedSettings: saved ? serialize(saved) : null,
       source,

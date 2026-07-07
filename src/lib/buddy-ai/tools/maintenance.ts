@@ -1,12 +1,15 @@
 /**
- * Buddy AI tools — Maintenance (snapshot, work orders, defects, service schedule)
+ * Buddy AI tools — Maintenance (snapshot, work orders, defects, faults,
+ * service schedule, service plans)
  */
 
 import { z } from "zod";
 import { getAllAssets } from "@/controller/assets";
 import { getAllDefects, getDefectSummary } from "@/controller/defects";
+import { getAllFaults } from "@/controller/faults";
 import { getAllWorkOrders } from "@/controller/work-orders";
 import { getServiceSchedule } from "@/controller/service-schedule";
+import { getAllServicePlans } from "@/controller/service-plans";
 import { defineTool } from "./registry";
 
 export const getFleetSnapshot = defineTool({
@@ -92,10 +95,58 @@ export const listDefects = defineTool({
   },
 });
 
+export const listFaults = defineTool({
+  name: "list_faults",
+  access: "read",
+  permission: "maintenance:faults:view",
+  description:
+    "Returns faults — issues reported directly by drivers or staff (outside pre-start inspections). Distinct from defects. Filter by status (open, in_progress, resolved, wont_fix), priority/severity (high, medium, low), or asset.",
+  inputSchema: z.object({
+    search: z.string().optional().describe("Free-text search over fault number/title"),
+    status: z.string().optional().describe("open | in_progress | resolved | wont_fix"),
+    priority: z.string().optional().describe("high | medium | low"),
+    severity: z.string().optional().describe("high | medium | low"),
+    assetId: z.string().optional().describe("Only faults for this asset id"),
+    limit: z.number().optional().describe("Max results (default 10, max 25)"),
+  }),
+  execute: async (input, ctx) => {
+    const result = await getAllFaults(ctx.tenantId, {
+      page: 1,
+      limit: Math.min(25, Math.max(1, input.limit ?? 10)),
+      ...(input.search?.trim() && { search: input.search.trim() }),
+      ...(input.status && { status: input.status }),
+      ...(input.priority && { priority: input.priority }),
+      ...(input.severity && { severity: input.severity }),
+      ...(input.assetId && { assetId: input.assetId }),
+    });
+    return { total: result.pagination.total, items: result.items };
+  },
+});
+
+export const listServicePlans = defineTool({
+  name: "list_service_plans",
+  access: "read",
+  permission: "maintenance:servicePlans:view",
+  description:
+    "Returns service plans (named sets of recurring schedules, e.g. A/B/C/D services, assigned to assets). Use for 'what service plans exist', 'how many assets are on plan X'. For due/overdue services use list_service_schedule instead.",
+  inputSchema: z.object({
+    search: z.string().optional().describe("Free-text search over plan name"),
+    limit: z.number().optional().describe("Max results (default 10, max 25)"),
+  }),
+  execute: async (input, ctx) => {
+    const result = await getAllServicePlans(ctx.tenantId, {
+      page: 1,
+      limit: Math.min(25, Math.max(1, input.limit ?? 10)),
+      ...(input.search?.trim() && { search: input.search.trim() }),
+    });
+    return { total: result.pagination.total, items: result.items };
+  },
+});
+
 export const listServiceSchedule = defineTool({
   name: "list_service_schedule",
   access: "read",
-  permission: "maintenance:servicePrograms:view",
+  permission: "maintenance:servicePlans:view",
   description:
     "Returns the per-asset service schedule (upcoming and overdue services from service programs). Use for 'what services are due/overdue', maintenance planning.",
   inputSchema: z.object({

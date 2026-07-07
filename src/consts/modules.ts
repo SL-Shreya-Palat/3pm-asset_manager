@@ -68,8 +68,8 @@ export const allModules: Modules = [
         accessibility: ["view"],
       },
       {
-        name: "Service Programs",
-        key: "servicePrograms",
+        name: "Service Plans",
+        key: "servicePlans",
         accessibility: ["view"],
       },
       {

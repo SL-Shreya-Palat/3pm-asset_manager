@@ -15,7 +15,7 @@ import {
   type ImportEntity,
 } from '@/controller/command-connection/import';
 
-const VALID_ENTITIES = new Set<ImportEntity>(['assets', 'drivers', 'vendors', 'locations']);
+const VALID_ENTITIES = new Set<ImportEntity>(['assets', 'drivers', 'vendors', 'locations', 'stock']);
 
 export async function POST(request: NextRequest) {
   const user = await getAuthenticatedUser(request);

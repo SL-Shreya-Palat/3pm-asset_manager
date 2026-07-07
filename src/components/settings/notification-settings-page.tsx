@@ -1,14 +1,16 @@
 'use client';
 
 /**
- * Admin screen to route each notification event to the right people.
- * One row per configurable event: pick an audience (Assigned team / All managers /
- * Off); for team routing, choose which team roles receive it and whether Admins
- * are always CC'd. Saved as one config doc per tenant (see /api/notification-settings).
+ * Admin screen to decide who receives each notification, using a SCOPE × ROLES model:
+ *   1. Scope  — Responsible team / Whole company / No one.
+ *   2. Roles  — which role(s) within that scope (Managers, Mechanics, Drivers, …).
+ * e.g. "only the mechanic on the asset's team" = scope Responsible team + role Mechanic.
+ * A live preview sentence spells out exactly who gets alerted.
+ * Saved as one config doc per tenant (see /api/notification-settings).
  */
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Save, Info, Users, Bell } from 'lucide-react';
+import { Save, Info, Users, Bell, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -21,12 +23,11 @@ import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
 
 // ── local types (mirror the server config; kept local so no server code bundles) ──
-type Audience = 'team' | 'all_managers' | 'off';
-type TeamRole = 'managing' | 'following';
+type Scope = 'team' | 'company' | 'off';
+type NotifyRole = 'admin' | 'manager' | 'team_manager' | 'mechanic' | 'driver';
 interface Rule {
-  audience: Audience;
-  teamRoles: TeamRole[];
-  ccAdmins: boolean;
+  scope: Scope;
+  roles: NotifyRole[];
 }
 interface EventMeta {
   type: string;
@@ -39,10 +40,39 @@ interface SettingsData {
   rules: Record<string, Rule>;
 }
 
-const TEAM_ROLES: { value: TeamRole; label: string }[] = [
-  { value: 'managing', label: 'Managing' },
-  { value: 'following', label: 'Following' },
+const DEFAULT_RULE: Rule = { scope: 'company', roles: ['manager'] };
+
+const ROLE_OPTIONS: { value: NotifyRole; label: string }[] = [
+  { value: 'manager', label: 'Managers' },
+  { value: 'mechanic', label: 'Mechanics' },
+  { value: 'driver', label: 'Drivers' },
+  { value: 'team_manager', label: 'Team Managers' },
+  { value: 'admin', label: 'Admins' },
 ];
+const ROLE_LABEL: Record<NotifyRole, string> = {
+  manager: 'managers',
+  mechanic: 'mechanics',
+  driver: 'drivers',
+  team_manager: 'team managers',
+  admin: 'admins',
+};
+
+/** "managers", "managers and mechanics", "mechanics, managers and admins". */
+function humanRoles(roles: NotifyRole[]): string {
+  if (roles.length === 0) return 'everyone';
+  const labels = roles.map((r) => ROLE_LABEL[r]);
+  if (labels.length === 1) return labels[0];
+  return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
+}
+
+/** Plain-English summary of a rule — shown live under each event. */
+function describeRule(rule: Rule): string {
+  if (rule.scope === 'off') return 'No notifications are sent.';
+  const who = humanRoles(rule.roles);
+  return rule.scope === 'company'
+    ? `Notifies ${who} across the company.`
+    : `Notifies ${who} on the asset's responsible team.`;
+}
 
 export function NotificationSettingsPage() {
   const [loading, setLoading] = useState(true);
@@ -85,15 +115,14 @@ export function NotificationSettingsPage() {
     setSuccess('');
   }
 
-  function setAudience(type: string, audience: Audience) {
-    patchRule(type, { audience });
+  function setScope(type: string, scope: Scope) {
+    patchRule(type, { scope });
   }
 
-  function toggleTeamRole(type: string, role: TeamRole) {
-    const current = rules[type]?.teamRoles ?? [];
+  function toggleRole(type: string, role: NotifyRole) {
+    const current = rules[type]?.roles ?? [];
     const next = current.includes(role) ? current.filter((r) => r !== role) : [...current, role];
-    // Never allow zero roles — a team rule with no roles notifies nobody.
-    patchRule(type, { teamRoles: next.length > 0 ? next : current });
+    patchRule(type, { roles: next });
   }
 
   async function handleSave() {
@@ -123,44 +152,45 @@ export function NotificationSettingsPage() {
   const otherEvents = events.filter((e) => !e.teamScoped);
 
   const renderRow = (event: EventMeta) => {
-    const rule = rules[event.type] ?? { audience: 'all_managers', teamRoles: ['managing', 'following'], ccAdmins: true };
-    const isTeam = rule.audience === 'team';
+    const rule = rules[event.type] ?? DEFAULT_RULE;
+    const showRoles = rule.scope !== 'off';
 
     return (
       <div
         key={event.type}
-        className="flex flex-col gap-3 rounded-sm border border-border bg-card px-4 py-3 md:flex-row md:items-center md:gap-4"
+        className="flex flex-col gap-3 rounded-sm border border-border bg-card px-4 py-3 lg:flex-row lg:items-start lg:gap-4"
       >
-        {/* Left: label + description */}
+        {/* Left: label + description + live preview */}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">{event.label}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">{event.description}</p>
+          <p className="mt-1 text-xs font-medium text-primary/90">→ {describeRule(rule)}</p>
         </div>
 
-        {/* Right: routing controls */}
-        <div className="flex flex-wrap items-center gap-2 md:justify-end">
-          <Select value={rule.audience} onValueChange={(v) => setAudience(event.type, v as Audience)}>
-            <SelectTrigger className="h-8 w-40 text-xs">
+        {/* Right: scope + role picker */}
+        <div className="flex flex-col gap-2 lg:items-end">
+          <Select value={rule.scope} onValueChange={(v) => setScope(event.type, v as Scope)}>
+            <SelectTrigger className="h-9 w-48 text-sm">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {event.teamScoped && <SelectItem value="team">Assigned team</SelectItem>}
-              <SelectItem value="all_managers">All managers</SelectItem>
-              <SelectItem value="off">Off</SelectItem>
+              {event.teamScoped && <SelectItem value="team">Responsible team</SelectItem>}
+              <SelectItem value="company">Whole company</SelectItem>
+              <SelectItem value="off">No one</SelectItem>
             </SelectContent>
           </Select>
 
-          {isTeam && (
-            <div className="flex items-center gap-1.5 md:border-l md:border-border/70 md:pl-2.5">
-              {TEAM_ROLES.map((tr) => {
-                const on = rule.teamRoles.includes(tr.value);
+          {showRoles && (
+            <div className="flex max-w-md flex-wrap items-center gap-1.5 lg:justify-end">
+              {ROLE_OPTIONS.map((ro) => {
+                const on = rule.roles.includes(ro.value);
                 return (
                   <button
-                    key={tr.value}
+                    key={ro.value}
                     type="button"
                     role="checkbox"
                     aria-checked={on}
-                    onClick={() => toggleTeamRole(event.type, tr.value)}
+                    onClick={() => toggleRole(event.type, ro.value)}
                     className={cn(
                       'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
                       on
@@ -168,25 +198,11 @@ export function NotificationSettingsPage() {
                         : 'border-border bg-background text-foreground/70 hover:border-foreground/30 hover:text-foreground',
                     )}
                   >
-                    {tr.label}
+                    {on && <Check className="h-3 w-3" strokeWidth={3} />}
+                    {ro.label}
                   </button>
                 );
               })}
-              <button
-                type="button"
-                role="checkbox"
-                aria-checked={rule.ccAdmins}
-                onClick={() => patchRule(event.type, { ccAdmins: !rule.ccAdmins })}
-                className={cn(
-                  'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                  rule.ccAdmins
-                    ? 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
-                    : 'border-border bg-background text-muted-foreground hover:border-blue-300 hover:text-blue-600',
-                )}
-                title="Always also notify Admins/Owner"
-              >
-                CC Admins
-              </button>
             </div>
           )}
         </div>
@@ -204,7 +220,7 @@ export function NotificationSettingsPage() {
             Notifications
           </h1>
           <p className="text-sm text-muted-foreground">
-            Decide who receives each alert. Route asset events to the responsible team instead of every manager.
+            For each event, choose how wide to notify and which roles should hear about it.
           </p>
         </div>
         <Button onClick={handleSave} disabled={saving} className="shrink-0">
@@ -225,16 +241,24 @@ export function NotificationSettingsPage() {
         </div>
       )}
 
-      {/* How it works */}
+      {/* How it works — plain language */}
       <div className="flex gap-3 rounded-sm border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm dark:border-blue-900 dark:bg-blue-950/40">
         <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
-        <div>
-          <p className="font-medium text-blue-900 dark:text-blue-200">How routing works</p>
-          <p className="mt-0.5 leading-relaxed text-blue-800/90 dark:text-blue-300/90">
-            <span className="font-medium">Assigned team</span> sends only to the team(s) that own the asset —
-            set who&apos;s <span className="font-medium">Managing</span>/<span className="font-medium">Following</span>{' '}
-            on each team&apos;s Users tab. <span className="font-medium">CC Admins</span> always also notifies
-            Admins/Owner. If an asset has no team, the alert falls back to all managers so nothing is missed.
+        <div className="space-y-1 text-blue-800/90 dark:text-blue-300/90">
+          <p className="font-medium text-blue-900 dark:text-blue-200">How each alert is routed</p>
+          <p className="leading-relaxed">
+            First pick <span className="font-medium">how wide</span> — the asset&apos;s{' '}
+            <span className="font-medium">Responsible team</span>, the{' '}
+            <span className="font-medium">Whole company</span>, or <span className="font-medium">No one</span>.
+            Then tick <span className="font-medium">which roles</span> should get it. Only people who match{' '}
+            <span className="font-medium">both</span> are notified — so &quot;Responsible team + Mechanics&quot;
+            reaches just the mechanic on that asset&apos;s team. Tick no roles to notify everyone in the scope.
+          </p>
+          <p className="leading-relaxed">
+            <span className="font-medium">If an asset has no team yet</span>, the alert automatically goes to the
+            same roles <span className="font-medium">across the whole company</span> (and to your managers/owner if
+            no one matches) so nothing is ever missed. Assign assets to teams on the{' '}
+            <span className="font-medium">Teams</span> page, and set each member&apos;s role under People.
           </p>
         </div>
       </div>
@@ -243,7 +267,7 @@ export function NotificationSettingsPage() {
       <section className="space-y-2.5">
         <div className="flex items-center gap-3">
           <h2 className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-            <Users className="h-3.5 w-3.5" /> Asset &amp; team events
+            <Users className="h-3.5 w-3.5" /> Asset, team &amp; driver events
           </h2>
           <div className="h-px flex-1 bg-border" />
         </div>

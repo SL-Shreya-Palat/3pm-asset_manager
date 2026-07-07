@@ -19,7 +19,7 @@ import {
 } from '@/controller/command-connection/history-import';
 
 const VALID_ENTITIES = new Set<HistoryEntity>([
-  'servicePrograms',
+  'servicePlans',
   'serviceHistory',
   'inspections',
   'workOrders',

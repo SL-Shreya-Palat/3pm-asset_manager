@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ChevronDown, ChevronRight, Ruler, Tag, MapPin, Wrench, CircleDot, Box, Layers, Bell, Cable } from 'lucide-react';
+import { ChevronDown, ChevronRight, Ruler, Tag, MapPin, Wrench, CircleDot, Box, Layers, Bell, Cable, Radio } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { InventorySettingsList, type SettingsFieldConfig } from './inventory-settings-list';
 import { WorkOrderStatusesList } from './work-order-statuses-list';
 import { NotificationSettingsPage } from './notification-settings-page';
 import { CommandConnectionPanel } from './command-connection-panel';
+import { IoTSettingsPanel } from './iot-settings-panel';
 
 /** Settings tabs. */
 const TABS = [
@@ -67,6 +68,14 @@ const ADMIN_SIDEBAR: SidebarItem[] = [
       { key: 'command-connection', label: 'Command' },
     ],
   },
+  {
+    key: 'integrations',
+    label: 'Integrations',
+    icon: Radio,
+    children: [
+      { key: 'iot-hub', label: 'IoT Hub' },
+    ],
+  },
 ];
 
 // Field configs for each settings type
@@ -97,7 +106,7 @@ const ASSET_TYPE_FIELDS: SettingsFieldConfig[] = [
   { key: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional description' },
 ];
 
-const VALID_SIDEBAR_KEYS = new Set(['asset-types', 'measurement-units', 'part-categories', 'part-locations', 'work-order-statuses', 'notification-routing', 'command-connection']);
+const VALID_SIDEBAR_KEYS = new Set(['asset-types', 'measurement-units', 'part-categories', 'part-locations', 'work-order-statuses', 'notification-routing', 'command-connection', 'iot-hub']);
 
 export function SettingsPage() {
   const searchParams = useSearchParams();
@@ -105,10 +114,12 @@ export function SettingsPage() {
   const [activeSidebarKey, setActiveSidebarKey] = useState('measurement-units');
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set(['inventory']));
 
-  // Support deep-linking via ?section= query param
+  // Support deep-linking via ?section= query param.
+  // Deferred so setState isn't called synchronously inside the effect body.
   useEffect(() => {
     const section = searchParams.get('section');
-    if (section && VALID_SIDEBAR_KEYS.has(section)) {
+    if (!section || !VALID_SIDEBAR_KEYS.has(section)) return;
+    const t = setTimeout(() => {
       setActiveSidebarKey(section);
       // Expand the parent group that contains this section
       if (['asset-types'].includes(section)) {
@@ -121,8 +132,11 @@ export function SettingsPage() {
         setExpandedKeys((prev) => new Set([...prev, 'notifications']));
       } else if (['command-connection'].includes(section)) {
         setExpandedKeys((prev) => new Set([...prev, 'connections']));
+      } else if (['iot-hub'].includes(section)) {
+        setExpandedKeys((prev) => new Set([...prev, 'integrations']));
       }
-    }
+    }, 0);
+    return () => clearTimeout(t);
   }, [searchParams]);
 
   const toggleExpand = (key: string) => {
@@ -179,6 +193,8 @@ export function SettingsPage() {
         return <NotificationSettingsPage />;
       case 'command-connection':
         return <CommandConnectionPanel />;
+      case 'iot-hub':
+        return <IoTSettingsPanel />;
       default:
         return null;
     }
@@ -193,6 +209,7 @@ export function SettingsPage() {
       case 'work-order-statuses': return CircleDot;
       case 'notification-routing': return Bell;
       case 'command-connection': return Cable;
+      case 'iot-hub': return Radio;
       default: return Tag;
     }
   };

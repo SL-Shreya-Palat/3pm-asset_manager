@@ -102,26 +102,3 @@ export async function upsertWidgetBuilderSession(
     throw error;
   }
 }
-
-/**
- * Delete the cached session for a user+tenant (e.g. on logout or revoke).
- */
-export async function deleteWidgetBuilderSession(
-  tenantId: string | ObjectId,
-  userId: string | ObjectId,
-): Promise<boolean> {
-  try {
-    const collection = await getWidgetBuilderSessionsCollection();
-    const result = await collection.deleteOne({
-      tenantId: toObjectId(tenantId),
-      userId: toObjectId(userId),
-    });
-    return result.deletedCount > 0;
-  } catch (error) {
-    console.error(
-      '[WIDGET_BUILDER_SESSION_STORAGE] Error deleting session:',
-      error,
-    );
-    return false;
-  }
-}

@@ -9,12 +9,16 @@ import {
   getTeamsCollection,
 } from '@/lib/mongodb';
 import { notifyEvent } from '@/controller/notifications';
+import { writebackActivityIfLinked } from '@/controller/command-connection/hooks';
 import type { CreateDefectInput, UpdateDefectInput } from './types';
 import {
   validateCreateDefectInput,
   serializeDefect,
   generateDefectNumber,
 } from './utils';
+
+/** Defect statuses that mean "resolved" (push a fault_resolved to Command). */
+const RESOLVED_STATUSES = ['corrected', 'no_correction_needed'];
 
 // ─── List ────────────────────────────────────────────────────────────────────
 
@@ -357,6 +361,13 @@ export async function createDefect(
     { teamIds: assetTeamIds },
   );
 
+  // Command-linked assets: mirror the defect onto the Command activity timeline.
+  await writebackActivityIfLinked(tenantId, input.assetId, {
+    type: 'fault_raised',
+    summary: `Defect ${defectNumber} raised — ${input.name.trim()}`,
+    details: { defectNumber, priority: input.priority, severity: doc.severity },
+  });
+
   return {
     data: serializeDefect({ ...doc, _id: result.insertedId } as unknown as Record<string, unknown>),
     error: null,
@@ -446,6 +457,19 @@ export async function updateDefect(
 
   await collection.updateOne({ _id: oid, tenantId: tenantOid }, { $set });
   const updated = await collection.findOne({ _id: oid });
+
+  // Command-linked assets: mirror a resolve (open → corrected/no-correction).
+  const wasResolved = RESOLVED_STATUSES.includes(existing.status as string);
+  if (input.status !== undefined && RESOLVED_STATUSES.includes(input.status) && !wasResolved) {
+    const assetIdForPush = (($set.assetId as ObjectId) ?? (existing.assetId as ObjectId))?.toString();
+    if (assetIdForPush) {
+      await writebackActivityIfLinked(tenantId, assetIdForPush, {
+        type: 'fault_resolved',
+        summary: `Defect ${(existing.defectNumber as string) || ''} resolved`.trim(),
+        details: { defectNumber: existing.defectNumber, status: input.status },
+      });
+    }
+  }
 
   return {
     data: updated ? serializeDefect(updated as unknown as Record<string, unknown>) : null,
@@ -542,13 +566,22 @@ export async function bulkUpdateDefectStatus(
   const collection = await getDefectsCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
   const now = new Date();
+  const oids = ids.map((id) => ObjectId.createFromHexString(id));
+
+  // Capture which defects will actually transition INTO a resolved state, so we
+  // push exactly one fault_resolved per newly-resolved defect (Command timeline).
+  let transitioning: Array<{ assetId: ObjectId; defectNumber: unknown }> = [];
+  if (RESOLVED_STATUSES.includes(status)) {
+    transitioning = (await collection
+      .find(
+        { _id: { $in: oids }, tenantId: tenantOid, status: { $nin: RESOLVED_STATUSES } },
+        { projection: { assetId: 1, defectNumber: 1 } },
+      )
+      .toArray()) as unknown as Array<{ assetId: ObjectId; defectNumber: unknown }>;
+  }
 
   const result = await collection.updateMany(
-    {
-      _id: { $in: ids.map((id) => ObjectId.createFromHexString(id)) },
-      tenantId: tenantOid,
-      isArchived: { $ne: true },
-    },
+    { _id: { $in: oids }, tenantId: tenantOid, isArchived: { $ne: true } },
     {
       $set: {
         status,
@@ -557,6 +590,15 @@ export async function bulkUpdateDefectStatus(
       },
     },
   );
+
+  for (const d of transitioning) {
+    if (!d.assetId) continue;
+    await writebackActivityIfLinked(tenantId, d.assetId.toString(), {
+      type: 'fault_resolved',
+      summary: `Defect ${(d.defectNumber as string) || ''} resolved`.trim(),
+      details: { defectNumber: d.defectNumber, status },
+    });
+  }
 
   return { data: { modifiedCount: result.modifiedCount }, error: null };
 }

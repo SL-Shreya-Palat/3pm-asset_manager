@@ -325,7 +325,7 @@ export function InventoryPage() {
     <div className="relative flex h-full">
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0">
-        <PageHeader title="Inventory" description="Track parts, stock levels, and warehouse locations" count={pagination.total}>
+        <PageHeader title="Stock" description="Track parts, stock levels, and warehouse locations" count={pagination.total}>
           <Button onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             Add Part

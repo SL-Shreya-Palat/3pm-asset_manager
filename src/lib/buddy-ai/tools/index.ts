@@ -14,15 +14,19 @@ import {
   getFleetSnapshot,
   listWorkOrders,
   listDefects,
+  listFaults,
   listServiceSchedule,
+  listServicePlans,
 } from "./maintenance";
-import { listInspections } from "./inspections";
-import { listParts } from "./inventory";
+import { listInspections, getExceptionReportSummary } from "./inspections";
+import { listParts, listPurchaseOrders } from "./inventory";
 import { listFuelTransactions, fuelAnalytics } from "./fuel";
 import { listDrivers, listTeams, listVendors } from "./people";
+import { listComplianceDocuments } from "./documents";
 import {
   updateAssetStatus,
   updateDefectStatus,
+  updateFaultStatus,
   recordMeterReading,
   createWorkOrderAction,
 } from "./actions";
@@ -37,10 +41,16 @@ export const REGISTRY: BuddyToolDef[] = [
   // Maintenance
   listWorkOrders,
   listDefects,
+  listFaults,
   listServiceSchedule,
+  listServicePlans,
+  // Inspections & compliance
   listInspections,
+  getExceptionReportSummary,
+  listComplianceDocuments,
   // Inventory & fuel
   listParts,
+  listPurchaseOrders,
   listFuelTransactions,
   fuelAnalytics,
   // People
@@ -50,6 +60,7 @@ export const REGISTRY: BuddyToolDef[] = [
   // Write actions (require in-chat confirmation)
   updateAssetStatus,
   updateDefectStatus,
+  updateFaultStatus,
   recordMeterReading,
   createWorkOrderAction,
 ];

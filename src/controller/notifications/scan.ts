@@ -15,14 +15,13 @@
 import { ObjectId } from 'mongodb';
 import {
   getTenantsCollection,
-  getServiceProgramsCollection,
   getAssetsCollection,
   getDriversCollection,
   getTenantMembersCollection,
   getWorkOrdersCollection,
   getPartsCollection,
 } from '@/lib/mongodb';
-import { getAssetServiceStatus } from '@/controller/service-programs/due-status';
+import { getAssetServiceStatus } from '@/controller/service-plans';
 import { listExpiring } from '@/controller/documents';
 import { DOCUMENT_TYPE_LABELS } from '@/constants/documents';
 import { notifyTenantManagersOnce, notifyUsersOnce, notifyEventOnce } from '@/controller/notifications';
@@ -50,24 +49,24 @@ async function resolveDriverUserIds(
 /** Service due / overdue alerts for one tenant. Returns the number of alerts raised. */
 async function scanServiceDue(tenantId: string): Promise<number> {
   const tenantOid = ObjectId.createFromHexString(tenantId);
-  const programsCol = await getServiceProgramsCollection();
-  const programs = await programsCol
-    .find({ tenantId: tenantOid, isArchived: { $ne: true } }, { projection: { assetIds: 1 } })
-    .toArray();
-
-  // Unique set of assets that have at least one program assigned.
-  const assetIds = new Map<string, ObjectId>();
-  for (const p of programs) {
-    for (const a of ((p.assetIds as ObjectId[] | undefined) ?? [])) assetIds.set(a.toString(), a);
-  }
-  if (assetIds.size === 0) return 0;
-
   const assetsCol = await getAssetsCollection();
+
+  // Assets with a hierarchical service plan assigned drive service due-status.
+  const planned = await assetsCol
+    .find(
+      { tenantId: tenantOid, servicePlanId: { $ne: null, $exists: true }, isArchived: { $ne: true } },
+      { projection: { _id: 1 } },
+    )
+    .toArray();
+  if (planned.length === 0) return 0;
+
   let count = 0;
 
-  for (const assetOid of assetIds.values()) {
+  for (const a of planned) {
+    const assetOid = a._id as ObjectId;
     const status = await getAssetServiceStatus(tenantId, assetOid.toString());
-    const due = status.items.filter((i) => i.status === 'overdue' || i.status === 'due_soon');
+    // Overdue + due schedules warrant an alert (matches Command's badges).
+    const due = status.perSchedule.filter((s) => s.status === 'overdue' || s.status === 'due');
     if (due.length === 0) continue;
 
     const asset = await assetsCol.findOne(
@@ -82,11 +81,11 @@ async function scanServiceDue(tenantId: string): Promise<number> {
       const overdue = item.status === 'overdue';
       const payload = {
         type: overdue ? ('service_overdue' as const) : ('service_due' as const),
-        title: `${overdue ? 'Service overdue' : 'Service due soon'}: ${item.title}`,
-        body: `${assetName} — "${item.title}" is ${overdue ? 'overdue' : 'due soon'}.`,
+        title: `${overdue ? 'Service overdue' : 'Service due soon'}: ${item.scheduleName}`,
+        body: `${assetName} — "${item.scheduleName}" is ${overdue ? 'overdue' : 'due soon'}.`,
         link: `/assets/${assetOid.toString()}`,
-        entityType: 'serviceProgram',
-        entityId: item.programId,
+        entityType: 'servicePlan',
+        entityId: `${status.planId}:${item.scheduleId}`,
       };
       await notifyEventOnce(tenantId, payload, { teamIds });
       if (driverUserIds.length) await notifyUsersOnce(tenantId, driverUserIds, payload);

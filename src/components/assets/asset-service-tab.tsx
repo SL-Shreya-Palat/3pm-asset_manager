@@ -1,10 +1,12 @@
 'use client';
 
 /**
- * Asset Service tab — preventative-maintenance status + history.
- * Lists each service program assigned to the asset with its computed due-status,
- * lets the user Log a completed service (which resets the schedule), and shows
- * recent service history. Mirrors the Fuel tab pattern.
+ * Asset Service tab — hierarchical servicing status + history (mirrors Command).
+ *
+ * Shows the asset's assigned Service Plan and each schedule's due-status from the
+ * ported engine (calc.ts). Servicing a higher-order schedule in a group also
+ * completes the lower ones — surfaced via the "also completes" hint. Log Service
+ * records which schedule was serviced (drives the group reset).
  */
 import { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
@@ -20,25 +22,34 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
-import { MeterTypeSelect, ProgramChecklist } from '@/components/maintenance/service-fields';
+import { MeterTypeSelect } from '@/components/maintenance/service-fields';
 import { cn } from '@/lib/utils';
+import {
+  SERVICE_STATUS_VARIANT,
+  SERVICE_STATUS_LABEL,
+  SERVICE_STATUS_TEXT,
+  type ServiceScheduleStatus,
+} from '@/constants/service-status';
 
-type ServiceStatus = 'ok' | 'due_soon' | 'overdue' | 'unknown';
+type SchedStatus = ServiceScheduleStatus;
 
-interface TriggerStatus { triggerType: string; status: ServiceStatus; label: string; remaining: number | null }
-interface ProgramStatus {
-  programId: string;
-  title: string;
-  category: string;
-  status: ServiceStatus;
-  triggers: TriggerStatus[];
-  serviceTaskIds: string[];
-  lastPerformedAt: string | null;
+interface ScheduleStatus {
+  scheduleId: string;
+  scheduleName: string;
+  unit: string;
+  value: number | null;
+  status: SchedStatus;
+  interval: number;
+  nextServiceAt: number | null;
+  nextCalendarDate: string | null;
+  lastServicedAt: string | null;
+  serviceGroup: number | null;
+  completedSchedules: string[];
 }
 interface HistoryEntry {
   id: string;
-  programNames: string[];
   taskNames: string[];
+  servicePlanScheduleName?: string | null;
   performedAt: string | null;
   meterType: string | null;
   meterAtService: number | null;
@@ -47,40 +58,18 @@ interface HistoryEntry {
   notes: string | null;
 }
 
-const STATUS_META: Record<ServiceStatus, { label: string; className: string }> = {
-  overdue: { label: 'Overdue', className: 'bg-red-100 text-red-700 hover:bg-red-100' },
-  due_soon: { label: 'Due soon', className: 'bg-amber-100 text-amber-700 hover:bg-amber-100' },
-  ok: { label: 'OK', className: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-100' },
-  unknown: { label: 'No data', className: 'bg-muted text-muted-foreground hover:bg-muted' },
-};
-
-/** Per-status icon + accent for the program cards. */
-const STATUS_CONFIG: Record<ServiceStatus, { icon: typeof Wrench; wrap: string; border: string }> = {
-  overdue: { icon: AlertTriangle, wrap: 'bg-red-100 text-red-600', border: 'border-red-200' },
-  due_soon: { icon: Clock, wrap: 'bg-amber-100 text-amber-600', border: 'border-amber-200' },
-  ok: { icon: CheckCircle2, wrap: 'bg-emerald-100 text-emerald-600', border: 'border-border' },
-  unknown: { icon: Wrench, wrap: 'bg-muted text-muted-foreground', border: 'border-border' },
-};
-
-/** Per-trigger chip styling by that condition's status. */
-const TRIGGER_CONFIG: Record<ServiceStatus, string> = {
-  overdue: 'border-red-200 bg-red-50 text-red-700',
-  due_soon: 'border-amber-200 bg-amber-50 text-amber-700',
-  ok: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  unknown: 'border-border bg-muted text-muted-foreground',
-};
-
 function formatDate(iso: string | null) {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 export function AssetServiceTab({ assetId }: { assetId: string }) {
-  const [programs, setPrograms] = useState<ProgramStatus[]>([]);
-  const [summary, setSummary] = useState({ overdue: 0, dueSoon: 0, ok: 0 });
+  const [planName, setPlanName] = useState<string | null>(null);
+  const [planId, setPlanId] = useState<string | null>(null);
+  const [schedules, setSchedules] = useState<ScheduleStatus[]>([]);
+  const [summary, setSummary] = useState({ overdue: 0, due: 0, upcoming: 0, planned: 0 });
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
-
   const [logOpen, setLogOpen] = useState(false);
   const [preselect, setPreselect] = useState<string | null>(null);
 
@@ -89,24 +78,25 @@ export function AssetServiceTab({ assetId }: { assetId: string }) {
     try {
       const res = await axios.get(`/api/assets/${assetId}/service-status`, { withCredentials: true });
       const data = res.data.data;
-      setPrograms(data?.programs ?? []);
-      setSummary(data?.summary ?? { overdue: 0, dueSoon: 0, ok: 0 });
+      setPlanName(data?.planName ?? null);
+      setPlanId(data?.planId ?? null);
+      setSchedules(data?.schedules ?? []);
+      setSummary(data?.summary ?? { overdue: 0, due: 0, upcoming: 0, planned: 0 });
       setHistory(data?.history ?? []);
     } catch {
-      setPrograms([]);
+      setSchedules([]);
       setHistory([]);
     } finally {
       setLoading(false);
     }
   }, [assetId]);
 
-  // Defer so setState isn't called synchronously inside the effect body.
   useEffect(() => {
     const t = setTimeout(() => fetchStatus(), 0);
     return () => clearTimeout(t);
   }, [fetchStatus]);
 
-  const openLog = (programId: string | null) => { setPreselect(programId); setLogOpen(true); };
+  const openLog = (scheduleId: string | null) => { setPreselect(scheduleId); setLogOpen(true); };
   const handleLogged = () => { setLogOpen(false); setPreselect(null); fetchStatus(); };
 
   if (loading) {
@@ -120,90 +110,100 @@ export function AssetServiceTab({ assetId }: { assetId: string }) {
 
   return (
     <div>
-      {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <StatCard icon={<AlertTriangle className="h-4 w-4" />} label="Overdue" value={summary.overdue} accent="text-red-600" />
-        <StatCard icon={<Clock className="h-4 w-4" />} label="Due soon" value={summary.dueSoon} accent="text-amber-600" />
-        <StatCard icon={<CheckCircle2 className="h-4 w-4" />} label="Up to date" value={summary.ok} accent="text-emerald-600" />
+        <StatCard icon={<AlertTriangle className="h-4 w-4" />} label="Overdue" value={summary.overdue} accent="text-destructive" />
+        <StatCard icon={<Clock className="h-4 w-4" />} label="Due" value={summary.due} accent="text-yellow-600" />
+        <StatCard icon={<CheckCircle2 className="h-4 w-4" />} label="Upcoming" value={summary.upcoming} accent="text-gray-500" />
       </div>
 
-      {/* Programs */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-base font-semibold text-foreground">Asset Service Schedule</h3>
-          <p className="mt-0.5 text-xs text-muted-foreground">Preventive maintenance due on this asset</p>
+          <h3 className="text-base font-semibold text-foreground">
+            Service schedule{planName ? ` — ${planName}` : ''}
+          </h3>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Next service due per schedule. Same group + higher order resets the lower schedules.
+          </p>
         </div>
-        <Button size="sm" onClick={() => openLog(null)}>
+        <Button size="sm" onClick={() => openLog(null)} disabled={!planId}>
           <Plus className="h-4 w-4" /> Log Service
         </Button>
       </div>
 
-      {programs.length === 0 ? (
+      {schedules.length === 0 ? (
         <div className="mb-8 rounded-xl border border-dashed border-border p-10 text-center">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
             <Wrench className="h-5 w-5 text-muted-foreground" />
           </div>
-          <p className="text-sm font-medium text-foreground">No service programs assigned</p>
+          <p className="text-sm font-medium text-foreground">No service plan assigned</p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Assign one from Maintenance → Service Programs to start tracking due dates.
+            Assign a plan from Maintenance → Service Plans (or the asset edit form) to track servicing.
           </p>
         </div>
       ) : (
-        <div className="mb-8 space-y-2.5">
-          {programs.map((p) => {
-            const meta = STATUS_CONFIG[p.status];
-            const Icon = meta.icon;
-            const urgent = p.status === 'overdue' || p.status === 'due_soon';
-            return (
-              <div
-                key={p.programId}
-                className={cn(
-                  'flex items-center gap-4 rounded-xl border bg-card px-4 py-3.5 shadow-sm',
-                  meta.border,
-                )}
-              >
-                <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-full', meta.wrap)}>
-                  <Icon className="h-5 w-5" />
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold text-foreground">{p.title}</span>
-                    <Badge className={STATUS_META[p.status].className}>{STATUS_META[p.status].label}</Badge>
-                  </div>
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {p.triggers.map((t, i) => (
-                      <span
-                        key={i}
-                        className={cn(
-                          'inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium',
-                          TRIGGER_CONFIG[t.status],
-                        )}
-                      >
-                        {t.label}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="mt-1.5 text-xs text-muted-foreground">
-                    Last performed: <span className="text-foreground/80">{formatDate(p.lastPerformedAt)}</span>
-                  </p>
-                </div>
-
-                <Button
-                  variant={urgent ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => openLog(p.programId)}
-                  className="shrink-0"
-                >
-                  Log
-                </Button>
-              </div>
-            );
-          })}
+        <div className="mb-8 overflow-x-auto rounded-xl border border-border">
+          <table className="w-full min-w-[820px] text-left">
+            <thead>
+              <tr className="border-b border-border bg-muted/40 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <th className="px-4 py-2.5">Schedule</th>
+                <th className="px-4 py-2.5">Status</th>
+                <th className="px-4 py-2.5">Next Service Date</th>
+                <th className="px-4 py-2.5">Next Service Value</th>
+                <th className="px-4 py-2.5">Value Till Next Service</th>
+                <th className="px-4 py-2.5">Last Serviced At</th>
+              </tr>
+            </thead>
+            <tbody>
+              {schedules.map((s) => {
+                // Same columns/format as Command's Upcoming Services table.
+                const nextServiceValue = s.nextServiceAt ?? s.interval;
+                // Calendar schedules (Days/Months) measure "till next" in days.
+                const valueUnit = s.unit === 'Months' || s.unit === 'Days' ? 'Days' : s.unit;
+                return (
+                  <tr key={s.scheduleId} className="border-b border-border last:border-0 align-top">
+                    <td className="px-4 py-3">
+                      <span className="text-sm font-medium text-foreground">{s.scheduleName}</span>
+                      {s.completedSchedules.length > 0 && (
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">
+                          also completes: {s.completedSchedules.join(', ')}
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant={SERVICE_STATUS_VARIANT[s.status]}>{SERVICE_STATUS_LABEL[s.status]}</Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-muted-foreground">{formatDate(s.nextCalendarDate)}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {nextServiceValue != null ? (
+                        <span className="inline-flex rounded-md border border-border bg-muted/40 px-2 py-0.5 text-xs font-medium text-foreground">
+                          {Number(nextServiceValue).toLocaleString()} {s.unit}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {s.value != null ? (
+                        <span className={cn('text-sm font-semibold', SERVICE_STATUS_TEXT[s.status])}>
+                          {Number(s.value).toFixed(2)} {valueUnit}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm text-muted-foreground">{formatDate(s.lastServicedAt)}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* History */}
       <div className="mb-3 flex items-center gap-2">
         <History className="h-4 w-4 text-muted-foreground" />
         <h3 className="text-base font-semibold text-foreground">Service History</h3>
@@ -221,7 +221,10 @@ export function AssetServiceTab({ assetId }: { assetId: string }) {
       ) : (
         <div className="space-y-2.5">
           {history.map((h) => {
-            const label = [...h.programNames, ...h.taskNames].filter(Boolean).join(', ') || 'Service';
+            const label =
+              h.servicePlanScheduleName ||
+              h.taskNames.filter(Boolean).join(', ') ||
+              'Service';
             return (
               <div key={h.id} className="flex gap-3.5 rounded-xl border border-border bg-card px-4 py-3.5 shadow-sm">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -265,11 +268,12 @@ export function AssetServiceTab({ assetId }: { assetId: string }) {
         </div>
       )}
 
-      {logOpen && (
+      {logOpen && planId && (
         <LogServiceDialog
           key={preselect ?? '__all__'}
           assetId={assetId}
-          programs={programs}
+          planId={planId}
+          schedules={schedules}
           preselect={preselect}
           onClose={() => { setLogOpen(false); setPreselect(null); }}
           onLogged={handleLogged}
@@ -280,20 +284,17 @@ export function AssetServiceTab({ assetId }: { assetId: string }) {
 }
 
 function LogServiceDialog({
-  assetId, programs, preselect, onClose, onLogged,
+  assetId, planId, schedules, preselect, onClose, onLogged,
 }: {
   assetId: string;
-  programs: ProgramStatus[];
+  planId: string;
+  schedules: ScheduleStatus[];
   preselect: string | null;
   onClose: () => void;
   onLogged: () => void;
 }) {
-  // Mounted fresh per open (via `key`), so initial state comes from props —
-  // no reset effect needed.
-  const [selected, setSelected] = useState<Set<string>>(() =>
-    preselect
-      ? new Set([preselect])
-      : new Set(programs.filter((p) => p.status === 'overdue' || p.status === 'due_soon').map((p) => p.programId)),
+  const [scheduleId, setScheduleId] = useState<string>(
+    preselect || schedules[0]?.scheduleId || '',
   );
   const [performedAt, setPerformedAt] = useState(() => new Date().toISOString().slice(0, 10));
   const [meterType, setMeterType] = useState('odometer');
@@ -303,24 +304,16 @@ function LogServiceDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const toggle = (id: string) =>
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+  const selected = schedules.find((s) => s.scheduleId === scheduleId);
 
   const handleSubmit = async () => {
     setError('');
-    const programIds = [...selected];
-    const taskIds = [
-      ...new Set(programs.filter((p) => selected.has(p.programId)).flatMap((p) => p.serviceTaskIds)),
-    ];
+    if (!scheduleId) { setError('Select a schedule'); return; }
     try {
       setSaving(true);
       await axios.post(`/api/assets/${assetId}/service-entries`, {
-        servicePrograms: programIds,
-        serviceTaskIds: taskIds,
+        servicePlanId: planId,
+        servicePlanSchedule: scheduleId,
         performedAt: performedAt || undefined,
         meterType,
         meterAtService: meter ? parseFloat(meter) : undefined,
@@ -340,16 +333,32 @@ function LogServiceDialog({
       <DialogContent className="max-w-md max-h-[85vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>Log Service</DialogTitle>
-          <DialogDescription>Record a completed service. This resets the schedule for the selected programs.</DialogDescription>
+          <DialogDescription>
+            Record a completed service. Servicing a higher-order schedule also resets the lower
+            ones in its group.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4 py-2">
-          <ProgramChecklist
-            programs={programs}
-            selected={selected}
-            onToggle={toggle}
-            label="Programs serviced"
-          />
+          <div>
+            <Label>Schedule serviced</Label>
+            <select
+              value={scheduleId}
+              onChange={(e) => setScheduleId(e.target.value)}
+              className="mt-1.5 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+            >
+              {schedules.map((s) => (
+                <option key={s.scheduleId} value={s.scheduleId}>
+                  {s.scheduleName} (G{s.serviceGroup ?? '-'})
+                </option>
+              ))}
+            </select>
+            {selected && selected.completedSchedules.length > 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Also completes: {selected.completedSchedules.join(', ')}
+              </p>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>

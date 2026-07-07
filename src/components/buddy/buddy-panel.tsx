@@ -30,6 +30,7 @@ const SUGGESTIONS = [
   "Which assets are out of service?",
   "Show me open critical defects",
   "What services are overdue?",
+  "Any compliance documents expiring soon?",
 ];
 
 const BuddyAvatar = ({ size = 36 }: { size?: number }) => (
@@ -334,8 +335,9 @@ export function BuddyPanel() {
               Hi{firstName ? `, ${firstName}` : ""}! I&apos;m Buddy AI
             </h3>
             <p className="mb-6 max-w-[260px] text-sm text-muted-foreground">
-              Your fleet assistant. Ask me about assets, defects, work orders,
-              services, or how to navigate the app.
+              Your fleet assistant. Ask me about assets, inspections, defects,
+              faults, work orders, services, compliance, or how to navigate
+              the app.
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((s) => (

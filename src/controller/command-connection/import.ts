@@ -8,9 +8,10 @@
  * re-import (same discipline as the Zoho migration engine).
  *
  * Ownership rule: Command owns IDENTITY fields (name, rego, VIN, make/model,
- * class) — they're overwritten on every sync and read-only in the UI. Asset
- * Manager owns OPERATIONAL fields (meters, programs, teams, forms) — they're
- * seeded on first import and never touched by a re-sync.
+ * class) AND current meter readings (odometer, hubometer, engine hours) — these
+ * are overwritten on every sync and read-only in the UI, so servicing math here
+ * matches Command exactly. Asset Manager owns the OPERATIONAL wiring (programs,
+ * teams, forms) — seeded on first import and never touched by a re-sync.
  */
 
 import { ObjectId } from 'mongodb';
@@ -20,13 +21,14 @@ import {
   getDriversCollection,
   getVendorsCollection,
   getLocationsCollection,
+  getPartsCollection,
 } from '@/lib/mongodb';
 import { getPage, getCommandStaff } from '@/lib/command/fetchers';
 import type { CommandEntity } from '@/lib/command/types';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export type ImportEntity = 'assets' | 'drivers' | 'vendors' | 'locations';
+export type ImportEntity = 'assets' | 'drivers' | 'vendors' | 'locations' | 'stock';
 
 export interface ImportCounts {
   created: number;
@@ -55,10 +57,11 @@ function num(v: unknown): number | undefined {
 async function fetchAll(
   entity: CommandEntity,
   authTenantId: string,
+  query?: Record<string, string>,
 ): Promise<Array<Record<string, any>>> {
   const rows: Array<Record<string, any>> = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const res = await getPage(entity, authTenantId, { page, limit: PAGE_LIMIT });
+    const res = await getPage(entity, authTenantId, { page, limit: PAGE_LIMIT, query });
     if (!res.ok) {
       if (page === 1) throw new Error(`Command ${entity} fetch failed: ${res.reason}`);
       break; // partial failure mid-run — keep what we have
@@ -112,7 +115,12 @@ async function importAssets(
   userId: ObjectId,
   authTenantId: string,
 ): Promise<ImportCounts> {
-  const rows = await fetchAll('assets', authTenantId);
+  // Command's list hides archived assets by default and `showArchived=true`
+  // returns ONLY archived — sweep both so archive state syncs losslessly.
+  const rows = [
+    ...(await fetchAll('assets', authTenantId)),
+    ...(await fetchAll('assets', authTenantId, { showArchived: 'true' })),
+  ];
   const assets = await getAssetsCollection();
   const typeCache = new Map<string, ObjectId>();
   const counts: ImportCounts = { created: 0, updated: 0, skipped: 0 };
@@ -146,6 +154,11 @@ async function importAssets(
       str(row.assetClassName),
     );
 
+    // Command represents "archived" two ways: the isArchived flag AND the
+    // legacy status string 'archive'/'archived' — honor both.
+    const cmdStatus = (str(row.status) ?? '').toLowerCase();
+    const archivedByStatus = cmdStatus === 'archive' || cmdStatus === 'archived';
+
     // Command-owned identity fields — refreshed on every sync.
     const identity: Record<string, unknown> = {
       name,
@@ -157,7 +170,14 @@ async function importAssets(
       year: num(row.yearOfManufacture) ?? num(info.yearOfManufacture),
       color: str(info.colour),
       fuelType: str(info.fuelType),
-      isArchived: row.isArchived === true,
+      // Current meter readings — Command is the meter source of truth. Mirrored on
+      // EVERY sync (not seed-once) so Asset Manager's servicing math uses the same
+      // current odometer/hours as Command and stays 100% consistent. Command stores
+      // these under assetInformation; fall back to top-level / registry defensively.
+      currentOdometer: num(info.odometer) ?? num(row.odometer) ?? num(registry.odometer),
+      hubometer: num(info.hubometer) ?? num(row.hubometer) ?? num(registry.hubometer),
+      currentEngineHours: num(info.engineHours) ?? num(row.engineHours) ?? num(registry.engineHours),
+      isArchived: row.isArchived === true || archivedByStatus,
       commandSyncedAt: new Date(),
       updatedBy: userId,
       updatedAt: new Date(),
@@ -177,14 +197,13 @@ async function importAssets(
           tenantId,
           commandAssetId,
           source: 'command',
-          status: str(row.status) ?? 'active',
+          // Normalize Command's status strings into AM's model (in_service /
+          // out_of_service). Archived assets seed as in_service — the archive
+          // flag (identity tier, above) is what hides them.
+          status: /maint/i.test(cmdStatus) ? 'out_of_service' : 'in_service',
           photoUrls: photo ? [photo] : [],
-          currentOdometer: num(row.odometer),
-          hubometer: num(row.hubometer),
-          currentEngineHours: num(row.engineHours),
           teamIds: [],
           formIds: [],
-          serviceProgramIds: [],
           assetGroupIds: [],
           driverAccessIds: [],
           customFields: {},
@@ -264,20 +283,19 @@ async function importVendors(
   const counts: ImportCounts = { created: 0, updated: 0, skipped: 0 };
 
   for (const row of rows) {
-    const commandContactId = str(row._id ?? row.id);
-    // Only contacts flagged as suppliers become vendors.
+    // Only supplier-role contacts are vendor material — clients/subcontractors
+    // are OUT OF SCOPE, not "skipped" (don't pollute the user-facing counts).
     const roles = row.roles ?? {};
     const isSupplier =
       roles.isSupplier === true ||
       row.isSupplier === true ||
       String(row.role ?? '').toLowerCase() === 'supplier';
-    if (!commandContactId || !isSupplier) {
-      counts.skipped++;
-      continue;
-    }
+    if (!isSupplier) continue;
 
+    const commandContactId = str(row._id ?? row.id);
     const name = str(row.companyName) ?? str(row.name) ?? str(row.fullName);
-    if (!name) {
+    // A supplier we couldn't import (no id/name) IS worth surfacing as skipped.
+    if (!commandContactId || !name) {
       counts.skipped++;
       continue;
     }
@@ -326,6 +344,12 @@ async function importLocations(
   const counts: ImportCounts = { created: 0, updated: 0, skipped: 0 };
 
   for (const row of rows) {
+    // Only workshop/servicing and stock locations matter to Asset Manager —
+    // offices, site addresses etc. are out of scope (not counted as skipped).
+    const usedFor: string[] = Array.isArray(row.usedFor) ? row.usedFor.map(String) : [];
+    const relevant = usedFor.some((u) => /workshop|servic|stock/i.test(u));
+    if (!relevant) continue;
+
     const commandLocationId = str(row._id ?? row.id ?? row.value);
     const name = str(row.name) ?? str(row.locationName) ?? str(row.label);
     if (!commandLocationId || !name) {
@@ -347,6 +371,8 @@ async function importLocations(
           source: 'command',
           name,
           ...(address ? { address } : {}),
+          // Command's location purposes (e.g. Stock Location, Asset Servicing).
+          usedFor,
           commandSyncedAt: now,
           updatedBy: userId,
           updatedAt: now,
@@ -358,6 +384,68 @@ async function importLocations(
           createdAt: now,
           isActive: true,
           isArchived: false,
+        },
+      },
+      { upsert: true },
+    );
+    if (result.upsertedCount > 0) counts.created++;
+    else counts.updated++;
+  }
+  return counts;
+}
+
+/**
+ * Command stock → AM Inventory (parts tagged source 'command').
+ *
+ * Command REMAINS the stock authority: the quantity stored here is a display
+ * SNAPSHOT (refreshed on every import and decremented after each successful
+ * consumption push). Correctness never depends on it — work-order completion
+ * pre-flights Command's live on-hand and pushes a RECEIPTED_OUT transaction
+ * into Command's ledger (strict lockstep, see completeWorkOrder).
+ */
+async function importStock(
+  tenantId: ObjectId,
+  userId: ObjectId,
+  authTenantId: string,
+): Promise<ImportCounts> {
+  const rows = await fetchAll('stock', authTenantId);
+  const parts = await getPartsCollection();
+  const counts: ImportCounts = { created: 0, updated: 0, skipped: 0 };
+
+  for (const row of rows) {
+    const commandStockId = str(row._id ?? row.id);
+    const name = str(row.name) ?? str(row.description);
+    if (!commandStockId || !name) {
+      counts.skipped++;
+      continue;
+    }
+
+    const now = new Date();
+    const result = await parts.updateOne(
+      { tenantId, commandStockId },
+      {
+        // Command-owned identity + quantity snapshot — refreshed every sync.
+        $set: {
+          source: 'command',
+          name,
+          partNumber: str(row.code) ?? str(row.itemCode) ?? '',
+          description: str(row.description),
+          commandUnitCost: num(row.financialInfo?.costPrice) ?? 0,
+          stockLocations: [{ locationId: null, quantity: num(row.quantity) ?? 0 }],
+          commandSyncedAt: now,
+          updatedBy: userId,
+          updatedAt: now,
+        },
+        $setOnInsert: {
+          tenantId,
+          commandStockId,
+          vendors: [],
+          createdBy: userId,
+          createdAt: now,
+          isActive: true,
+          isArchived: false,
+          archivedAt: null,
+          archivedBy: null,
         },
       },
       { upsert: true },
@@ -391,6 +479,7 @@ export async function importFromCommand(
     drivers: () => importDrivers(tid, uid, authTenantId),
     vendors: () => importVendors(tid, uid, authTenantId),
     locations: () => importLocations(tid, uid, authTenantId),
+    stock: () => importStock(tid, uid, authTenantId),
   };
 
   for (const entity of entities) {

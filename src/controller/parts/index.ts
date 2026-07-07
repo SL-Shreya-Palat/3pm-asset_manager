@@ -4,6 +4,11 @@
 import { ObjectId } from 'mongodb';
 import { getPartsCollection } from '@/lib/mongodb';
 import { validateCreatePartInput, serializePart } from './utils';
+import {
+  isCommandConnectionEnabled,
+  stripCommandOwnedFields,
+  MASTER_DATA_MANAGED_MESSAGE,
+} from '@/controller/command-connection/guard';
 import type { CreatePartInput, UpdatePartInput } from './types';
 
 /** List parts with pagination, search, and optional category filter. */
@@ -64,6 +69,11 @@ export async function getPartById(tenantId: string, partId: string) {
 
 /** Create a new part. */
 export async function createPart(tenantId: string, userId: string, input: CreatePartInput) {
+  // Connected tenants add stock in Command, then import — never locally.
+  if (await isCommandConnectionEnabled(tenantId)) {
+    return { data: null, error: MASTER_DATA_MANAGED_MESSAGE };
+  }
+
   const validation = validateCreatePartInput(input);
   if (!validation.valid) return { data: null, error: validation.errors };
 
@@ -132,6 +142,18 @@ export async function updatePart(
     _id: partOid, tenantId: tenantOid, isArchived: { $ne: true },
   });
   if (!existing) return { data: null, error: 'Part not found' };
+
+  // Command-sourced stock: identity + quantities are owned by Command —
+  // strip them from local edits (AM-only fields still save).
+  if (existing.source === 'command') {
+    const guarded = stripCommandOwnedFields(input as Record<string, unknown>, 'parts');
+    input = guarded.input as UpdatePartInput;
+    if (guarded.stripped.length > 0) {
+      console.warn(
+        `[parts] Ignored Command-owned field edit on ${partId}: ${guarded.stripped.join(', ')}`,
+      );
+    }
+  }
 
   const $set: Record<string, unknown> = {
     updatedBy: ObjectId.createFromHexString(userId),
