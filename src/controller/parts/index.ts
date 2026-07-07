@@ -14,7 +14,7 @@ import type { CreatePartInput, UpdatePartInput } from './types';
 /** List parts with pagination, search, and optional category filter. */
 export async function getAllParts(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; categoryId?: string; showArchived?: boolean },
+  options: { page?: number; limit?: number; search?: string; categoryId?: string; showArchived?: boolean; createdBy?: string },
 ) {
   const collection = await getPartsCollection();
   const page = Math.max(1, options.page || 1);
@@ -24,6 +24,11 @@ export async function getAllParts(
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
   };
+
+  // "OWN" view scope — only show records created by this user
+  if (options.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+  }
 
   if (options.showArchived) {
     filter.isArchived = true;

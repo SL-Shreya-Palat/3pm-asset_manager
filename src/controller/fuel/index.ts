@@ -19,6 +19,8 @@ export async function getAllFuelTransactions(
     fuelType?: string;
     startDate?: string;
     endDate?: string;
+    showArchived?: boolean;
+    createdBy?: string;
   },
 ) {
   const collection = await getFuelTransactionsCollection();
@@ -28,8 +30,15 @@ export async function getAllFuelTransactions(
 
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
-    isArchived: { $ne: true },
   };
+
+  if (!options.showArchived) {
+    filter.isArchived = { $ne: true };
+  }
+
+  if (options.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+  }
 
   if (options.assetId) {
     filter.assetId = ObjectId.createFromHexString(options.assetId);

@@ -229,6 +229,7 @@ export async function seedSystemRoles(tenantId: ObjectId, userId: ObjectId): Pro
             description: def.description,
             baseCostPerHour: 0,
             chargeOutRate: 0,
+            permissions: def.permissions,
             createdBy: userId,
             createdAt: now,
             isActive: true,
@@ -236,7 +237,6 @@ export async function seedSystemRoles(tenantId: ObjectId, userId: ObjectId): Pro
           $set: {
             isSystem: def.isSystem,
             type: def.type,
-            permissions: def.permissions,
             teamScoped: def.teamScoped,
             mobileOnly: def.mobileOnly,
             isManager: def.isManager ?? null,

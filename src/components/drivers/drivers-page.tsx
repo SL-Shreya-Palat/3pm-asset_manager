@@ -33,10 +33,24 @@ import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
 import { Spinner } from '@/components/ui/spinner';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 import type { DriverRow, TeamOption, Pagination } from './types';
+
+const DRIVER_FORM_ID = 'people.drivers.driver';
 
 export function DriversPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+
+  // Permission levels for row-level "OWN" checks
+  const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(DRIVER_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(DRIVER_FORM_ID);
+  const deleteLevel = hasFullAccess ? 'ALL' : permissionIndex.getDeleteLevel(DRIVER_FORM_ID);
   const [drivers, setDrivers] = useState<DriverRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1, limit: 25, total: 0, hasMore: false,
@@ -262,14 +276,30 @@ export function DriversPage() {
             <>
               <RowActionButton label="Inspect" icon={<ClipboardCheck />} onClick={() => handleOpenInspect(driver)} />
               <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleViewDriver(driver)} />
-              <RowActionButton label="Edit" icon={<Edit />} onClick={() => router.push(`/people/drivers/${driver.id}/edit`)} />
-              <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(driver)} />
+              {checkRecordOwnership(editLevel, driver.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.people.drivers.form.edit}>
+                  <RowActionButton label="Edit" icon={<Edit />} onClick={() => router.push(`/people/drivers/${driver.id}/edit`)} />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(archiveLevel, driver.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.people.drivers.form.archive}>
+                  <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(driver)} />
+                </PermissionGuard>
+              )}
             </>
           )}
           {showArchived && (
             <>
-              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(driver)} />
-              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(driver)} />
+              {checkRecordOwnership(archiveLevel, driver.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.people.drivers.form.archive}>
+                  <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(driver)} />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(deleteLevel, driver.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.people.drivers.form.delete}>
+                  <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(driver)} />
+                </PermissionGuard>
+              )}
             </>
           )}
         </RowActions>
@@ -281,10 +311,12 @@ export function DriversPage() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <PageHeader title="Drivers" description="Manage driver profiles, licences, and asset assignments" count={pagination.total}>
-        <Button onClick={() => router.push('/people/drivers/new')}>
-          <Plus className="h-4 w-4" />
-          Add Driver
-        </Button>
+        <PermissionGuard permission={Permissions.people.drivers.form.create}>
+          <Button onClick={() => router.push('/people/drivers/new')}>
+            <Plus className="h-4 w-4" />
+            Add Driver
+          </Button>
+        </PermissionGuard>
       </PageHeader>
 
       <div className="px-6 pb-3">

@@ -67,7 +67,7 @@ async function generatePONumber(tenantId: ObjectId): Promise<string> {
 
 export async function getAllPurchaseOrders(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; status?: string; showArchived?: boolean },
+  options: { page?: number; limit?: number; search?: string; status?: string; showArchived?: boolean; createdBy?: string },
 ) {
   const col = await getPurchaseOrdersCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
@@ -75,6 +75,11 @@ export async function getAllPurchaseOrders(
   const filter: Record<string, unknown> = {
     tenantId: tenantOid,
   };
+
+  // "OWN" view scope — only show records created by this user
+  if (options.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+  }
 
   if (options.showArchived) {
     filter.isArchived = true;

@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight, Ruler, Tag, MapPin, Wrench, CircleDot, Box, 
 import { cn } from '@/lib/utils';
 import { InventorySettingsList, type SettingsFieldConfig } from './inventory-settings-list';
 import { WorkOrderStatusesList } from './work-order-statuses-list';
+import { Permissions } from '@/consts/permissions';
 import { NotificationSettingsPage } from './notification-settings-page';
 import { CommandConnectionPanel } from './command-connection-panel';
 import { IoTSettingsPanel } from './iot-settings-panel';
@@ -36,12 +37,12 @@ const ADMIN_SIDEBAR: SidebarItem[] = [
   },
   {
     key: 'inventory',
-    label: 'Inventory',
+    label: 'Stock',
     icon: Tag,
     children: [
       { key: 'measurement-units', label: 'Measurement Units' },
-      { key: 'part-categories', label: 'Part Categories' },
-      { key: 'part-locations', label: 'Part Locations' },
+      { key: 'part-categories', label: 'Stock Categories' },
+      { key: 'part-locations', label: 'Stock Locations' },
     ],
   },
   {
@@ -157,6 +158,12 @@ export function SettingsPage() {
             apiEndpoint="/api/inventory-settings/asset-types"
             fields={ASSET_TYPE_FIELDS}
             createLabel="Add Asset Type"
+            permissions={{
+              create: Permissions.settings.assetTypes.form.create,
+              edit: Permissions.settings.assetTypes.form.edit,
+              archive: Permissions.settings.assetTypes.form.archive,
+              delete: Permissions.settings.assetTypes.form.delete,
+            }}
           />
         );
       case 'measurement-units':
@@ -167,24 +174,42 @@ export function SettingsPage() {
             fields={MEASUREMENT_UNIT_FIELDS}
             createLabel="Add Unit"
             extraColumns={[{ key: 'symbol', header: 'Symbol' }]}
+            permissions={{
+              create: Permissions.settings.measurementUnits.form.create,
+              edit: Permissions.settings.measurementUnits.form.edit,
+              archive: Permissions.settings.measurementUnits.form.archive,
+              delete: Permissions.settings.measurementUnits.form.delete,
+            }}
           />
         );
       case 'part-categories':
         return (
           <InventorySettingsList
-            title="Part Categories"
+            title="Stock Categories"
             apiEndpoint="/api/inventory-settings/part-categories"
             fields={PART_CATEGORY_FIELDS}
             createLabel="Create Category"
+            permissions={{
+              create: Permissions.settings.partCategories.form.create,
+              edit: Permissions.settings.partCategories.form.edit,
+              archive: Permissions.settings.partCategories.form.archive,
+              delete: Permissions.settings.partCategories.form.delete,
+            }}
           />
         );
       case 'part-locations':
         return (
           <InventorySettingsList
-            title="Part Locations"
+            title="Stock Locations"
             apiEndpoint="/api/inventory-settings/part-locations"
             fields={PART_LOCATION_FIELDS}
             createLabel="Add Location"
+            permissions={{
+              create: Permissions.settings.partLocations.form.create,
+              edit: Permissions.settings.partLocations.form.edit,
+              archive: Permissions.settings.partLocations.form.archive,
+              delete: Permissions.settings.partLocations.form.delete,
+            }}
           />
         );
       case 'work-order-statuses':

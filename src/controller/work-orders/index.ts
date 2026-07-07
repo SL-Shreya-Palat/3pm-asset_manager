@@ -42,7 +42,7 @@ async function resolveWorkOrderAssetTeamIds(
 
 export async function getAllWorkOrders(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; statusId?: string; assigneeId?: string; showArchived?: boolean },
+  options: { page?: number; limit?: number; search?: string; statusId?: string; assigneeId?: string; showArchived?: boolean; createdBy?: string },
 ) {
   const col = await getWorkOrdersCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
@@ -50,6 +50,11 @@ export async function getAllWorkOrders(
   const filter: Record<string, unknown> = {
     tenantId: tenantOid,
   };
+
+  // "OWN" view scope — only show records created by this user
+  if (options.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+  }
 
   if (options.showArchived) {
     filter.isArchived = true;

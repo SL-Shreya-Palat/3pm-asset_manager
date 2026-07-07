@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helper';
 import { getServiceTaskById, updateServiceTask, deleteServiceTask } from '@/controller/service-tasks';
+import { getFormPermissionLevels } from '@/lib/server-permissions';
+
+const FORM_ID = 'maintenance.serviceTasks.serviceTask';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -22,6 +25,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ data: null, error: 'Service task not found' }, { status: 404 });
   }
 
+  // "OWN" view: block access to records the user didn't create
+  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
+  if (perms.view === 'OWN' && task.createdBy !== user.id) {
+    return NextResponse.json({ data: null, error: 'Service task not found' }, { status: 404 });
+  }
+
   return NextResponse.json({ data: task, error: null });
 }
 
@@ -33,6 +42,19 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 
   try {
     const { id } = await context.params;
+
+    // "OWN" edit: verify the user created this service task
+    const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
+    if (perms.edit === 'OWN') {
+      const existing = await getServiceTaskById(user.currentTenantId, id);
+      if (!existing) {
+        return NextResponse.json({ data: null, error: 'Service task not found' }, { status: 404 });
+      }
+      if (existing.createdBy !== user.id) {
+        return NextResponse.json({ data: null, error: 'You can only edit service tasks you created' }, { status: 403 });
+      }
+    }
+
     const body = await request.json();
     const result = await updateServiceTask(user.currentTenantId, user.id, id, body);
 
@@ -54,8 +76,20 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  const deleted = await deleteServiceTask(user.currentTenantId, user.id, id);
 
+  // "OWN" delete: verify the user created this service task
+  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
+  if (perms.delete === 'OWN') {
+    const existing = await getServiceTaskById(user.currentTenantId, id);
+    if (!existing) {
+      return NextResponse.json({ data: null, error: 'Service task not found' }, { status: 404 });
+    }
+    if (existing.createdBy !== user.id) {
+      return NextResponse.json({ data: null, error: 'You can only delete service tasks you created' }, { status: 403 });
+    }
+  }
+
+  const deleted = await deleteServiceTask(user.currentTenantId, user.id, id);
   if (!deleted) {
     return NextResponse.json({ data: null, error: 'Service task not found' }, { status: 404 });
   }

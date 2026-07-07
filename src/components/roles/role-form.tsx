@@ -985,21 +985,6 @@ function SubModuleGroup({
 }) {
   return (
     <>
-      {showHeader && (
-        <tr className="bg-muted/30 border-t">
-          <td colSpan={6} className="px-3 py-1.5 pl-6">
-            <span className="text-xs font-medium text-muted-foreground">
-              {subModuleName}
-            </span>
-            {subModuleDescription && (
-              <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-                {subModuleDescription}
-              </p>
-            )}
-          </td>
-        </tr>
-      )}
-
       {forms.map((form) => {
         const overall = calculateFormOverallLevel(form);
 
@@ -1027,9 +1012,14 @@ function SubModuleGroup({
                       onFormPermissionChange(moduleKey, subModuleKey, form.key, 'create', level !== 'none');
                   }}
                 />
-                <span className="font-medium text-sm text-foreground truncate">
-                  {form.name}
-                </span>
+                <div className="min-w-0">
+                  <span className="font-medium text-sm text-foreground truncate block">
+                    {form.name}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground/70 truncate block">
+                    {form.moduleName} › {form.subModuleName}
+                  </span>
+                </div>
               </div>
             </td>
 

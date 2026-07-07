@@ -24,6 +24,11 @@ import {
 } from '@/components/ui/detail-page-header';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { cn, formatDate } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 import { FaultForm } from './fault-form';
 import { WorkOrderForm } from '@/components/work-orders/work-order-form';
 import type { FaultRow } from './types';
@@ -35,9 +40,15 @@ import {
   CATEGORY_DISPLAY_NAME,
 } from './types';
 
+const FAULT_FORM_ID = 'maintenance.faults.fault';
+
 export function FaultDetail() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+  const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(FAULT_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(FAULT_FORM_ID);
   const [fault, setFault] = useState<FaultRow | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -126,19 +137,29 @@ export function FaultDetail() {
         actions={
           <>
             {!fault.workOrderNumber && (
-              <Button onClick={() => setWoPanelOpen(true)}>
-                <Wrench className="h-4 w-4" />
-                Create Work Order
-              </Button>
+              <PermissionGuard permission={Permissions.maintenance.workOrders.form.create}>
+                <Button onClick={() => setWoPanelOpen(true)}>
+                  <Wrench className="h-4 w-4" />
+                  Create Work Order
+                </Button>
+              </PermissionGuard>
             )}
-            <Button variant="outline" onClick={() => setEditPanelOpen(true)}>
-              <Edit className="h-4 w-4" />
-              Edit
-            </Button>
-            <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
-              <Archive className="h-4 w-4" />
-              Archive
-            </Button>
+            {checkRecordOwnership(editLevel, fault.createdBy, user?.id) && (
+              <PermissionGuard permission={Permissions.maintenance.faults.form.edit}>
+                <Button variant="outline" onClick={() => setEditPanelOpen(true)}>
+                  <Edit className="h-4 w-4" />
+                  Edit
+                </Button>
+              </PermissionGuard>
+            )}
+            {checkRecordOwnership(archiveLevel, fault.createdBy, user?.id) && (
+              <PermissionGuard permission={Permissions.maintenance.faults.form.archive}>
+                <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
+                  <Archive className="h-4 w-4" />
+                  Archive
+                </Button>
+              </PermissionGuard>
+            )}
           </>
         }
       />

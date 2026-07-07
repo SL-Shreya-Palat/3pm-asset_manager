@@ -66,6 +66,8 @@ import {
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable, applyTableFilters } from '@/hooks/use-data-table';
 import { ASSET_STATUS_CONFIG, type AssetStatus } from '@/constants/assets';
@@ -719,27 +721,31 @@ export function AssetTable() {
                 {/* Command-sourced assets are archived/unarchived in Command
                     only — the import syncs the state here. */}
                 {asset.source !== 'command' && (
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenArchive(asset);
-                    }}
-                  >
-                    <ArchiveRestore className="h-4 w-4" />
-                    Unarchive
-                  </DropdownMenuItem>
+                  <PermissionGuard permission={Permissions.assets.assets.form.archive}>
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenArchive(asset);
+                      }}
+                    >
+                      <ArchiveRestore className="h-4 w-4" />
+                      Unarchive
+                    </DropdownMenuItem>
+                  </PermissionGuard>
                 )}
                 {asset.source !== 'command' && (
-                  <DropdownMenuItem
-                    className="text-destructive"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenDelete(asset);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Delete
-                  </DropdownMenuItem>
+                  <PermissionGuard permission={Permissions.assets.assets.form.delete}>
+                    <DropdownMenuItem
+                      className="text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenDelete(asset);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete
+                    </DropdownMenuItem>
+                  </PermissionGuard>
                 )}
                 {asset.source === 'command' && (
                   <DropdownMenuItem disabled>
@@ -759,15 +765,17 @@ export function AssetTable() {
                   <Eye className="h-4 w-4" />
                   View
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    router.push(`/assets/${asset.id}/edit`);
-                  }}
-                >
-                  <Edit className="h-4 w-4" />
-                  Edit
-                </DropdownMenuItem>
+                <PermissionGuard permission={Permissions.assets.assets.form.edit}>
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      router.push(`/assets/${asset.id}/edit`);
+                    }}
+                  >
+                    <Edit className="h-4 w-4" />
+                    Edit
+                  </DropdownMenuItem>
+                </PermissionGuard>
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.stopPropagation();
@@ -817,16 +825,18 @@ export function AssetTable() {
                 </DropdownMenuItem>
                 {/* Archive lives in Command for Command-sourced assets. */}
                 {asset.source !== 'command' && (
-                  <DropdownMenuItem
-                    className="text-destructive"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenArchive(asset);
-                    }}
-                  >
-                    <Archive className="h-4 w-4" />
-                    Archive
-                  </DropdownMenuItem>
+                  <PermissionGuard permission={Permissions.assets.assets.form.archive}>
+                    <DropdownMenuItem
+                      className="text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenArchive(asset);
+                      }}
+                    >
+                      <Archive className="h-4 w-4" />
+                      Archive
+                    </DropdownMenuItem>
+                  </PermissionGuard>
                 )}
               </>
             )}
@@ -859,10 +869,12 @@ export function AssetTable() {
         description="Manage your fleet vehicles and equipment"
         className="px-0 pt-0 pb-4"
       >
-        <Button onClick={() => setVinDialogOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Add Asset
-        </Button>
+        <PermissionGuard permission={Permissions.assets.assets.form.create}>
+          <Button onClick={() => setVinDialogOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Add Asset
+          </Button>
+        </PermissionGuard>
       </PageHeader>
 
       {/* Summary ribbon */}

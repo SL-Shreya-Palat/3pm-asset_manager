@@ -135,5 +135,6 @@ export function serializeFault(
     createdAt: doc.createdAt ? (doc.createdAt as Date).toISOString() : null,
     updatedAt: doc.updatedAt ? (doc.updatedAt as Date).toISOString() : null,
     isArchived: doc.isArchived ?? false,
+    createdBy: doc.createdBy ? (doc.createdBy as ObjectId).toString() : null,
   };
 }

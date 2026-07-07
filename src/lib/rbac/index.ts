@@ -286,3 +286,25 @@ export class PermissionChecker {
     this.index.clear();
   }
 }
+
+// ---------------------------------------------------------------------------
+// Ownership helper  (matches construction-portal  services/rbac/utils.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Check whether a user may act on a specific record based on the permission
+ * level (ALL / OWN / NONE or false).
+ *
+ * Usage:
+ *   const editLevel = permissionIndex.getEditLevel(formId);
+ *   const canEdit   = checkRecordOwnership(editLevel, record.createdBy, userId);
+ */
+export function checkRecordOwnership(
+  level: ViewLevel | EditLevel | ArchiveLevel | DeleteLevel | boolean,
+  createdBy: string | null | undefined,
+  currentUserId: string | null | undefined,
+): boolean {
+  if (level === "ALL" || level === true) return true;
+  if (level === "OWN") return !!createdBy && !!currentUserId && createdBy === currentUserId;
+  return false; // "NONE", false, undefined
+}

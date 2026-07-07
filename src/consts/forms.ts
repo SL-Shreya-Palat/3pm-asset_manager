@@ -35,7 +35,7 @@ export const allForms: FormDef[] = [
     module: "inspections",
     subModule: "defectSettings",
     key: "defectSetting",
-    name: "Defect Settings",
+    name: "Inspection Settings",
     accessibility: ["view"],
   },
   {
@@ -86,7 +86,7 @@ export const allForms: FormDef[] = [
     module: "maintenance",
     subModule: "inventory",
     key: "inventoryItem",
-    name: "Inventory Item",
+    name: "Stock",
     accessibility: ["view", "create", "edit", "archive", "delete"],
   },
   {

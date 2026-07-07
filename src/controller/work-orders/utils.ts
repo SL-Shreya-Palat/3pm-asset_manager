@@ -141,6 +141,7 @@ export function serializeWorkOrder(doc: Record<string, unknown>): Record<string,
     createdAt: wo.createdAt instanceof Date ? wo.createdAt.toISOString() : wo.createdAt,
     updatedAt: wo.updatedAt instanceof Date ? wo.updatedAt.toISOString() : wo.updatedAt,
     isArchived: wo.isArchived,
+    createdBy: wo.createdBy ? wo.createdBy.toString() : null,
   };
 }
 

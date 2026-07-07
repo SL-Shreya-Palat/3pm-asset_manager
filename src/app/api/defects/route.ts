@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helper';
 import { getAllDefects, createDefect } from '@/controller/defects';
+import { getFormPermissionLevels } from '@/lib/server-permissions';
 
 export async function GET(request: NextRequest) {
   const user = await getAuthenticatedUser(request);
@@ -24,7 +25,11 @@ export async function GET(request: NextRequest) {
   const source = searchParams.get('source') || undefined;
   const showArchived = searchParams.get('showArchived') === 'true';
 
-  const result = await getAllDefects(user.currentTenantId, { page, limit, search, status, priority, severity, teamId, assetId, source, showArchived });
+  // Check if user has "OWN" view level — scope results to their records only
+  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, 'maintenance.defects.defect');
+  const createdBy = perms.view === 'OWN' ? user.id : undefined;
+
+  const result = await getAllDefects(user.currentTenantId, { page, limit, search, status, priority, severity, teamId, assetId, source, showArchived, createdBy });
   return NextResponse.json({ data: result, error: null });
 }
 

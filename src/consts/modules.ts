@@ -44,7 +44,7 @@ export const allModules: Modules = [
         accessibility: ["view"],
       },
       {
-        name: "Defect Settings",
+        name: "Inspection Settings",
         key: "defectSettings",
         description: "Configure defect types and severity levels for inspections",
         accessibility: ["view"],
@@ -93,7 +93,7 @@ export const allModules: Modules = [
         accessibility: ["view"],
       },
       {
-        name: "Inventory",
+        name: "Stock",
         key: "inventory",
         description: "Track parts, supplies, and stock levels across locations",
         accessibility: ["view"],
@@ -159,13 +159,13 @@ export const allModules: Modules = [
         accessibility: ["view"],
       },
       {
-        name: "Part Categories",
+        name: "Stock Categories",
         key: "partCategories",
         description: "Organize inventory parts into categories",
         accessibility: ["view"],
       },
       {
-        name: "Part Locations",
+        name: "Stock Locations",
         key: "partLocations",
         description: "Define storage locations for inventory parts",
         accessibility: ["view"],

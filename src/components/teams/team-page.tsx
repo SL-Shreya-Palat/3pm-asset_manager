@@ -45,12 +45,27 @@ import { TableSkeleton } from '@/components/ui/skeleton';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable, applyTableFilters } from '@/hooks/use-data-table';
 import { ASSET_STATUS_CONFIG, type AssetStatus } from '@/constants/assets';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 import type { TeamRow, AssetRow, DriverRow, UserRow, DefectRow, InspectionRow, Pagination } from './types';
 
 const TEAM_TABS = ['Users', 'Drivers', 'Assets', 'Inspections', 'Defects', 'Documents'] as const;
 type TeamTab = (typeof TEAM_TABS)[number];
 
+const TEAM_FORM_ID = 'people.teams.team';
+
 export function TeamPage() {
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+
+  // Permission levels for row-level "OWN" checks
+  const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(TEAM_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(TEAM_FORM_ID);
+  const deleteLevel = hasFullAccess ? 'ALL' : permissionIndex.getDeleteLevel(TEAM_FORM_ID);
+
   const [teams, setTeams] = useState<TeamRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1,
@@ -909,10 +924,12 @@ export function TeamPage() {
   const renderHeaderButton = () => {
     if (!selectedTeamId) {
       return (
-        <Button onClick={handleOpenCreate}>
-          <Plus className="h-4 w-4" />
-          Add Team
-        </Button>
+        <PermissionGuard permission={Permissions.people.teams.form.create}>
+          <Button onClick={handleOpenCreate}>
+            <Plus className="h-4 w-4" />
+            Add Team
+          </Button>
+        </PermissionGuard>
       );
     }
     if (activeTab === 'Users') {
@@ -998,14 +1015,30 @@ export function TeamPage() {
         <RowActions>
           {!showArchived && (
             <>
-              <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(team)} />
-              <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(team)} />
+              {checkRecordOwnership(editLevel, team.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.people.teams.form.edit}>
+                  <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(team)} />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(archiveLevel, team.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.people.teams.form.archive}>
+                  <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(team)} />
+                </PermissionGuard>
+              )}
             </>
           )}
           {showArchived && (
             <>
-              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(team)} />
-              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(team)} />
+              {checkRecordOwnership(archiveLevel, team.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.people.teams.form.archive}>
+                  <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(team)} />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(deleteLevel, team.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.people.teams.form.delete}>
+                  <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(team)} />
+                </PermissionGuard>
+              )}
             </>
           )}
         </RowActions>

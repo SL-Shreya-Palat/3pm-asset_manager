@@ -18,11 +18,14 @@ import type { NavItem, NavChild } from '@/constants/navigation';
 import { useRoleAccess } from '@/hooks/use-role-access';
 
 function useFilteredNavItems() {
-  const { hasFullAccess, isMobileOnly, canAccessModule } = useRoleAccess();
+  const { hasFullAccess, isMobileOnly, canAccessModule, canAccessSubModule } = useRoleAccess();
 
   return useMemo(() => {
     const canSeeItem = (item: NavChild | NavItem) => {
       if (item.adminOnly) return hasFullAccess;
+      if (item.requiredSubModule && item.requiredModule) {
+        return canAccessSubModule(item.requiredModule, item.requiredSubModule);
+      }
       if (item.requiredModule) return canAccessModule(item.requiredModule);
       // Items with no gate (e.g. Dashboard) are visible to all portal users
       return !isMobileOnly;
@@ -43,7 +46,7 @@ function useFilteredNavItems() {
       }
     }
     return filtered;
-  }, [hasFullAccess, isMobileOnly, canAccessModule]);
+  }, [hasFullAccess, isMobileOnly, canAccessModule, canAccessSubModule]);
 }
 
 export function Sidebar() {

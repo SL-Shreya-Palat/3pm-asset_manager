@@ -35,9 +35,14 @@ import {
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 import { cn, formatDate } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
 import { PurchaseOrderForm } from './purchase-order-form';
 import type {
   PurchaseOrderRow,
@@ -59,8 +64,18 @@ interface ReceiveLine {
   receiveNow: string;
 }
 
+const PO_FORM_ID = 'maintenance.purchaseOrders.purchaseOrder';
+
 export function PurchaseOrdersPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+
+  // Permission levels for row-level "OWN" checks
+  const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(PO_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(PO_FORM_ID);
+  const deleteLevel = hasFullAccess ? 'ALL' : permissionIndex.getDeleteLevel(PO_FORM_ID);
+
   const [orders, setOrders] = useState<PurchaseOrderRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1, limit: 25, total: 0, hasMore: false,
@@ -367,8 +382,16 @@ export function PurchaseOrdersPage() {
         <RowActions>
           {showArchived ? (
             <>
-              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(order)} />
-              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(order)} />
+              {checkRecordOwnership(archiveLevel, order.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.purchaseOrders.form.archive}>
+                  <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(order)} />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(deleteLevel, order.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.purchaseOrders.form.delete}>
+                  <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(order)} />
+                </PermissionGuard>
+              )}
             </>
           ) : (
             <>
@@ -376,10 +399,18 @@ export function PurchaseOrdersPage() {
               {['purchased', 'received_partial'].includes(order.status) && (
                 <RowActionButton label="Receive" tone="primary" icon={<PackageCheck />} onClick={() => handleOpenReceive(order)} />
               )}
-              {['draft', 'rejected'].includes(order.status) && (
-                <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(order)} />
+              {checkRecordOwnership(editLevel, order.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.purchaseOrders.form.edit}>
+                  {['draft', 'rejected'].includes(order.status) && (
+                    <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(order)} />
+                  )}
+                </PermissionGuard>
               )}
-              <RowActionButton label="Archive" tone="destructive" icon={<Archive />} onClick={() => handleOpenArchive(order)} />
+              {checkRecordOwnership(archiveLevel, order.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.purchaseOrders.form.archive}>
+                  <RowActionButton label="Archive" tone="destructive" icon={<Archive />} onClick={() => handleOpenArchive(order)} />
+                </PermissionGuard>
+              )}
             </>
           )}
         </RowActions>
@@ -392,10 +423,12 @@ export function PurchaseOrdersPage() {
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0">
         <PageHeader title="Purchase Orders" description="Track and manage procurement from request to delivery" count={pagination.total}>
-          <Button onClick={handleOpenCreate}>
-            <Plus className="h-4 w-4" />
-            Create PO
-          </Button>
+          <PermissionGuard permission={Permissions.maintenance.purchaseOrders.form.create}>
+            <Button onClick={handleOpenCreate}>
+              <Plus className="h-4 w-4" />
+              Create PO
+            </Button>
+          </PermissionGuard>
         </PageHeader>
 
         {/* Status Tabs */}

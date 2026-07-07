@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helper';
 import { getDriverById, updateDriver, deleteDriver } from '@/controller/drivers';
+import { getFormPermissionLevels } from '@/lib/server-permissions';
+
+const FORM_ID = 'people.drivers.driver';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -17,8 +20,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   const { id } = await context.params;
   const driver = await getDriverById(user.currentTenantId, id);
-
   if (!driver) {
+    return NextResponse.json({ data: null, error: 'Driver not found' }, { status: 404 });
+  }
+
+  // "OWN" view: block access to records the user didn't create
+  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
+  if (perms.view === 'OWN' && driver.createdBy !== user.id) {
     return NextResponse.json({ data: null, error: 'Driver not found' }, { status: 404 });
   }
 
@@ -33,6 +41,19 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 
   try {
     const { id } = await context.params;
+
+    // "OWN" edit: verify the user created this driver
+    const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
+    if (perms.edit === 'OWN') {
+      const existing = await getDriverById(user.currentTenantId, id);
+      if (!existing) {
+        return NextResponse.json({ data: null, error: 'Driver not found' }, { status: 404 });
+      }
+      if (existing.createdBy !== user.id) {
+        return NextResponse.json({ data: null, error: 'You can only edit drivers you created' }, { status: 403 });
+      }
+    }
+
     const body = await request.json();
     const result = await updateDriver(user.currentTenantId, user.id, id, body);
 
@@ -54,6 +75,19 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params;
+
+  // "OWN" delete: verify the user created this driver
+  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
+  if (perms.delete === 'OWN') {
+    const existing = await getDriverById(user.currentTenantId, id);
+    if (!existing) {
+      return NextResponse.json({ data: null, error: 'Driver not found' }, { status: 404 });
+    }
+    if (existing.createdBy !== user.id) {
+      return NextResponse.json({ data: null, error: 'You can only delete drivers you created' }, { status: 403 });
+    }
+  }
+
   const deleted = await deleteDriver(user.currentTenantId, user.id, id);
 
   if (!deleted) {

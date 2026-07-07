@@ -70,5 +70,6 @@ export function serializeServicePlan(
     isArchived: (doc.isArchived as boolean) ?? false,
     createdAt: doc.createdAt ? new Date(doc.createdAt as Date).toISOString() : '',
     updatedAt: doc.updatedAt ? new Date(doc.updatedAt as Date).toISOString() : '',
+    createdBy: doc.createdBy ? (doc.createdBy as { toString(): string }).toString() : null,
   };
 }

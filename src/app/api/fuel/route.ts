@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helper';
 import { getAllFuelTransactions, createFuelTransaction } from '@/controller/fuel';
+import { getFormPermissionLevels } from '@/lib/server-permissions';
 
 export async function GET(request: NextRequest) {
   const user = await getAuthenticatedUser(request);
@@ -21,6 +22,11 @@ export async function GET(request: NextRequest) {
   const fuelType = searchParams.get('fuelType') || undefined;
   const startDate = searchParams.get('startDate') || undefined;
   const endDate = searchParams.get('endDate') || undefined;
+  const showArchived = searchParams.get('showArchived') === 'true';
+
+  // Check if user has "OWN" view level — scope results to their records only
+  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, 'fuel.fuel.fuelEntry');
+  const createdBy = perms.view === 'OWN' ? user.id : undefined;
 
   const result = await getAllFuelTransactions(user.currentTenantId, {
     page,
@@ -31,6 +37,8 @@ export async function GET(request: NextRequest) {
     fuelType,
     startDate,
     endDate,
+    showArchived,
+    createdBy,
   });
   return NextResponse.json({ data: result, error: null });
 }

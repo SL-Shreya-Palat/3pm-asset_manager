@@ -10,7 +10,7 @@ import type { CreateTeamInput, UpdateTeamInput } from './types';
 /** List teams with pagination and search. */
 export async function getAllTeams(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; showArchived?: boolean },
+  options: { page?: number; limit?: number; search?: string; showArchived?: boolean; createdBy?: string },
 ) {
   const collection = await getTeamsCollection();
   const page = Math.max(1, options.page || 1);
@@ -20,6 +20,11 @@ export async function getAllTeams(
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
   };
+
+  // "OWN" view scope — only show records created by this user
+  if (options.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+  }
 
   if (options.showArchived) {
     filter.isArchived = true;

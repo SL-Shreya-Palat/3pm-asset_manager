@@ -34,7 +34,7 @@ import type { CreateServicePlanInput, UpdateServicePlanInput, ScheduleItem } fro
 /** List plans (paginated, search on name), with assigned-asset counts. */
 export async function getAllServicePlans(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; showArchived?: boolean } = {},
+  options: { page?: number; limit?: number; search?: string; showArchived?: boolean; createdBy?: string } = {},
 ) {
   const collection = await getServicePlansCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
@@ -44,7 +44,17 @@ export async function getAllServicePlans(
 
   const filter: Record<string, unknown> = { tenantId };
   filter.tenantId = tenantOid;
-  filter.isArchived = options.showArchived ? true : { $ne: true };
+
+  // "OWN" view scope — only show records created by this user
+  if (options.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+  }
+
+  if (options.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
   if (options.search) filter.name = { $regex: options.search, $options: 'i' };
 
   const [items, total] = await Promise.all([

@@ -100,6 +100,7 @@ export async function getAllFaults(
     teamId?: string;
     assetId?: string;
     showArchived?: boolean;
+    createdBy?: string;
   },
 ) {
   const collection = await getDefectsCollection();
@@ -113,6 +114,11 @@ export async function getAllFaults(
     tenantId: tenantOid,
     source: 'fault',
   };
+
+  // "OWN" view scope — only show records created by this user
+  if (options.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+  }
 
   if (options.showArchived) {
     filter.isArchived = true;

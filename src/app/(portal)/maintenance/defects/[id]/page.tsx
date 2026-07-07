@@ -27,12 +27,19 @@ import { cn } from '@/lib/utils';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DefectForm } from '@/components/defects/defect-form';
 import { WorkOrderForm } from '@/components/work-orders/work-order-form';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 import {
   STATUS_BADGE_VARIANT,
   STATUS_DISPLAY_NAME,
   SEVERITY_BADGE_CLASSES,
   SEVERITY_DISPLAY_NAME,
 } from '@/components/defects/types';
+
+const DEFECT_FORM_ID = 'maintenance.defects.defect';
 
 /** Source display config. */
 const SOURCE_CONFIG: Record<string, { label: string; icon: React.ReactNode; classes: string }> = {
@@ -56,6 +63,11 @@ const SOURCE_CONFIG: Record<string, { label: string; icon: React.ReactNode; clas
 export default function DefectDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+  const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(DEFECT_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(DEFECT_FORM_ID);
+
   const [defect, setDefect] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -148,6 +160,7 @@ export default function DefectDetailPage() {
   const createdAt = defect.createdAt ? new Date(String(defect.createdAt)) : null;
   const updatedAt = defect.updatedAt ? new Date(String(defect.updatedAt)) : null;
   const attachments = Array.isArray(defect.attachments) ? (defect.attachments as Array<Record<string, unknown>>) : [];
+  const createdBy = defect.createdBy ? String(defect.createdBy) : null;
 
   const srcConfig = SOURCE_CONFIG[source] || SOURCE_CONFIG.manual;
 
@@ -196,19 +209,29 @@ export default function DefectDetailPage() {
           </div>
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
             {!workOrderNumber && (
-              <Button onClick={() => setWoPanelOpen(true)}>
-                <Wrench className="h-4 w-4" />
-                Create Work Order
-              </Button>
+              <PermissionGuard permission={Permissions.maintenance.workOrders.form.create}>
+                <Button onClick={() => setWoPanelOpen(true)}>
+                  <Wrench className="h-4 w-4" />
+                  Create Work Order
+                </Button>
+              </PermissionGuard>
             )}
-            <Button variant="outline" onClick={() => setEditPanelOpen(true)}>
-              <Pencil className="h-4 w-4" />
-              Edit
-            </Button>
-            <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
-              <Archive className="h-4 w-4" />
-              Archive
-            </Button>
+            {checkRecordOwnership(editLevel, createdBy, user?.id) && (
+              <PermissionGuard permission={Permissions.maintenance.defects.form.edit}>
+                <Button variant="outline" onClick={() => setEditPanelOpen(true)}>
+                  <Pencil className="h-4 w-4" />
+                  Edit
+                </Button>
+              </PermissionGuard>
+            )}
+            {checkRecordOwnership(archiveLevel, createdBy, user?.id) && (
+              <PermissionGuard permission={Permissions.maintenance.defects.form.archive}>
+                <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
+                  <Archive className="h-4 w-4" />
+                  Archive
+                </Button>
+              </PermissionGuard>
+            )}
           </div>
         </div>
       </div>
@@ -325,6 +348,7 @@ export default function DefectDetailPage() {
               createdAt: defect.createdAt ? String(defect.createdAt) : '',
               updatedAt: defect.updatedAt ? String(defect.updatedAt) : '',
               isArchived: Boolean(defect.isArchived),
+              createdBy,
             }}
             onClose={() => setEditPanelOpen(false)}
             onSaved={() => {

@@ -23,6 +23,11 @@ import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
@@ -58,8 +63,18 @@ function isUnpriced(part: PartRow): boolean {
   return getUnitPrice(part) <= 0;
 }
 
+const INVENTORY_FORM_ID = 'maintenance.inventory.inventoryItem';
+
 export function InventoryPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+
+  // Permission levels for row-level "OWN" checks
+  const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(INVENTORY_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(INVENTORY_FORM_ID);
+  const deleteLevel = hasFullAccess ? 'ALL' : permissionIndex.getDeleteLevel(INVENTORY_FORM_ID);
+
   const [parts, setParts] = useState<PartRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1, limit: 25, total: 0, hasMore: false,
@@ -306,14 +321,30 @@ export function InventoryPage() {
         <RowActions>
           {showArchived ? (
             <>
-              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(part)} />
-              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(part)} />
+              {checkRecordOwnership(archiveLevel, part.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.inventory.form.archive}>
+                  <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(part)} />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(deleteLevel, part.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.inventory.form.delete}>
+                  <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(part)} />
+                </PermissionGuard>
+              )}
             </>
           ) : (
             <>
               <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/maintenance/inventory/${part.id}`)} />
-              <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(part)} />
-              <RowActionButton label="Archive" tone="destructive" icon={<Archive />} onClick={() => handleOpenArchive(part)} />
+              {checkRecordOwnership(editLevel, part.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.inventory.form.edit}>
+                  <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(part)} />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(archiveLevel, part.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.inventory.form.archive}>
+                  <RowActionButton label="Archive" tone="destructive" icon={<Archive />} onClick={() => handleOpenArchive(part)} />
+                </PermissionGuard>
+              )}
             </>
           )}
         </RowActions>
@@ -326,10 +357,12 @@ export function InventoryPage() {
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0">
         <PageHeader title="Stock" description="Track parts, stock levels, and warehouse locations" count={pagination.total}>
-          <Button onClick={handleOpenCreate}>
-            <Plus className="h-4 w-4" />
-            Add Part
-          </Button>
+          <PermissionGuard permission={Permissions.maintenance.inventory.form.create}>
+            <Button onClick={handleOpenCreate}>
+              <Plus className="h-4 w-4" />
+              Add Part
+            </Button>
+          </PermissionGuard>
         </PageHeader>
 
         <div className="px-6 pb-3">

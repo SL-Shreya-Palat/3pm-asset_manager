@@ -27,6 +27,7 @@ import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
+import { PermissionGuard } from '@/components/auth/permission-guard';
 
 /** Generic settings item shape. */
 export interface SettingsItem {
@@ -56,6 +57,13 @@ interface InventorySettingsListProps {
   extraColumns?: Array<{ key: string; header: string }>;
   /** Optional callback fired after a create, update, or delete succeeds. */
   onDataChange?: () => void;
+  /** Optional permission strings for guarding actions. If omitted, buttons render normally. */
+  permissions?: {
+    create?: string;
+    edit?: string;
+    archive?: string;
+    delete?: string;
+  };
 }
 
 export function InventorySettingsList({
@@ -66,6 +74,7 @@ export function InventorySettingsList({
   nameField = 'name',
   extraColumns = [],
   onDataChange,
+  permissions,
 }: InventorySettingsListProps) {
   const [items, setItems] = useState<SettingsItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -169,34 +178,57 @@ export function InventorySettingsList({
         header: 'Actions',
         align: 'right' as const,
         pinned: true,
-        render: (item) => (
-          <RowActions>
-            {showArchived ? (
-              <>
-                <RowActionButton
-                  label="Unarchive"
-                  icon={<ArchiveRestore />}
-                  onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
-                />
-                <RowActionButton
-                  label="Delete"
-                  tone="destructive"
-                  icon={<Trash2 />}
-                  onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
-                />
-              </>
-            ) : (
-              <>
-                <RowActionButton label="Edit" icon={<Edit />} onClick={() => openEditDialog(item)} />
-                <RowActionButton
-                  label="Archive"
-                  icon={<Archive />}
-                  onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
-                />
-              </>
-            )}
-          </RowActions>
-        ),
+        render: (item) => {
+          const unarchiveButton = (
+            <RowActionButton
+              label="Unarchive"
+              icon={<ArchiveRestore />}
+              onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
+            />
+          );
+          const deleteButton = (
+            <RowActionButton
+              label="Delete"
+              tone="destructive"
+              icon={<Trash2 />}
+              onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
+            />
+          );
+          const editButton = (
+            <RowActionButton label="Edit" icon={<Edit />} onClick={() => openEditDialog(item)} />
+          );
+          const archiveButton = (
+            <RowActionButton
+              label="Archive"
+              icon={<Archive />}
+              onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
+            />
+          );
+
+          return (
+            <RowActions>
+              {showArchived ? (
+                <>
+                  {permissions?.archive ? (
+                    <PermissionGuard permission={permissions.archive}>{unarchiveButton}</PermissionGuard>
+                  ) : unarchiveButton}
+                  {permissions?.delete ? (
+                    <PermissionGuard permission={permissions.delete}>{deleteButton}</PermissionGuard>
+                  ) : deleteButton}
+                </>
+              ) : (
+                <>
+                  {permissions?.edit ? (
+                    <PermissionGuard permission={permissions.edit}>{editButton}</PermissionGuard>
+                  ) : editButton}
+                  {permissions?.archive ? (
+                    <PermissionGuard permission={permissions.archive}>{archiveButton}</PermissionGuard>
+                  ) : archiveButton}
+                </>
+              )}
+            </RowActions>
+          );
+        },
       },
     ];
     return cols;
@@ -308,10 +340,19 @@ export function InventorySettingsList({
           <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
         </div>
         {!showArchived && (
-          <Button size="sm" onClick={openCreateDialog}>
-            <Plus className="h-4 w-4" />
-            {createLabel}
-          </Button>
+          permissions?.create ? (
+            <PermissionGuard permission={permissions.create}>
+              <Button size="sm" onClick={openCreateDialog}>
+                <Plus className="h-4 w-4" />
+                {createLabel}
+              </Button>
+            </PermissionGuard>
+          ) : (
+            <Button size="sm" onClick={openCreateDialog}>
+              <Plus className="h-4 w-4" />
+              {createLabel}
+            </Button>
+          )
         )}
       </div>
 

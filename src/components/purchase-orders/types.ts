@@ -46,6 +46,7 @@ export interface PurchaseOrderRow {
   rejectedBy: string | null;
   rejectedAt: string | null;
   rejectionReason?: string;
+  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
   isArchived: boolean;

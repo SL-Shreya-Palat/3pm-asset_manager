@@ -5,6 +5,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser, getUserRoleForTenant } from '@/lib/auth-helper';
 import { getAllWorkOrders, createWorkOrder } from '@/controller/work-orders';
+import { getFormPermissionLevels } from '@/lib/server-permissions';
+
+const FORM_ID = 'maintenance.workOrders.workOrder';
 
 export async function GET(request: NextRequest) {
   const user = await getAuthenticatedUser(request);
@@ -24,7 +27,11 @@ export async function GET(request: NextRequest) {
   const assigneeId = role && !role.fullAccess ? user.id : undefined;
   const showArchived = searchParams.get('showArchived') === 'true';
 
-  const result = await getAllWorkOrders(user.currentTenantId, { page, limit, search, statusId, assigneeId, showArchived });
+  // Check if user has "OWN" view level — scope results to their records only
+  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
+  const createdBy = perms.view === 'OWN' ? user.id : undefined;
+
+  const result = await getAllWorkOrders(user.currentTenantId, { page, limit, search, statusId, assigneeId, showArchived, createdBy });
   return NextResponse.json({ data: result, error: null });
 }
 

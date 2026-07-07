@@ -52,6 +52,7 @@ export interface WorkOrderRow {
   description?: string;
   attachments: WOAttachmentRow[];
   statusHistory: WOStatusHistoryRow[];
+  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
   isArchived: boolean;

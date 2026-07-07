@@ -22,14 +22,29 @@ import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
 import { ServiceTaskForm } from './service-task-form';
 import type { ServiceTaskRow, Pagination } from './types';
 
+const SERVICE_TASK_FORM_ID = 'maintenance.serviceTasks.serviceTask';
+
 export function ServiceTasksPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+
+  // Permission levels for row-level "OWN" checks
+  const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(SERVICE_TASK_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(SERVICE_TASK_FORM_ID);
+  const deleteLevel = hasFullAccess ? 'ALL' : permissionIndex.getDeleteLevel(SERVICE_TASK_FORM_ID);
+
   const [tasks, setTasks] = useState<ServiceTaskRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1, limit: 25, total: 0, hasMore: false,
@@ -216,14 +231,30 @@ export function ServiceTasksPage() {
           {!showArchived && (
             <>
               <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/maintenance/service-tasks/${task.id}`)} />
-              <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(task)} />
-              <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(task)} />
+              {checkRecordOwnership(editLevel, task.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.serviceTasks.form.edit}>
+                  <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(task)} />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(archiveLevel, task.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.serviceTasks.form.archive}>
+                  <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(task)} />
+                </PermissionGuard>
+              )}
             </>
           )}
           {showArchived && (
             <>
-              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(task)} />
-              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(task)} />
+              {checkRecordOwnership(archiveLevel, task.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.serviceTasks.form.archive}>
+                  <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(task)} />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(deleteLevel, task.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.serviceTasks.form.delete}>
+                  <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(task)} />
+                </PermissionGuard>
+              )}
             </>
           )}
         </RowActions>
@@ -237,10 +268,12 @@ export function ServiceTasksPage() {
       <div className="flex flex-col flex-1 min-w-0">
         {/* Header */}
         <PageHeader title="Service Tasks" description="Manage individual maintenance tasks and checklists" count={pagination.total}>
-          <Button onClick={handleOpenCreate}>
-            <Plus className="h-4 w-4" />
-            Add Service Task
-          </Button>
+          <PermissionGuard permission={Permissions.maintenance.serviceTasks.form.create}>
+            <Button onClick={handleOpenCreate}>
+              <Plus className="h-4 w-4" />
+              Add Service Task
+            </Button>
+          </PermissionGuard>
         </PageHeader>
 
         {/* Toolbar + Table */}

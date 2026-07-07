@@ -25,6 +25,8 @@ import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 
 const STATUS_TYPES = [
   { value: 'open', label: 'Open' },
@@ -187,26 +189,34 @@ export function WorkOrderStatusesList() {
         <RowActions>
           {showArchived ? (
             <>
-              <RowActionButton
-                label="Unarchive"
-                icon={<ArchiveRestore />}
-                onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
-              />
-              <RowActionButton
-                label="Delete"
-                tone="destructive"
-                icon={<Trash2 />}
-                onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
-              />
+              <PermissionGuard permission={Permissions.settings.workOrderStatuses.form.archive}>
+                <RowActionButton
+                  label="Unarchive"
+                  icon={<ArchiveRestore />}
+                  onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
+                />
+              </PermissionGuard>
+              <PermissionGuard permission={Permissions.settings.workOrderStatuses.form.delete}>
+                <RowActionButton
+                  label="Delete"
+                  tone="destructive"
+                  icon={<Trash2 />}
+                  onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
+                />
+              </PermissionGuard>
             </>
           ) : (
             <>
-              <RowActionButton label="Edit" icon={<Edit />} onClick={() => openEditDialog(item)} />
-              <RowActionButton
-                label="Archive"
-                icon={<Archive />}
-                onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
-              />
+              <PermissionGuard permission={Permissions.settings.workOrderStatuses.form.edit}>
+                <RowActionButton label="Edit" icon={<Edit />} onClick={() => openEditDialog(item)} />
+              </PermissionGuard>
+              <PermissionGuard permission={Permissions.settings.workOrderStatuses.form.archive}>
+                <RowActionButton
+                  label="Archive"
+                  icon={<Archive />}
+                  onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
+                />
+              </PermissionGuard>
             </>
           )}
         </RowActions>
@@ -301,10 +311,12 @@ export function WorkOrderStatusesList() {
           <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
         </div>
         {!showArchived && (
-          <Button size="sm" onClick={openCreateDialog}>
-            <Plus className="h-4 w-4" />
-            Add Status
-          </Button>
+          <PermissionGuard permission={Permissions.settings.workOrderStatuses.form.create}>
+            <Button size="sm" onClick={openCreateDialog}>
+              <Plus className="h-4 w-4" />
+              Add Status
+            </Button>
+          </PermissionGuard>
         )}
       </div>
 

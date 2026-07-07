@@ -94,6 +94,7 @@ export function serializeDefect(
     updatedAt: doc.updatedAt ? (doc.updatedAt as Date).toISOString() : null,
     source: doc.source || 'manual',
     isArchived: doc.isArchived ?? false,
+    createdBy: doc.createdBy ? (doc.createdBy as ObjectId).toString() : null,
   };
 }
 

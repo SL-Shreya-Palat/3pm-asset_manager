@@ -57,5 +57,6 @@ export function serializeServiceTask(doc: Record<string, unknown>): Record<strin
     isArchived: doc.isArchived ?? false,
     createdAt: doc.createdAt ? (doc.createdAt as Date).toISOString() : null,
     updatedAt: doc.updatedAt ? (doc.updatedAt as Date).toISOString() : null,
+    createdBy: doc.createdBy ? (doc.createdBy as { toString(): string }).toString() : null,
   };
 }
