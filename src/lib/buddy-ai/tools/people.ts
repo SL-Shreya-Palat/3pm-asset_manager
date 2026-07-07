@@ -4,14 +4,14 @@
 
 import { z } from "zod";
 import { getAllDrivers } from "@/controller/drivers";
-import { getAllTeams } from "@/controller/teams";
+import { getAllTeams } from "@/controller/work-orders/teams";
 import { getAllVendors } from "@/controller/vendors";
 import { defineTool } from "./registry";
 
 export const listDrivers = defineTool({
   name: "list_drivers",
   access: "read",
-  permission: { module: "drivers", action: "view" },
+  permission: "people:drivers:view",
   description: "Returns drivers (operators). Use for driver queries.",
   inputSchema: z.object({
     search: z.string().optional().describe("Free-text search over driver name"),
@@ -30,7 +30,7 @@ export const listDrivers = defineTool({
 export const listTeams = defineTool({
   name: "list_teams",
   access: "read",
-  permission: { module: "teams", action: "view" },
+  permission: "people:teams:view",
   description:
     "Returns teams (groups of assets and people). Use for team queries or to resolve a team name to its id.",
   inputSchema: z.object({
@@ -52,7 +52,8 @@ export const listVendors = defineTool({
   access: "read",
   permission: null,
   adminOnly: true, // mirrors the Vendors nav item (admin/owner only)
-  description: "Returns vendors (suppliers, service providers). Use for vendor queries.",
+  description:
+    "Returns vendors (suppliers, service providers). Use for vendor queries.",
   inputSchema: z.object({
     search: z.string().optional().describe("Free-text search over vendor name"),
     limit: z.number().optional().describe("Max results (default 10, max 25)"),

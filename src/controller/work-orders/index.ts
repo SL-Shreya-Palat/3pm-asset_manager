@@ -325,6 +325,17 @@ export async function createWorkOrder(
     { teamIds: assetTeamIds },
   );
 
+  // Command-linked assets: mirror the raised work order onto Command's timeline.
+  await writebackActivityIfLinked(tenantId, input.assetId, {
+    type: 'work_order_raised',
+    summary: `Work order ${workOrderNumber} raised${statusLabel ? ` — ${statusLabel}` : ''}`,
+    details: {
+      workOrderNumber,
+      source,
+      ...(input.dueDate ? { dueDate: input.dueDate } : {}),
+    },
+  });
+
   return {
     data: serializeWorkOrder({ ...doc, _id: result.insertedId }),
     error: null,
@@ -591,7 +602,7 @@ export async function transitionWorkOrderStatus(
 
 /**
  * Complete a work order: mark it done, resolve its linked defects, return the
- * asset to service, and (when service tasks/programs were fulfilled) log a
+ * asset to service, and (when service tasks or a plan schedule were fulfilled) log a
  * service-history entry that resets the schedule. Idempotent — re-completing
  * an already-completed WO is a no-op.
  */
@@ -599,7 +610,14 @@ export async function completeWorkOrder(
   tenantId: string,
   userId: string,
   woId: string,
-  input: { servicePrograms?: string[]; meterAtService?: number; meterType?: string; notes?: string } = {},
+  input: {
+    /** Hierarchical plan model: which plan + schedule this WO serviced. */
+    servicePlanId?: string;
+    servicePlanSchedule?: string;
+    meterAtService?: number;
+    meterType?: string;
+    notes?: string;
+  } = {},
 ) {
   const col = await getWorkOrdersCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
@@ -674,7 +692,7 @@ export async function completeWorkOrder(
           quantity: part.quantity,
           stockLocationId: part.commandLocationId,
           unitCost: part.unitCost,
-          notes: `Asset Manager work order ${wo.workOrderNumber}`,
+          notes: `Drive work order ${wo.workOrderNumber}`,
         },
         actorEmail,
       );
@@ -704,6 +722,19 @@ export async function completeWorkOrder(
           ],
         },
       );
+
+      // Keep the imported Inventory snapshot roughly current (display only —
+      // Command's ledger is the authority; re-import fully refreshes it).
+      try {
+        const partsCol = await (await import('@/lib/mongodb')).getPartsCollection();
+        await partsCol.updateOne(
+          { tenantId: tenantOid, commandStockId: stockId },
+          { $inc: { 'stockLocations.$[loc].quantity': -part.quantity }, $set: { updatedAt: new Date() } },
+          { arrayFilters: [{ 'loc.locationId': null }] },
+        );
+      } catch {
+        // best-effort
+      }
     }
   }
 
@@ -733,26 +764,36 @@ export async function completeWorkOrder(
     );
   }
 
-  // 3) Return the asset to service.
+  // 3) Return the asset to service + record the completion on Command's timeline.
   if (wo.assetId) {
     const assetsCol = await getAssetsCollection();
     await assetsCol.updateOne(
       { _id: wo.assetId as ObjectId, tenantId: tenantOid },
       { $set: { status: 'in_service', updatedAt: now } },
     );
-    // Command-linked assets: mirror the return-to-service to Command.
+    // Command-linked assets: mirror the return-to-service + completion activity.
     await writebackAvailabilityIfLinked(
       tenantId,
       wo.assetId as ObjectId,
       false,
       `Work order ${wo.workOrderNumber} completed`,
     );
+    await writebackActivityIfLinked(tenantId, wo.assetId as ObjectId, {
+      type: 'work_order_completed',
+      summary: `Work order ${wo.workOrderNumber} completed`,
+      details: {
+        workOrderNumber: wo.workOrderNumber as string,
+        defectsCorrected: defectOids.length,
+        faultsResolved: faultOids.length,
+      },
+    });
   }
 
-  // 4) Log a service entry when this WO fulfilled scheduled work.
-  const programs = (input.servicePrograms || []).filter((id) => ObjectId.isValid(id));
+  // 4) Log a service entry when this WO fulfilled scheduled work via the
+  //    hierarchical plan model (servicePlanId + schedule) or its service tasks.
   const taskIds = (Array.isArray(wo.serviceTaskIds) ? (wo.serviceTaskIds as ObjectId[]) : []).map((id) => id.toString());
-  if ((programs.length > 0 || taskIds.length > 0) && wo.assetId) {
+  const hasPlanService = Boolean(input.servicePlanId && input.servicePlanSchedule);
+  if ((hasPlanService || taskIds.length > 0) && wo.assetId) {
     const performedById =
       wo.assigneeType === 'mechanic' && wo.assigneeId ? (wo.assigneeId as ObjectId).toString() : userId;
     await logServiceEntry(
@@ -761,7 +802,8 @@ export async function completeWorkOrder(
       {
         assetId: (wo.assetId as ObjectId).toString(),
         workOrderId: woId,
-        servicePrograms: programs,
+        servicePlanId: input.servicePlanId,
+        servicePlanSchedule: input.servicePlanSchedule,
         serviceTaskIds: taskIds,
         meterType: input.meterType,
         meterAtService: input.meterAtService,

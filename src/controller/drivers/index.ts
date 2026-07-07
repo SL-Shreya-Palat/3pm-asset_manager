@@ -320,6 +320,70 @@ async function createTenantMemberForDriver(
   return { tenantMemberId: tmResult!._id as ObjectId, roleId: driverRoleId };
 }
 
+/**
+ * Flag a driver as unfit for duty after a failed wellness / pre-start check.
+ * Idempotent (overwrites the current flag). Returns the driver's team + name so
+ * the caller can route the "driver unfit" notification. Never throws.
+ */
+export async function flagDriverUnfit(
+  tenantId: string,
+  driverId: string,
+  flag: { severity: 'low' | 'medium' | 'high'; reasons: string[]; inspectionSubmissionId?: ObjectId | null },
+): Promise<{ teamId: ObjectId | null; name: string } | null> {
+  if (!ObjectId.isValid(driverId)) return null;
+  const collection = await getDriversCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const driverOid = ObjectId.createFromHexString(driverId);
+  const now = new Date();
+
+  const res = await collection.findOneAndUpdate(
+    { _id: driverOid, tenantId: tenantOid },
+    {
+      $set: {
+        fitnessStatus: 'unfit',
+        fitnessFlag: {
+          severity: flag.severity,
+          reasons: flag.reasons,
+          date: now,
+          inspectionSubmissionId: flag.inspectionSubmissionId ?? null,
+        },
+        updatedAt: now,
+      },
+    },
+    { returnDocument: 'after' },
+  );
+  if (!res) return null;
+  return {
+    teamId: (res.teamId as ObjectId) ?? null,
+    name: `${res.firstName ?? ''} ${res.lastName ?? ''}`.trim() || 'A driver',
+  };
+}
+
+/**
+ * Clear a driver's unfit flag (mark fit) — on a passing check or a manager
+ * override. `userId` stamps the manual clear. Never throws.
+ */
+export async function clearDriverFitnessFlag(
+  tenantId: string,
+  driverId: string,
+  userId?: string,
+): Promise<boolean> {
+  if (!ObjectId.isValid(driverId)) return false;
+  const collection = await getDriversCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const driverOid = ObjectId.createFromHexString(driverId);
+
+  const $set: Record<string, unknown> = {
+    fitnessStatus: 'fit',
+    fitnessFlag: null,
+    updatedAt: new Date(),
+  };
+  if (userId && ObjectId.isValid(userId)) $set.updatedBy = ObjectId.createFromHexString(userId);
+
+  const res = await collection.updateOne({ _id: driverOid, tenantId: tenantOid }, { $set });
+  return res.matchedCount > 0;
+}
+
 /** Update an existing driver. */
 export async function updateDriver(
   tenantId: string,

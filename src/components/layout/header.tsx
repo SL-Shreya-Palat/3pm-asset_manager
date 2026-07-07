@@ -32,11 +32,11 @@ const ROUTE_LABELS: Record<string, string> = {
   settings: "Settings",
   edit: "Edit",
   "service-tasks": "Service Tasks",
-  "service-programs": "Service Programs",
+  "service-plans": "Service Plans",
   "work-orders": "Work Orders",
   defects: "Defects",
   "purchase-orders": "Purchase Orders",
-  inventory: "Inventory",
+  inventory: "Stock",
 };
 
 /** Singular form mapping for "Create New …" breadcrumbs. */
@@ -48,9 +48,9 @@ const SINGULAR_LABELS: Record<string, string> = {
   users: "User",
   teams: "Team",
   "service-tasks": "Service Task",
-  "service-programs": "Service Program",
+  "service-plans": "Service Plan",
   inspections: "Inspection",
-  inventory: "Inventory",
+  inventory: "Stock",
 };
 
 interface Breadcrumb {

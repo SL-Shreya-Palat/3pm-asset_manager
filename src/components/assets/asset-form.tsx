@@ -38,12 +38,10 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
   const [assetTypes, setAssetTypes] = useState<AssetTypeOption[]>([]);
   const [teams, setTeams] = useState<TeamOption[]>([]);
 
-  // Forms & Service Programs
+  // Forms
   const [formsList, setFormsList] = useState<FormItem[]>([]);
   const [formsLoading, setFormsLoading] = useState(true);
-  const [serviceProgramsList, setServiceProgramsList] = useState<{ id: string; title: string }[]>([]);
   const [selectedFormIds, setSelectedFormIds] = useState<Set<string>>(new Set());
-  const [selectedServiceProgramIds, setSelectedServiceProgramIds] = useState<Set<string>>(new Set());
   const [vinDecoding, setVinDecoding] = useState(false);
   const [vinDecoded, setVinDecoded] = useState(false);
 
@@ -157,12 +155,9 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
       if (urls && urls.length > 0) {
         setPhotoPreview(urls[0]);
       }
-      // Populate forms & service programs selections
+      // Populate forms selections
       if (Array.isArray(initialData.formIds)) {
         setSelectedFormIds(new Set(initialData.formIds as string[]));
-      }
-      if (Array.isArray(initialData.serviceProgramIds)) {
-        setSelectedServiceProgramIds(new Set(initialData.serviceProgramIds as string[]));
       }
     }
   }, [initialData]);
@@ -220,25 +215,11 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
     }
   }, []);
 
-  const fetchServicePrograms = useCallback(async () => {
-    try {
-      const res = await axios.get('/api/service-programs?limit=100', { withCredentials: true });
-      const items = res.data.data?.items || [];
-      setServiceProgramsList(items.map((sp: Record<string, unknown>) => ({
-        id: sp.id as string,
-        title: (sp.title as string) || '',
-      })));
-    } catch {
-      setServiceProgramsList([]);
-    }
-  }, []);
-
   useEffect(() => {
     fetchAssetTypes();
     fetchTeams();
     fetchForms();
-    fetchServicePrograms();
-  }, [fetchAssetTypes, fetchTeams, fetchForms, fetchServicePrograms]);
+  }, [fetchAssetTypes, fetchTeams, fetchForms]);
 
   /**
    * Find an existing asset type by name (case-insensitive) or create a new one.
@@ -374,7 +355,6 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
         : undefined,
       hubometer: hubometer ? parseFloat(hubometer) : undefined,
       formIds: Array.from(selectedFormIds),
-      serviceProgramIds: Array.from(selectedServiceProgramIds),
     };
 
     try {
@@ -785,64 +765,6 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
               {selectedFormIds.size > 0 && (
                 <p className="text-xs text-muted-foreground mt-2">
                   {selectedFormIds.size} form{selectedFormIds.size !== 1 ? 's' : ''} selected
-                </p>
-              )}
-            </div>
-          ),
-        },
-        {
-          title: 'Service Programs',
-          headerRight: (
-            <button
-              type="button"
-              onClick={() => {
-                const allSelected = serviceProgramsList.length > 0 && serviceProgramsList.every((sp) => selectedServiceProgramIds.has(sp.id));
-                if (allSelected) {
-                  setSelectedServiceProgramIds(new Set());
-                } else {
-                  setSelectedServiceProgramIds(new Set(serviceProgramsList.map((sp) => sp.id)));
-                }
-              }}
-              className="text-xs text-primary hover:underline font-medium"
-            >
-              {serviceProgramsList.length > 0 && serviceProgramsList.every((sp) => selectedServiceProgramIds.has(sp.id)) ? 'Deselect All' : 'Select All'}
-            </button>
-          ),
-          children: (
-            <div>
-              <p className="text-sm text-muted-foreground mb-4">
-                Select service programs available to this asset
-              </p>
-              <div className="rounded-md border border-border overflow-hidden">
-                <div className="max-h-[300px] overflow-y-auto divide-y divide-border">
-                  {serviceProgramsList.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-6 text-center">
-                      No service programs available
-                    </p>
-                  ) : (
-                    serviceProgramsList.map((sp) => (
-                      <label
-                        key={sp.id}
-                        className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/30 cursor-pointer transition-colors"
-                      >
-                        <Checkbox
-                          checked={selectedServiceProgramIds.has(sp.id)}
-                          onCheckedChange={(checked) => {
-                            const next = new Set(selectedServiceProgramIds);
-                            if (checked) next.add(sp.id);
-                            else next.delete(sp.id);
-                            setSelectedServiceProgramIds(next);
-                          }}
-                        />
-                        <span className="text-sm text-foreground">{sp.title}</span>
-                      </label>
-                    ))
-                  )}
-                </div>
-              </div>
-              {selectedServiceProgramIds.size > 0 && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  {selectedServiceProgramIds.size} program{selectedServiceProgramIds.size !== 1 ? 's' : ''} selected
                 </p>
               )}
             </div>

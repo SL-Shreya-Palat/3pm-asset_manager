@@ -70,9 +70,9 @@ export const allForms: FormDef[] = [
   },
   {
     module: "maintenance",
-    subModule: "servicePrograms",
-    key: "serviceProgram",
-    name: "Service Program",
+    subModule: "servicePlans",
+    key: "servicePlan",
+    name: "Service Plan",
     accessibility: ["view", "create", "edit", "archive", "delete"],
   },
   {

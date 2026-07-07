@@ -12,12 +12,12 @@
 import { ObjectId } from 'mongodb';
 import {
   getServiceHistoryCollection,
-  getServiceProgramsCollection,
   getServiceTasksCollection,
   getAssetsCollection,
   getMeterReadingsCollection,
   getUsersCollection,
 } from '@/lib/mongodb';
+import { writebackMetersIfLinked } from '@/controller/command-connection/hooks';
 import type { LogServiceInput, ServiceMeterType } from './types';
 
 function toOidArray(ids: string[] | undefined): ObjectId[] {
@@ -29,7 +29,6 @@ function serializeEntry(doc: Record<string, unknown>) {
     id: (doc._id as ObjectId).toString(),
     assetId: doc.assetId ? (doc.assetId as ObjectId).toString() : null,
     workOrderId: doc.workOrderId ? (doc.workOrderId as ObjectId).toString() : null,
-    programNames: (doc.programNames as string[]) ?? [],
     taskNames: (doc.taskNames as string[]) ?? [],
     performedAt: doc.performedAt ? new Date(doc.performedAt as Date).toISOString() : null,
     meterType: (doc.meterType as string) ?? null,
@@ -64,19 +63,12 @@ export async function logServiceEntry(
   const asset = await assetsCol.findOne({ _id: assetOid, tenantId: tenantOid });
   if (!asset) return { data: null, error: 'Asset not found' };
 
-  const programOids = toOidArray(input.servicePrograms);
   const taskOids = toOidArray(input.serviceTaskIds);
 
-  // Snapshot program + task names so history is stable.
-  const [programDocs, taskDocs] = await Promise.all([
-    programOids.length
-      ? (await getServiceProgramsCollection()).find({ _id: { $in: programOids }, tenantId: tenantOid }).toArray()
-      : Promise.resolve([]),
-    taskOids.length
-      ? (await getServiceTasksCollection()).find({ _id: { $in: taskOids }, tenantId: tenantOid }).toArray()
-      : Promise.resolve([]),
-  ]);
-  const programNames = programDocs.map((p) => (p.title as string) || '');
+  // Snapshot task names so history is stable.
+  const taskDocs = taskOids.length
+    ? await (await getServiceTasksCollection()).find({ _id: { $in: taskOids }, tenantId: tenantOid }).toArray()
+    : [];
   const taskNames = taskDocs.map((t) => (t.title as string) || '');
 
   // Resolve performer name.
@@ -106,14 +98,35 @@ export async function logServiceEntry(
   const meterAtService =
     typeof input.meterAtService === 'number' && input.meterAtService >= 0 ? input.meterAtService : null;
 
+  // Resolve the serviced schedule's name from its plan (for stable history display).
+  let servicePlanOid: ObjectId | null =
+    input.servicePlanId && ObjectId.isValid(input.servicePlanId)
+      ? ObjectId.createFromHexString(input.servicePlanId)
+      : null;
+  let servicePlanScheduleName: string | null = null;
+  const scheduleRef = input.servicePlanSchedule || null;
+  if (servicePlanOid && scheduleRef) {
+    const { getServicePlansCollection } = await import('@/lib/mongodb');
+    const plan = await (await getServicePlansCollection()).findOne({ _id: servicePlanOid, tenantId: tenantOid });
+    const sched = (plan?.schedules as Array<{ id: string; name: string }> | undefined)?.find(
+      (s) => s.id === scheduleRef || s.name === scheduleRef,
+    );
+    if (sched) servicePlanScheduleName = sched.name;
+  } else if (!servicePlanOid) {
+    // Fall back to the asset's assigned plan when the caller didn't specify one.
+    const a = asset as { servicePlanId?: ObjectId };
+    if (a.servicePlanId) servicePlanOid = a.servicePlanId;
+  }
+
   // 1) Write the history entry.
   const historyCol = await getServiceHistoryCollection();
   const doc = {
     tenantId: tenantOid,
     assetId: assetOid,
     workOrderId: input.workOrderId && ObjectId.isValid(input.workOrderId) ? ObjectId.createFromHexString(input.workOrderId) : null,
-    servicePrograms: programOids,
-    programNames,
+    servicePlanId: servicePlanOid,
+    servicePlanSchedule: scheduleRef,
+    servicePlanScheduleName,
     serviceTaskIds: taskOids,
     taskNames,
     performedAt,
@@ -154,6 +167,17 @@ export async function logServiceEntry(
       createdBy: performerOid,
       createdAt: now,
     });
+
+    // 4) Push the reading to Command so its asset meter — and therefore its
+    // servicing calc — stays in lock-step with Asset Manager (bidirectional sync).
+    await writebackMetersIfLinked(
+      tenantOid,
+      assetOid,
+      meterType === 'engine_hours'
+        ? { engineHours: meterAtService }
+        : { odometer: meterAtService },
+      'service',
+    );
   }
 
   return { data: serializeEntry({ ...doc, _id: result.insertedId }), error: null };

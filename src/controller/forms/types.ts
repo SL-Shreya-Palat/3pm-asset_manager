@@ -27,6 +27,8 @@ export interface FormCreationData {
   createdAt: string | Date;
   createdBy: string;
   type?: string | null;
+  /** What this form inspects — drives the driver-flag vs asset-defect outcome. */
+  inspectionType?: 'asset' | 'driver';
   status: string;
   source?: 'app' | 'embed';
   appId?: string;
@@ -42,6 +44,8 @@ export interface FormDocument {
   createdAt: Date;
   createdBy: ObjectId;
   type?: string | null;
+  /** What this form inspects — 'asset' (default) or 'driver'. */
+  inspectionType?: 'asset' | 'driver';
   status: string;
   source?: 'app' | 'embed';
   appId?: ObjectId;
@@ -67,6 +71,8 @@ export interface FormResponse {
   createdAt: Date;
   createdBy: string;
   type?: string | null;
+  /** What this form inspects — 'asset' (default) or 'driver'. */
+  inspectionType: 'asset' | 'driver';
   status: string;
   source?: 'app' | 'embed';
   appId?: string;

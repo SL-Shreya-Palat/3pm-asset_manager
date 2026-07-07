@@ -46,17 +46,31 @@ async function getTenantIdFromOrganizationId(
 /**
  * Convert a FormDocument (from MongoDB) to a FormResponse (serialized for API).
  */
+/**
+ * Smart default for a form's inspection type when it hasn't been set explicitly
+ * (legacy/builder forms). Name-based: driver/wellness/fitness → driver, else asset.
+ * A stored `inspectionType` (the manual toggle) always wins over this.
+ */
+export function classifyInspectionType(title: string | undefined): 'asset' | 'driver' {
+  return /driver|wellness|fitness|fit[\s-]?for[\s-]?duty/i.test(title || '') ? 'driver' : 'asset';
+}
+
 function toFormResponse(doc: Record<string, unknown>): FormResponse {
   const schema = doc.schema as FormDocument['schema'];
   return {
     id: (doc._id as ObjectId).toString(),
     tenantId: doc.tenantId ? (doc.tenantId as ObjectId).toString() : undefined,
-    organizationId: (doc.organizationId as ObjectId).toString(),
-    formId: (doc.formId as ObjectId).toString(),
-    formTitle: doc.formTitle as string,
+    // Guard optional/legacy docs (e.g. migrated Command forms) that may be
+    // missing these ids — an unguarded .toString() here 500s the whole list.
+    organizationId: doc.organizationId ? (doc.organizationId as ObjectId).toString() : '',
+    formId: doc.formId ? (doc.formId as ObjectId).toString() : '',
+    formTitle: (doc.formTitle as string) ?? '',
     createdAt: doc.createdAt as Date,
-    createdBy: (doc.createdBy as ObjectId).toString(),
+    createdBy: doc.createdBy ? (doc.createdBy as ObjectId).toString() : '',
     type: (doc.type as string | null | undefined) || null,
+    inspectionType:
+      (doc.inspectionType as 'asset' | 'driver' | undefined) ||
+      classifyInspectionType(doc.formTitle as string),
     status: doc.status as string,
     source: doc.source as 'app' | 'embed' | undefined,
     appId: doc.appId ? (doc.appId as ObjectId).toString() : undefined,
@@ -155,6 +169,11 @@ export async function storeForm(data: FormCreationData): Promise<FormResponse> {
     if (processedSchema) {
       updateDoc.schema = processedSchema;
     }
+    // Only set inspectionType when explicitly provided, so a webhook re-sync
+    // never clobbers a user's manual Asset/Driver choice.
+    if (data.inspectionType) {
+      updateDoc.inspectionType = data.inspectionType;
+    }
 
     await collection.updateOne({ formId }, { $set: updateDoc });
 
@@ -176,6 +195,7 @@ export async function storeForm(data: FormCreationData): Promise<FormResponse> {
     createdAt,
     createdBy,
     type: data.type || null,
+    inspectionType: data.inspectionType || classifyInspectionType(data.formTitle),
     status: data.status,
     source: data.source,
     appId: data.appId ? toObjectId(data.appId) : undefined,
@@ -198,21 +218,28 @@ export async function storeForm(data: FormCreationData): Promise<FormResponse> {
 }
 
 /**
- * Get form by formId
+ * Set a form's inspection type (the manual Asset/Driver toggle).
+ * Matches by builder formId (ObjectId or legacy string) or _id, tenant-scoped.
  */
-export async function getFormByFormId(
+export async function updateFormInspectionType(
+  tenantId: string,
   formId: string,
-): Promise<FormResponse | null> {
+  inspectionType: 'asset' | 'driver',
+): Promise<boolean> {
   const collection = await getFormsCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
 
-  if (!ObjectId.isValid(formId)) {
-    throw new Error('Invalid formId');
-  }
+  const idVariants: (string | ObjectId)[] = [formId];
+  if (ObjectId.isValid(formId)) idVariants.push(ObjectId.createFromHexString(formId));
 
-  const form = await collection.findOne({ formId: new ObjectId(formId) });
-  if (!form) return null;
-
-  return toFormResponse(form);
+  const filter: Record<string, unknown> = {
+    tenantId: tenantOid,
+    $or: [{ formId: { $in: idVariants } }, { _id: { $in: idVariants } }],
+  };
+  const res = await collection.updateOne(filter, {
+    $set: { inspectionType, updatedAt: new Date() },
+  });
+  return res.matchedCount > 0;
 }
 
 /**
@@ -287,82 +314,6 @@ export async function getFormsByTenantId(
   });
 
   return { items, total };
-}
-
-/**
- * Update form by formId
- */
-export async function updateFormByFormId(
-  formId: string,
-  updateData: Partial<{
-    formTitle: string;
-    status: string;
-    type: string | null;
-    schema: FormDocument['schema'];
-  }>,
-): Promise<FormResponse | null> {
-  const collection = await getFormsCollection();
-
-  if (!ObjectId.isValid(formId)) {
-    throw new Error('Invalid formId');
-  }
-
-  const formIdObjectId = new ObjectId(formId);
-  const form = await collection.findOne({ formId: formIdObjectId });
-
-  if (!form) return null;
-
-  const updateDoc: Partial<FormDocument> = {
-    updatedAt: new Date(),
-  };
-
-  if (updateData.formTitle !== undefined) {
-    updateDoc.formTitle = updateData.formTitle;
-  }
-  if (updateData.status !== undefined) {
-    updateDoc.status = updateData.status;
-  }
-  if (updateData.type !== undefined) {
-    updateDoc.type = updateData.type;
-  }
-  if (updateData.schema !== undefined) {
-    if (updateData.schema) {
-      const publishedBy =
-        updateData.schema.publishedBy instanceof ObjectId
-          ? updateData.schema.publishedBy
-          : updateData.schema.publishedBy
-            ? typeof updateData.schema.publishedBy === 'string'
-              ? toObjectId(updateData.schema.publishedBy)
-              : null
-            : null;
-
-      updateDoc.schema = {
-        formId: updateData.schema.formId,
-        organizationId: updateData.schema.organizationId,
-        pages: updateData.schema.pages,
-        versionNumber: updateData.schema.versionNumber,
-        publishedAt:
-          updateData.schema.publishedAt instanceof Date
-            ? updateData.schema.publishedAt
-            : updateData.schema.publishedAt
-              ? new Date(updateData.schema.publishedAt)
-              : null,
-        publishedBy: publishedBy ?? null,
-        notes: updateData.schema.notes,
-      };
-    } else {
-      updateDoc.schema = undefined;
-    }
-  }
-
-  await collection.updateOne({ formId: formIdObjectId }, { $set: updateDoc });
-
-  const updated = await collection.findOne({ formId: formIdObjectId });
-  if (!updated) {
-    throw new Error('Failed to update form');
-  }
-
-  return toFormResponse(updated);
 }
 
 /**

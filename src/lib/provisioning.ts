@@ -13,6 +13,7 @@ import {
   getRolesCollection,
 } from '@/lib/mongodb';
 import { seedSystemRoles } from '@/lib/system-roles';
+import { seedInspectionForms } from '@/controller/seeding';
 
 interface ProvisioningInput {
   user: {
@@ -318,6 +319,35 @@ export async function ensureLocalRecords(
             { upsert: true },
           );
         }
+      }
+    }
+
+    // ── Seed pre-start inspection forms for the org (self-healing) ────
+    // Ensures every org has the standard pre-start forms — including the
+    // daily "Driver Wellness Pre-Start Check" the driver fills before
+    // starting work. Runs for BOTH the new-tenant (onboarding) and
+    // returning-user branches, so orgs that onboarded before this was
+    // wired up get the forms on the owner/member's next login. Excluded
+    // for the invitation flow (`invitedTenantId`) — the host org already
+    // seeded it, and invited users may be mobile-only drivers.
+    // Idempotent (a cheap indexed query skips already-seeded forms with no
+    // form-builder calls) and non-fatal: a form-builder outage must not
+    // block login, and the lazy seed-prestart triggers remain as a fallback.
+    if (localTenantId && !input.invitedTenantId) {
+      try {
+        await seedInspectionForms({
+          tenantId: localTenantId.toHexString(),
+          userId: localUserId.toHexString(),
+          userEmail: normalizedEmail,
+          userName:
+            `${input.user.firstName || ''} ${input.user.lastName || ''}`.trim() ||
+            normalizedEmail,
+        });
+      } catch (seedErr) {
+        console.error(
+          '[provisioning] Prestart form seeding failed (non-fatal):',
+          seedErr,
+        );
       }
     }
 

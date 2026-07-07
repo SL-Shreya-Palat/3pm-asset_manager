@@ -15,7 +15,7 @@ import {
 } from '@/lib/mongodb';
 import { publishNotification } from '@/lib/notificationHub';
 import { getRuleForType } from '@/controller/notification-settings';
-import type { TeamRole } from '@/controller/notification-settings/types';
+import type { NotifyRole } from '@/controller/notification-settings/types';
 
 export type NotificationType =
   | 'defect_created'
@@ -26,6 +26,7 @@ export type NotificationType =
   | 'work_order_status_changed'
   | 'work_order_overdue'
   | 'inspection_submitted'
+  | 'driver_check_failed'
   | 'service_due'
   | 'service_overdue'
   | 'part_low_stock'
@@ -129,72 +130,81 @@ async function resolveTenantManagerIds(tenantOid: ObjectId): Promise<ObjectId[]>
   return ids;
 }
 
+/** notify-role key → the boolean flag on the role document. */
+const ROLE_FLAG_BY_KEY: Record<NotifyRole, string> = {
+  admin: 'isAdmin',
+  manager: 'isManager',
+  team_manager: 'isTeamManager',
+  mechanic: 'isMechanic',
+  driver: 'isDriver',
+};
+
+/** Role `_id`s for the tenant whose role doc has ANY of the given flags. */
+async function resolveRoleIdsByKeys(
+  rolesCol: Awaited<ReturnType<typeof getRolesCollection>>,
+  tenantOid: ObjectId,
+  roleKeys: NotifyRole[],
+): Promise<ObjectId[]> {
+  if (roleKeys.length === 0) return [];
+  const or = roleKeys.map((k) => ({ [ROLE_FLAG_BY_KEY[k]]: true }));
+  const roles = await rolesCol
+    .find({ tenantId: tenantOid, $or: or }, { projection: { _id: 1 } })
+    .toArray();
+  return roles.map((r) => r._id);
+}
+
 /**
- * Resolve the tenant's Admins/Owner ONLY (owner + admin role members + owner id).
- * Used as the "CC Admins" safety net for team-scoped rules — deliberately excludes
- * plain managers so team routing doesn't re-notify the whole manager pool.
+ * Resolve active members as the SCOPE × ROLE intersection:
+ *   - teamIds present  → only members of those teams        (else whole company)
+ *   - roleKeys present → only members whose role has a flag  (else any role)
+ * e.g. teamIds=[T] + roleKeys=['mechanic'] → the mechanic(s) on team T.
+ * The owner is force-included only for company-scope admin/any-role targets.
  */
-async function resolveTenantAdminIds(tenantOid: ObjectId): Promise<ObjectId[]> {
+async function resolveMembersByScopeAndRole(
+  tenantOid: ObjectId,
+  teamIds: ObjectId[] | null,
+  roleKeys: NotifyRole[],
+): Promise<ObjectId[]> {
   const [rolesCol, membersCol, tenantsCol] = await Promise.all([
     getRolesCollection(),
     getTenantMembersCollection(),
     getTenantsCollection(),
   ]);
 
-  const adminRoles = await rolesCol
-    .find({ tenantId: tenantOid, nameLower: { $in: ['owner', 'admin'] } }, { projection: { _id: 1 } })
-    .toArray();
-  const roleIds = adminRoles.map((r) => r._id);
-
-  const ids: ObjectId[] = [];
-  if (roleIds.length > 0) {
-    const members = await membersCol
-      .find(
-        { tenantId: tenantOid, roleId: { $in: roleIds }, isActive: true, portalUser: { $ne: false } },
-        { projection: { userId: 1 } },
-      )
-      .toArray();
-    for (const m of members) if (m.userId) ids.push(m.userId as ObjectId);
+  const companyScope = !teamIds || teamIds.length === 0;
+  const query: Record<string, unknown> = {
+    tenantId: tenantOid,
+    isActive: true,
+    portalUser: { $ne: false },
+  };
+  if (!companyScope) {
+    query.teamMemberships = { $elemMatch: { teamId: { $in: teamIds } } };
+  }
+  if (roleKeys.length > 0) {
+    const roleIds = await resolveRoleIdsByKeys(rolesCol, tenantOid, roleKeys);
+    if (roleIds.length === 0) return []; // role requested but no such role exists
+    query.roleId = { $in: roleIds };
   }
 
-  const tenant = await tenantsCol.findOne({ _id: tenantOid }, { projection: { ownerId: 1 } });
-  if (tenant?.ownerId) ids.push(tenant.ownerId as ObjectId);
-
-  return ids;
-}
-
-/**
- * Resolve members of the given teams whose per-team role is in `roles`
- * (`managing` / `following`), from `tenantMembers.teamMemberships[]`.
- */
-async function resolveTeamMemberIds(
-  tenantOid: ObjectId,
-  teamIds: ObjectId[],
-  roles: TeamRole[],
-): Promise<ObjectId[]> {
-  if (teamIds.length === 0 || roles.length === 0) return [];
-  const membersCol = await getTenantMembersCollection();
-  const members = await membersCol
-    .find(
-      {
-        tenantId: tenantOid,
-        isActive: true,
-        portalUser: { $ne: false },
-        teamMemberships: { $elemMatch: { teamId: { $in: teamIds }, role: { $in: roles } } },
-      },
-      { projection: { userId: 1 } },
-    )
-    .toArray();
-
+  const members = await membersCol.find(query, { projection: { userId: 1 } }).toArray();
   const ids: ObjectId[] = [];
   for (const m of members) if (m.userId) ids.push(m.userId as ObjectId);
+
+  // The owner should always reach admin-targeted alerts (the Owner role may not
+  // carry the isAdmin flag), and any company-wide "everyone" target.
+  if (roleKeys.includes('admin') || (companyScope && roleKeys.length === 0)) {
+    const tenant = await tenantsCol.findOne({ _id: tenantOid }, { projection: { ownerId: 1 } });
+    if (tenant?.ownerId) ids.push(tenant.ownerId as ObjectId);
+  }
+
   return ids;
 }
 
 /**
- * Resolve recipients for an event according to the tenant's admin-configured rule.
- * Falls back to all managers whenever a team rule would otherwise notify nobody
- * (unassigned asset, empty team, no admins) — so an alert is never silently dropped.
+ * Resolve recipients for an event from the tenant's admin-configured rule
+ * (SCOPE × ROLES). An alert is never silently dropped:
+ *   team scope + no team on the asset → the SAME roles company-wide
+ *   still nobody                      → the tenant's managers/owner
  */
 async function resolveEventRecipients(
   tenantId: string,
@@ -206,22 +216,34 @@ async function resolveEventRecipients(
 
   // Not admin-configurable → keep legacy behaviour (all managers).
   if (!rule) return resolveTenantManagerIds(tenantOid);
-  if (rule.audience === 'off') return [];
-  if (rule.audience === 'all_managers') return resolveTenantManagerIds(tenantOid);
+  if (rule.scope === 'off') return [];
 
-  // audience === 'team'
+  const roleKeys = rule.roles ?? [];
+
+  // Whole-company scope.
+  if (rule.scope === 'company') {
+    const ids = await resolveMembersByScopeAndRole(tenantOid, null, roleKeys);
+    return ids.length ? ids : resolveTenantManagerIds(tenantOid);
+  }
+
+  // Team scope — resolve the asset's teams from context.
   const teamIds = (ctx.teamIds ?? [])
     .map((t) => (typeof t === 'string' ? (ObjectId.isValid(t) ? ObjectId.createFromHexString(t) : null) : t))
     .filter((t): t is ObjectId => t !== null);
 
-  if (teamIds.length === 0) return resolveTenantManagerIds(tenantOid); // unassigned asset → don't drop
+  // No team on the asset → same roles, company-wide (documented fallback).
+  if (teamIds.length === 0) {
+    const ids = await resolveMembersByScopeAndRole(tenantOid, null, roleKeys);
+    return ids.length ? ids : resolveTenantManagerIds(tenantOid);
+  }
 
-  const teamMembers = await resolveTeamMemberIds(tenantOid, teamIds, rule.teamRoles);
-  const admins = rule.ccAdmins ? await resolveTenantAdminIds(tenantOid) : [];
-  const combined = [...teamMembers, ...admins];
-
-  if (combined.length === 0) return resolveTenantManagerIds(tenantOid); // team empty → don't drop
-  return combined;
+  // The intersection: members on the team holding the selected role(s).
+  let ids = await resolveMembersByScopeAndRole(tenantOid, teamIds, roleKeys);
+  if (ids.length === 0) {
+    // Team has nobody with those roles → same roles company-wide.
+    ids = await resolveMembersByScopeAndRole(tenantOid, null, roleKeys);
+  }
+  return ids.length ? ids : resolveTenantManagerIds(tenantOid);
 }
 
 /** Notify the tenant's managers (Owner/Admin). Best-effort. */

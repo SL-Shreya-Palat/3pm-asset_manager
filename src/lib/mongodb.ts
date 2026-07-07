@@ -76,11 +76,6 @@ export async function getWorkspaceMembersCollection(): Promise<Collection> {
 // Identity & Access collections
 // ---------------------------------------------------------------------------
 
-export async function getMembersCollection(): Promise<Collection> {
-  const db = await getDb();
-  return db.collection('members');
-}
-
 export async function getTeamsCollection(): Promise<Collection> {
   const db = await getDb();
   return db.collection('teams');
@@ -103,11 +98,6 @@ export async function getInvitationsCollection(): Promise<Collection> {
 export async function getAssetsCollection(): Promise<Collection> {
   const db = await getDb();
   return db.collection('assets');
-}
-
-export async function getAssetGroupsCollection(): Promise<Collection> {
-  const db = await getDb();
-  return db.collection('assetGroups');
 }
 
 export async function getLocationsCollection(): Promise<Collection> {
@@ -157,9 +147,11 @@ export async function getServiceTasksCollection(): Promise<Collection> {
   return db.collection('serviceTasks');
 }
 
-export async function getServiceProgramsCollection(): Promise<Collection> {
+/** Hierarchical service plans (plan groups schedules with service-group reset) —
+ *  mirrors construction-portal's servicePlans, the primary servicing concept. */
+export async function getServicePlansCollection(): Promise<Collection> {
   const db = await getDb();
-  return db.collection('servicePrograms');
+  return db.collection('servicePlans');
 }
 
 // ---------------------------------------------------------------------------
@@ -243,11 +235,6 @@ export async function getFuelTransactionsCollection(): Promise<Collection> {
 export async function getCountersCollection(): Promise<Collection> {
   const db = await getDb();
   return db.collection('counters');
-}
-
-export async function getAuditLogCollection(): Promise<Collection> {
-  const db = await getDb();
-  return db.collection('auditLog');
 }
 
 // ---------------------------------------------------------------------------
@@ -344,6 +331,16 @@ export async function getNotificationSettingsCollection(): Promise<Collection> {
 export async function getServiceHistoryCollection(): Promise<Collection> {
   const db = await getDb();
   return db.collection('serviceHistory');
+}
+
+// ---------------------------------------------------------------------------
+// IoT Hub integration (one settings doc per tenant)
+// ---------------------------------------------------------------------------
+
+/** Per-tenant IoT Hub config: provider keys, client id, provider mappings. */
+export async function getIoTSettingsCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('iotSettings');
 }
 
 // ---------------------------------------------------------------------------

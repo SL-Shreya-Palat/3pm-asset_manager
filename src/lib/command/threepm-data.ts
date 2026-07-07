@@ -19,11 +19,6 @@ function baseConfig(): { idpUrl: string; apiKey: string } | null {
   return { idpUrl: idpUrl.replace(/\/+$/, ''), apiKey };
 }
 
-/** True when the 3PM data API can be called at all (env present). */
-export function isEntitlementCheckConfigured(): boolean {
-  return baseConfig() !== null;
-}
-
 /**
  * Core: does `authTenantId` have an ACTIVE subscription to `clientId`?
  * `{ ok: true, entitled }` on a definitive answer; `{ ok: false }` when the

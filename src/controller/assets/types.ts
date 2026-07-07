@@ -42,7 +42,9 @@ export interface Asset {
 
   // Associations
   formIds: ObjectId[];
-  serviceProgramIds: ObjectId[];
+  /** Hierarchical service plan assigned to this asset (mirrors Command's
+   *  assetDetails.servicePlan — one plan per asset, drives per-schedule due status). */
+  servicePlanId?: ObjectId | null;
 
   // From spec
   type?: string;
@@ -102,7 +104,7 @@ export interface CreateAssetInput {
   primaryMeter?: string;
   photoUrls?: string[];
   formIds?: string[];
-  serviceProgramIds?: string[];
+  servicePlanId?: string | null;
   driverAccessIds?: string[];
 }
 
@@ -158,7 +160,7 @@ export interface AssetResponse {
   primaryMeter?: string;
   photoUrls: string[];
   formIds: string[];
-  serviceProgramIds: string[];
+  servicePlanId?: string | null;
   driverAccessIds: string[];
   isActive: boolean;
   isArchived: boolean;

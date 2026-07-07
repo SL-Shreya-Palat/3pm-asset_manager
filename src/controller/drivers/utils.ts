@@ -81,6 +81,21 @@ export function serializeDriver(doc: Record<string, unknown>): Record<string, un
       ? (doc.tenantMemberId as { toString(): string }).toString()
       : undefined,
 
+    fitnessStatus: (doc.fitnessStatus as 'fit' | 'unfit' | null) ?? null,
+    fitnessFlag: doc.fitnessFlag
+      ? (() => {
+          const f = doc.fitnessFlag as Record<string, unknown>;
+          return {
+            severity: (f.severity as 'low' | 'medium' | 'high') ?? 'low',
+            reasons: Array.isArray(f.reasons) ? (f.reasons as string[]) : [],
+            date: f.date ? (f.date as Date).toISOString() : null,
+            inspectionSubmissionId: f.inspectionSubmissionId
+              ? (f.inspectionSubmissionId as { toString(): string }).toString()
+              : null,
+          };
+        })()
+      : null,
+
     isActive: doc.isActive ?? true,
     isArchived: doc.isArchived ?? false,
     createdAt: doc.createdAt ? (doc.createdAt as Date).toISOString() : null,

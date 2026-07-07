@@ -82,9 +82,8 @@ export const allModules: Modules = [
         accessibility: ["view"],
       },
       {
-        name: "Service Programs",
-        key: "servicePrograms",
-        description: "Create scheduled maintenance programs with grouped service tasks",
+        name: "Service Plans",
+        key: "servicePlans",
         accessibility: ["view"],
       },
       {

@@ -36,7 +36,7 @@ declare global {
 }
 
 const WIDGET_BUILDER_URL =
-  process.env.NEXT_PUBLIC_WIDGET_BUILDER_URL || 'http://localhost:3003';
+  process.env.NEXT_PUBLIC_WIDGET_BUILDER_URL || 'http://localhost:3008';
 
 interface UseWidgetBuilderOptions {
   /** Logical id used to scope widgets to this dashboard. */

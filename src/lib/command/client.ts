@@ -65,22 +65,6 @@ export function isCommandConfigured(): boolean {
   return getConfig() !== null;
 }
 
-/** Circuit-breaker snapshot for one tenant (diagnostics, no secrets). */
-export function getCircuitState(tenantId: string | null): {
-  open: boolean;
-  consecutiveFailures: number;
-  openForMs: number;
-} {
-  const now = Date.now();
-  const b = tenantId ? breakers.get(tenantId) : undefined;
-  const openUntil = b?.openUntil ?? 0;
-  return {
-    open: now < openUntil,
-    consecutiveFailures: b?.consecutiveFailures ?? 0,
-    openForMs: now < openUntil ? openUntil - now : 0,
-  };
-}
-
 function recordSuccess(tenantId: string): void {
   const b = getBreaker(tenantId);
   b.consecutiveFailures = 0;

@@ -716,25 +716,37 @@ export function AssetTable() {
           <DropdownMenuContent align="end">
             {showArchived ? (
               <>
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenArchive(asset);
-                  }}
-                >
-                  <ArchiveRestore className="h-4 w-4" />
-                  Unarchive
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenDelete(asset);
-                  }}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Delete
-                </DropdownMenuItem>
+                {/* Command-sourced assets are archived/unarchived in Command
+                    only — the import syncs the state here. */}
+                {asset.source !== 'command' && (
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenArchive(asset);
+                    }}
+                  >
+                    <ArchiveRestore className="h-4 w-4" />
+                    Unarchive
+                  </DropdownMenuItem>
+                )}
+                {asset.source !== 'command' && (
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenDelete(asset);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                )}
+                {asset.source === 'command' && (
+                  <DropdownMenuItem disabled>
+                    <Archive className="h-4 w-4" />
+                    Managed in Command
+                  </DropdownMenuItem>
+                )}
               </>
             ) : (
               <>
@@ -803,16 +815,19 @@ export function AssetTable() {
                     ? 'Mark as Under Maintenance'
                     : 'Mark as Active'}
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenArchive(asset);
-                  }}
-                >
-                  <Archive className="h-4 w-4" />
-                  Archive
-                </DropdownMenuItem>
+                {/* Archive lives in Command for Command-sourced assets. */}
+                {asset.source !== 'command' && (
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenArchive(asset);
+                    }}
+                  >
+                    <Archive className="h-4 w-4" />
+                    Archive
+                  </DropdownMenuItem>
+                )}
               </>
             )}
           </DropdownMenuContent>

@@ -162,16 +162,15 @@ export function DriversPage() {
       await axios.post('/api/forms/seed-prestart', {}, { withCredentials: true }).catch(() => {});
       const res = await axios.get('/api/forms?status=published&includeSchema=false', { withCredentials: true });
       const allForms = res.data?.data?.items || [];
-      const wellness = allForms
-        .filter(
-          (f: Record<string, unknown>) =>
-            (f.title || f.formTitle) === 'Driver Wellness Pre-Start Check',
-        )
+      // Show every DRIVER-type form (not just the seeded wellness template), so
+      // custom driver inspection forms are launchable too.
+      const driverForms = allForms
+        .filter((f: Record<string, unknown>) => f.inspectionType === 'driver')
         .map((f: Record<string, unknown>) => ({
           formId: String(f.formId || f.id),
           title: String(f.title || f.formTitle || 'Untitled form'),
         }));
-      setInspectForms(wellness);
+      setInspectForms(driverForms);
     } catch {
       setInspectForms([]);
     } finally {

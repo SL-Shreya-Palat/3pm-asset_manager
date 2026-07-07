@@ -47,14 +47,14 @@ export const routePermissions: RoutePermissionRule[] = [
     anyOf: [Permissions.maintenance.serviceTasks.view],
   },
   {
-    match: "/maintenance/service-programs",
+    match: "/maintenance/service-plans",
     matchType: "startsWith",
-    anyOf: [Permissions.maintenance.servicePrograms.view],
+    anyOf: [Permissions.maintenance.servicePlans.view],
   },
   {
     match: "/maintenance/service-schedule",
     matchType: "startsWith",
-    anyOf: [Permissions.maintenance.servicePrograms.view],
+    anyOf: [Permissions.maintenance.servicePlans.view],
   },
   {
     match: "/maintenance/work-orders",

@@ -64,6 +64,7 @@ export async function GET(req: NextRequest) {
       title: form.formTitle,
       type: form.type || '',
       typeName: form.type || '',
+      inspectionType: form.inspectionType,
       organizationId: form.organizationId,
       status: form.status,
       createdAt: form.createdAt instanceof Date ? form.createdAt.toISOString() : form.createdAt,

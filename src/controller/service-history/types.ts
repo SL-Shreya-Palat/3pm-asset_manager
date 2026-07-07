@@ -12,8 +12,12 @@ export interface ServiceHistoryDoc {
   tenantId: ObjectId;
   assetId: ObjectId;
   workOrderId?: ObjectId | null;
-  servicePrograms: ObjectId[];
-  programNames: string[];
+  /** Hierarchical service plan this service was performed under (primary model). */
+  servicePlanId?: ObjectId | null;
+  /** The schedule (id) within the plan that was serviced — drives the group
+   *  reset in calc.ts (servicing Service C resets A + B in the same group). */
+  servicePlanSchedule?: string | null;
+  servicePlanScheduleName?: string | null;
   serviceTaskIds: ObjectId[];
   taskNames: string[];
   performedAt: Date;
@@ -30,7 +34,9 @@ export interface ServiceHistoryDoc {
 export interface LogServiceInput {
   assetId: string;
   workOrderId?: string;
-  servicePrograms?: string[];
+  /** Preferred: the plan + schedule that was serviced (hierarchical model). */
+  servicePlanId?: string;
+  servicePlanSchedule?: string;
   serviceTaskIds?: string[];
   performedAt?: string;
   meterType?: string;

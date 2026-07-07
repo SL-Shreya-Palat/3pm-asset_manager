@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: '3PM Asset Manager',
-  description: 'Fleet asset management platform',
+  title: '3PM Drive',
+  description: 'Fleet management platform',
 };
 
 export default function RootLayout({

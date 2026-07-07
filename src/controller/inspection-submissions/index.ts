@@ -34,6 +34,8 @@ import {
 import { evaluateDefects, type EvaluationResult } from '@/controller/defect-settings/evaluator';
 import { reserveDefectNumbers } from '@/controller/defects/utils';
 import { notifyEvent } from '@/controller/notifications';
+import { flagDriverUnfit, clearDriverFitnessFlag } from '@/controller/drivers';
+import { classifyInspectionType } from '@/controller/forms';
 import {
   writebackActivityIfLinked,
   writebackAvailabilityIfLinked,
@@ -87,6 +89,16 @@ function escapeRegex(value: string): string {
 
 function assetDisplayName(doc: Record<string, unknown>): string {
   return (doc.name as string) || (doc.assetNumber as string) || '';
+}
+
+/** Highest severity across a set of failed items (high > medium > low). */
+const SEVERITY_ORDER: Record<string, number> = { low: 1, medium: 2, high: 3 };
+function maxSeverity(list: SeverityValue[]): SeverityValue {
+  let max: SeverityValue = 'low';
+  for (const s of list) {
+    if ((SEVERITY_ORDER[s] ?? 0) > (SEVERITY_ORDER[max] ?? 0)) max = s;
+  }
+  return max;
 }
 
 /**
@@ -243,6 +255,66 @@ export async function processInspectionSubmission(
   };
   const insertResult = await submissionsCol.insertOne(submissionDoc);
   const submissionId = insertResult.insertedId;
+
+  // 5b) DRIVER inspection flow — flag the DRIVER, not the asset.
+  //     A form is a driver check when it's typed 'driver' (manual toggle / smart
+  //     default) OR it was launched for a driver. Such a check is about
+  //     fitness-for-duty (fatigue/alcohol/…), so it must NOT create an asset
+  //     maintenance defect or ground a vehicle. Instead: flag the driver unfit +
+  //     notify; a passing check clears any prior flag.
+  const inspectionType =
+    (form.inspectionType as 'asset' | 'driver' | undefined) ?? classifyInspectionType(formTitle);
+  const isDriverCheck = inspectionType === 'driver' || driverId !== null;
+
+  if (isDriverCheck) {
+    if (evaluation.defects.length > 0) {
+      const severity = maxSeverity(evaluation.defects.map((d) => d.severity));
+      const reasons = evaluation.defects.map((d) => {
+        const answer = Array.isArray(d.answer) ? d.answer.join(', ') : d.answer;
+        return `${d.label}: ${answer}`;
+      });
+
+      // Flag the specific driver when we know who it is (driver-launched flow).
+      let driverName = 'A driver';
+      let teamIds: ObjectId[] = [];
+      if (driverId) {
+        const driver = await flagDriverUnfit(tenantId, driverId.toHexString(), {
+          severity,
+          reasons,
+          inspectionSubmissionId: submissionId,
+        });
+        if (driver) {
+          driverName = driver.name;
+          teamIds = driver.teamId ? [driver.teamId] : [];
+        }
+      }
+
+      await notifyEvent(
+        tenantId,
+        {
+          type: 'driver_check_failed',
+          title: `${driverName} flagged unfit for duty`,
+          body: `${driverName} failed the check "${formTitle}" — ${reasons.length} issue${reasons.length > 1 ? 's' : ''} (${severity} severity). Review before they start work.`,
+          link: driverId ? `/people/drivers/${driverId.toHexString()}` : '/inspections/history',
+          entityType: 'inspectionSubmission',
+          entityId: submissionId.toString(),
+        },
+        { teamIds },
+      );
+    } else if (driverId) {
+      // Passed → clear any prior unfit flag so the driver is cleared for work.
+      await clearDriverFitnessFlag(tenantId, driverId.toHexString());
+    }
+
+    return {
+      status: 'processed',
+      submissionId: submissionId.toString(),
+      result: evaluation.result,
+      defectsCreated: 0,
+      defectIds: [],
+      assetLinked: false,
+    };
+  }
 
   // 6) Create one defect per failed item (single batch insert).
   const defectIds: string[] = [];

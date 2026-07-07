@@ -94,15 +94,6 @@ export function validateCreateAssetInput(input: CreateAssetInput): ValidationRes
     }
   }
 
-  // serviceProgramIds
-  if (input.serviceProgramIds && Array.isArray(input.serviceProgramIds)) {
-    for (const id of input.serviceProgramIds) {
-      if (!isValidObjectId(id)) {
-        errors.serviceProgramIds = 'All service program IDs must be valid ObjectIds';
-        break;
-      }
-    }
-  }
 
   // driverAccessIds
   if (input.driverAccessIds && Array.isArray(input.driverAccessIds)) {
@@ -171,7 +162,7 @@ export function serializeAsset(doc: Record<string, unknown>): Record<string, unk
     primaryMeter: doc.primaryMeter || 'odometer',
     photoUrls: doc.photoUrls || [],
     formIds: Array.isArray(doc.formIds) ? doc.formIds.map((id: { toString: () => string }) => id.toString()) : [],
-    serviceProgramIds: Array.isArray(doc.serviceProgramIds) ? doc.serviceProgramIds.map((id: { toString: () => string }) => id.toString()) : [],
+    servicePlanId: doc.servicePlanId ? (doc.servicePlanId as { toString: () => string }).toString() : null,
     driverAccessIds: Array.isArray(doc.driverAccessIds) ? doc.driverAccessIds.map((id: { toString: () => string }) => id.toString()) : [],
     isActive: doc.isActive ?? true,
     isArchived: doc.isArchived ?? false,

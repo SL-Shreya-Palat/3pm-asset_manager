@@ -1,6 +1,6 @@
 /**
  * Service Schedule domain types -- computed view, no collection.
- * Each item represents one (ServiceProgram, Asset) pair with computed due info.
+ * Each item represents one (asset × plan schedule) pair with computed due info.
  */
 
 /** Schedule item status. */

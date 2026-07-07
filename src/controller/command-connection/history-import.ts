@@ -4,7 +4,7 @@
  * After the Zoho → Command migration lands everything in Command, this pulls
  * the asset-maintenance side into Asset Manager through the service channel:
  *
- *   service plans   → servicePrograms   (one program per plan schedule)
+ *   service plans   → servicePlans      (1:1, schedules + hierarchy preserved)
  *   servicings      → serviceHistory    (+ $max last-service seeds on assets,
  *                                         + meterReadings trail)
  *   prestarts       → inspectionSubmissions under a synthetic legacy form
@@ -25,7 +25,7 @@
 import { ObjectId } from 'mongodb';
 import {
   getAssetsCollection,
-  getServiceProgramsCollection,
+  getServicePlansCollection,
   getServiceHistoryCollection,
   getMeterReadingsCollection,
   getInspectionSubmissionsCollection,
@@ -39,7 +39,7 @@ import { commandRequest } from '@/lib/command/client';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export type HistoryEntity = 'servicePrograms' | 'serviceHistory' | 'inspections' | 'workOrders';
+export type HistoryEntity = 'servicePlans' | 'serviceHistory' | 'inspections' | 'workOrders';
 
 export interface HistoryBatchResult {
   entity: HistoryEntity;
@@ -164,37 +164,26 @@ async function upsertMeterReading(
   );
 }
 
-// ─── 1) Service plans → servicePrograms ─────────────────────────────────────
+// ─── 1) Service plans → servicePlans (hierarchical, 1:1) ────────────────────
 
-/** Map a Command schedule unit onto an AM repeat condition. */
-function mapInterval(unit: string, every: number, recurring: boolean): Record<string, unknown> {
-  const u = unit.toLowerCase();
-  const isHours = /hour/.test(u);
-  const isCalendar = /day|week|month|year/.test(u);
-  const calUnit = /week/.test(u) ? 'week' : /month/.test(u) ? 'month' : /year/.test(u) ? 'year' : 'day';
-
-  if (!recurring) {
-    // One-time schedule → due-at condition of the matching kind.
-    if (isHours) return { type: 'one_time', dueEngineHours: { enabled: true, mode: 'at', value: every } };
-    if (isCalendar) return { type: 'one_time', dueOnDate: { enabled: false } };
-    return { type: 'one_time', dueMileage: { enabled: true, mode: 'at', value: every } };
-  }
-  if (isHours) return { type: 'repeat', engineHours: { enabled: true, every } };
-  if (isCalendar) return { type: 'repeat', calendar: { enabled: true, every, unit: calUnit } };
-  return { type: 'repeat', mileage: { enabled: true, every } }; // km / miles / distance
-}
-
-async function importServicePrograms(
+/**
+ * Command service plan → ONE AM service plan, schedules preserved WITH their
+ * serviceGroup + sortOrder (so the hierarchy/reset behaves exactly like Command).
+ *
+ * Servicing is AM-OWNED, so this is a SEED (insert-if-missing keyed on
+ * commandServicePlanId) — a re-import never overwrites AM edits to a plan.
+ * Assets are linked via asset.servicePlanId, only when the asset has no plan yet.
+ */
+async function importServicePlans(
   tenantOid: ObjectId,
   userOid: ObjectId,
   authTenantId: string,
 ): Promise<HistoryBatchResult> {
   const result: HistoryBatchResult = {
-    entity: 'servicePrograms', processed: 0, created: 0, skipped: 0, errors: [], nextCursor: null, done: true,
+    entity: 'servicePlans', processed: 0, created: 0, skipped: 0, errors: [], nextCursor: null, done: true,
   };
   const assetMap = await loadAssetMap(tenantOid);
 
-  // Sweep all plans (plan counts are small — no batching needed).
   const plans: any[] = [];
   for (let page = 1; page <= 50; page++) {
     const { rows, hasMore } = await fetchPage('/api/service-plans', authTenantId, page);
@@ -218,72 +207,72 @@ async function importServicePrograms(
     if (!hasMore) break;
   }
 
-  const programsCol = await getServiceProgramsCollection();
+  const plansCol = await getServicePlansCollection();
   const assetsCol = await getAssetsCollection();
   const now = new Date();
 
   for (const plan of plans) {
-    const planId = str(plan._id);
+    result.processed++;
+    const commandPlanId = str(plan._id);
     const planName = str(plan.servicePlan) ?? 'Service plan';
-    if (!planId) { result.skipped++; continue; }
-    const schedules: any[] = Array.isArray(plan.schedules) ? plan.schedules : [];
-    const amAssetIds = (assetsByPlan.get(planId) ?? [])
+    if (!commandPlanId) { result.skipped++; continue; }
+
+    // Preserve every schedule with its group + order (id from Command's schedule
+    // _id when present, so servicing references resolve after import).
+    const schedules = (Array.isArray(plan.schedules) ? plan.schedules : []).map(
+      (s: any, i: number) => ({
+        id: str(s._id) ?? `${commandPlanId}-${i}`,
+        name: str(s.name) ?? `Schedule ${i + 1}`,
+        unitOfMeasurement: str(s.unitOfMeasurement) ?? '',
+        serviceInterval: num(s.serviceInterval) ?? null,
+        recurring: s.recurring !== false,
+        archived: s.archived === true,
+        sortOrder: num(s.sortOrder) ?? i + 1,
+        serviceGroup: num(s.serviceGroup) ?? null,
+      }),
+    );
+
+    const upsert = await plansCol.updateOne(
+      { tenantId: tenantOid, commandServicePlanId: commandPlanId },
+      {
+        $setOnInsert: {
+          tenantId: tenantOid,
+          commandServicePlanId: commandPlanId,
+          source: 'command',
+          name: planName,
+          schedules,
+          serviceTaskIds: [],
+          createdBy: userOid,
+          createdAt: now,
+          updatedBy: userOid,
+          updatedAt: now,
+          isActive: true,
+          isArchived: false,
+          archivedAt: null,
+          archivedBy: null,
+        },
+      },
+      { upsert: true },
+    );
+    if (upsert.upsertedCount > 0) result.created++;
+
+    // Resolve the AM plan id + link assets that don't already have a plan.
+    const amPlan = await plansCol.findOne(
+      { tenantId: tenantOid, commandServicePlanId: commandPlanId },
+      { projection: { _id: 1 } },
+    );
+    const amAssetIds = (assetsByPlan.get(commandPlanId) ?? [])
       .map((cid) => assetMap.get(cid)?._id)
       .filter((id): id is ObjectId => Boolean(id));
-
-    for (const schedule of schedules) {
-      result.processed++;
-      const scheduleName = str(schedule.name);
-      if (!scheduleName || schedule.archived === true) { result.skipped++; continue; }
-
-      const interval = mapInterval(
-        str(schedule.unitOfMeasurement) ?? 'km',
-        num(schedule.serviceInterval) ?? 0,
-        schedule.recurring !== false,
-      );
-
-      const upsert = await programsCol.updateOne(
-        { tenantId: tenantOid, commandServicePlanId: planId, commandScheduleName: scheduleName },
+    if (amPlan && amAssetIds.length > 0) {
+      await assetsCol.updateMany(
         {
-          $set: {
-            title: `${planName} — ${scheduleName}`,
-            interval,
-            assetIds: amAssetIds,
-            // Full source payload — nothing from Command is dropped.
-            commandData: { serviceGroup: schedule.serviceGroup ?? null, sortOrder: schedule.sortOrder ?? null, unitOfMeasurement: schedule.unitOfMeasurement ?? null, serviceInterval: schedule.serviceInterval ?? null, recurring: schedule.recurring ?? null },
-            updatedBy: userOid,
-            updatedAt: now,
-          },
-          $setOnInsert: {
-            tenantId: tenantOid,
-            commandServicePlanId: planId,
-            commandScheduleName: scheduleName,
-            source: 'command',
-            serviceTaskIds: [],
-            reminders: { autoCreateWorkOrder: false, channels: ['dashboard'], recipientSelf: false },
-            createdBy: userOid,
-            createdAt: now,
-            isActive: true,
-            isArchived: false,
-          },
+          _id: { $in: amAssetIds },
+          tenantId: tenantOid,
+          $or: [{ servicePlanId: null }, { servicePlanId: { $exists: false } }],
         },
-        { upsert: true },
+        { $set: { servicePlanId: amPlan._id, updatedAt: now } },
       );
-      if (upsert.upsertedCount > 0) result.created++;
-
-      // Back-link the program onto its assets.
-      if (amAssetIds.length > 0) {
-        const program = await programsCol.findOne(
-          { tenantId: tenantOid, commandServicePlanId: planId, commandScheduleName: scheduleName },
-          { projection: { _id: 1 } },
-        );
-        if (program) {
-          await assetsCol.updateMany(
-            { _id: { $in: amAssetIds }, tenantId: tenantOid },
-            { $addToSet: { serviceProgramIds: program._id }, $set: { updatedAt: now } },
-          );
-        }
-      }
     }
   }
   return result;
@@ -308,6 +297,16 @@ async function importServiceHistory(
   const assetsCol = await getAssetsCollection();
   const now = new Date();
 
+  // Map Command plan id → AM plan _id so history links to the imported plan
+  // (drives the hierarchical group reset in calc.ts).
+  const plansCol = await getServicePlansCollection();
+  const planDocs = await plansCol
+    .find({ tenantId: tenantOid, commandServicePlanId: { $exists: true } }, { projection: { commandServicePlanId: 1 } })
+    .toArray();
+  const planIdMap = new Map<string, ObjectId>(
+    planDocs.map((p: any) => [String(p.commandServicePlanId), p._id as ObjectId]),
+  );
+
   for (const row of rows) {
     result.processed++;
     const commandServicingId = str(row._id);
@@ -326,6 +325,9 @@ async function importServiceHistory(
     const meterAtService = odo ?? engine ?? null;
     const costHours = row.costHours ?? {};
     const voided = str(row.status) === 'voided';
+    // Only APPROVED servicings advance the asset's last-service baseline / meter
+    // trail — matches Command, whose next-service calc counts approved only.
+    const approved = str(row.status) === 'approved';
 
     const notes = [
       str(info.descriptionOfWork),
@@ -335,17 +337,16 @@ async function importServiceHistory(
       voided ? '(voided in Command)' : undefined,
     ].filter(Boolean).join(' · ');
 
-    const programNames = [
-      [str(info.servicePlanName), str(info.servicePlanSchedule)].filter(Boolean).join(' — '),
-    ].filter((s) => s);
-
     const upsert = await historyCol.updateOne(
       { tenantId: tenantOid, commandServicingId },
       {
         $set: {
           assetId: asset._id,
           performedAt,
-          programNames,
+          // Link to the imported plan + the serviced schedule (hierarchy reset).
+          servicePlanId: planIdMap.get(str(info.servicePlan) ?? '') ?? null,
+          servicePlanSchedule: str(info.servicePlanSchedule) ?? null,
+          servicePlanScheduleName: str(info.servicePlanSchedule) ?? null,
           taskNames: [],
           meterType: meterAtService != null ? meterType : null,
           meterAtService,
@@ -368,7 +369,6 @@ async function importServiceHistory(
           tenantId: tenantOid,
           commandServicingId,
           workOrderId: null,
-          servicePrograms: [],
           serviceTaskIds: [],
           performedById: userOid,
           createdAt: now,
@@ -378,7 +378,7 @@ async function importServiceHistory(
     );
     if (upsert.upsertedCount > 0) result.created++;
 
-    if (!voided) {
+    if (approved) {
       // Advance the asset's last-service baseline ($max never regresses).
       const $max: Record<string, unknown> = { lastServiceDate: performedAt };
       if (meterAtService != null) {
@@ -823,8 +823,8 @@ export async function importHistoryBatch(
   }
 
   switch (entity) {
-    case 'servicePrograms':
-      return importServicePrograms(tenantOid, userOid, authTenantId);
+    case 'servicePlans':
+      return importServicePlans(tenantOid, userOid, authTenantId);
     case 'serviceHistory':
       return importServiceHistory(tenantOid, userOid, authTenantId, cursor);
     case 'inspections':

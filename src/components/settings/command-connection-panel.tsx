@@ -48,13 +48,14 @@ const ENTITY_OPTIONS = [
   { key: 'drivers', label: 'Staff → Drivers', hint: 'Command staff imported as drivers' },
   { key: 'vendors', label: 'Suppliers → Vendors', hint: 'Business contacts with supplier role' },
   { key: 'locations', label: 'Locations', hint: 'Company locations' },
+  { key: 'stock', label: 'Stock', hint: 'Command stock items — consumption pushes transactions back to Command' },
 ] as const;
 
 type EntityKey = (typeof ENTITY_OPTIONS)[number]['key'];
 
 /** Maintenance-history entities (batched; run after the master-data import). */
 const HISTORY_ENTITIES = [
-  { key: 'servicePrograms', label: 'Service plans → Programs' },
+  { key: 'servicePlans', label: 'Service plans (with schedules)' },
   { key: 'serviceHistory', label: 'Servicing history' },
   { key: 'inspections', label: 'Pre-start history' },
   { key: 'workOrders', label: 'Workshop → Work orders' },
@@ -207,7 +208,7 @@ export function CommandConnectionPanel() {
         <h2 className="text-lg font-semibold text-foreground">Command connection</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           When connected, Command (construction portal) is the master source for assets,
-          staff, suppliers and locations — and Asset Manager pushes meter readings,
+          staff, suppliers and locations — and Drive pushes meter readings,
           compliance dates and out-of-service status back to Command.
         </p>
       </div>
@@ -249,7 +250,7 @@ export function CommandConnectionPanel() {
                 {data?.configured && state === 'standalone' && data.disabled &&
                   'The connection was turned off by an admin. Command-sourced records stay usable locally.'}
                 {data?.configured && state === 'standalone' && !data.disabled && !data.entitled &&
-                  'This organisation has no active Command subscription, so Asset Manager runs fully standalone.'}
+                  'This organisation has no active Command subscription, so Drive runs fully standalone.'}
                 {data?.configured && state === 'standalone' && !data.disabled && data.entitled &&
                   'Entitled but not connected yet — click Connect to enable live Command data.'}
                 {state === 'connected' &&
@@ -405,7 +406,7 @@ export function CommandConnectionPanel() {
             </h4>
             <p className="mt-1 text-sm text-muted-foreground">
               Brings Command&apos;s service plans, servicing history, pre-start history and
-              workshop job cards into Asset Manager (zero data loss — run after importing
+              workshop job cards into Drive (zero data loss — run after importing
               assets). Safe to re-run; it resumes and never duplicates.
             </p>
             <button
