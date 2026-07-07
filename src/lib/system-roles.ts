@@ -79,7 +79,7 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
       v: 2,
       forms: [
         fullGrant('assets.assets.asset'),
-        fullGrant('inspections.inspections.inspection'),
+        viewOnlyGrant('inspections.inspectionHistory.inspection'),
         viewOnlyGrant('inspections.forms.form'),
         viewOnlyGrant('inspections.exceptionReport.exceptionReport'),
         fullGrant('maintenance.defects.defect'),
@@ -95,7 +95,7 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
       m: ['assets', 'inspections', 'maintenance', 'people', 'fuel'],
       sm: [
         'assets.assets',
-        'inspections.inspections',
+        'inspections.inspectionHistory',
         'inspections.forms',
         'inspections.exceptionReport',
         'maintenance.defects',
@@ -124,7 +124,7 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
       v: 2,
       forms: [
         viewOnlyGrant('assets.assets.asset'),
-        viewCreateGrant('inspections.inspections.inspection'),
+        viewOnlyGrant('inspections.inspectionHistory.inspection'),
         viewCreateGrant('maintenance.defects.defect'),
         viewCreateGrant('maintenance.faults.fault'),
         viewCreateGrant('fuel.fuel.fuelEntry'),
@@ -133,7 +133,7 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
       m: ['assets', 'inspections', 'maintenance', 'people', 'fuel'],
       sm: [
         'assets.assets',
-        'inspections.inspections',
+        'inspections.inspectionHistory',
         'maintenance.defects',
         'maintenance.faults',
         'people.drivers',
@@ -156,7 +156,7 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
       v: 2,
       forms: [
         fullGrant('assets.assets.asset'),
-        fullGrant('inspections.inspections.inspection'),
+        viewOnlyGrant('inspections.inspectionHistory.inspection'),
         fullGrant('maintenance.defects.defect'),
         fullGrant('maintenance.workOrders.workOrder'),
         fullGrant('people.drivers.driver'),
@@ -164,7 +164,7 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
       m: ['assets', 'inspections', 'maintenance', 'people'],
       sm: [
         'assets.assets',
-        'inspections.inspections',
+        'inspections.inspectionHistory',
         'maintenance.defects',
         'maintenance.workOrders',
         'people.drivers',

@@ -22,7 +22,7 @@ export const routePermissions: RoutePermissionRule[] = [
   {
     match: "/inspections/history",
     matchType: "startsWith",
-    anyOf: [Permissions.inspections.inspections.view],
+    anyOf: [Permissions.inspections.inspectionHistory.view],
   },
   {
     match: "/inspections/forms",
@@ -32,7 +32,7 @@ export const routePermissions: RoutePermissionRule[] = [
   {
     match: "/inspections/defect-settings",
     matchType: "startsWith",
-    anyOf: [Permissions.inspections.inspections.view],
+    anyOf: [Permissions.inspections.defectSettings.view],
   },
   {
     match: "/inspections/exception-report",

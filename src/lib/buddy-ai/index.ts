@@ -6,7 +6,7 @@
  * multi-thread persistence. See tools/registry.ts to add capabilities.
  */
 
-export { getModel, isAiConfigured } from "./provider";
+export { getModel, getExtractModel, isAiConfigured } from "./provider";
 export { buildSystemPrompt } from "./config/system-prompt";
 export {
   REGISTRY,

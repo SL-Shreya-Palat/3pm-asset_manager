@@ -5,6 +5,7 @@ export type Modules = {
   subModules: {
     name: string;
     key: string;
+    description?: string;
     accessibility: string[];
   }[];
 }[];
@@ -19,6 +20,7 @@ export const allModules: Modules = [
       {
         name: "Assets",
         key: "assets",
+        description: "Manage fleet assets including vehicles, trailers, and equipment",
         accessibility: ["view"],
       },
     ],
@@ -30,18 +32,27 @@ export const allModules: Modules = [
     accessibility: ["view"],
     subModules: [
       {
-        name: "Inspections",
-        key: "inspections",
+        name: "Inspection History",
+        key: "inspectionHistory",
+        description: "View past inspection records and results",
         accessibility: ["view"],
       },
       {
         name: "Forms",
         key: "forms",
+        description: "Inspection form templates used for conducting inspections",
+        accessibility: ["view"],
+      },
+      {
+        name: "Defect Settings",
+        key: "defectSettings",
+        description: "Configure defect types and severity levels for inspections",
         accessibility: ["view"],
       },
       {
         name: "Exception Reports",
         key: "exceptionReport",
+        description: "View reports on inspection exceptions and overdue items",
         accessibility: ["view"],
       },
     ],
@@ -55,36 +66,43 @@ export const allModules: Modules = [
       {
         name: "Defects",
         key: "defects",
+        description: "Track and manage asset defects reported during inspections",
         accessibility: ["view"],
       },
       {
         name: "Faults",
         key: "faults",
+        description: "Record and resolve mechanical faults on assets",
         accessibility: ["view"],
       },
       {
         name: "Service Tasks",
         key: "serviceTasks",
+        description: "Define individual maintenance tasks that can be assigned to assets",
         accessibility: ["view"],
       },
       {
         name: "Service Programs",
         key: "servicePrograms",
+        description: "Create scheduled maintenance programs with grouped service tasks",
         accessibility: ["view"],
       },
       {
         name: "Work Orders",
         key: "workOrders",
+        description: "Manage work orders for maintenance and repair activities",
         accessibility: ["view"],
       },
       {
         name: "Inventory",
         key: "inventory",
+        description: "Track parts, supplies, and stock levels across locations",
         accessibility: ["view"],
       },
       {
         name: "Purchase Orders",
         key: "purchaseOrders",
+        description: "Create and manage purchase orders for parts and supplies",
         accessibility: ["view"],
       },
     ],
@@ -98,11 +116,13 @@ export const allModules: Modules = [
       {
         name: "Teams",
         key: "teams",
+        description: "Organize users into teams for scoped access and management",
         accessibility: ["view"],
       },
       {
         name: "Drivers",
         key: "drivers",
+        description: "Manage driver profiles, licences, and assignments",
         accessibility: ["view"],
       },
     ],
@@ -116,6 +136,7 @@ export const allModules: Modules = [
       {
         name: "Fuel",
         key: "fuel",
+        description: "Record and track fuel transactions and consumption",
         accessibility: ["view"],
       },
     ],
@@ -129,26 +150,31 @@ export const allModules: Modules = [
       {
         name: "Asset Types",
         key: "assetTypes",
+        description: "Define and manage asset type classifications",
         accessibility: ["view"],
       },
       {
         name: "Measurement Units",
         key: "measurementUnits",
+        description: "Configure units of measurement for odometer and hour meters",
         accessibility: ["view"],
       },
       {
         name: "Part Categories",
         key: "partCategories",
+        description: "Organize inventory parts into categories",
         accessibility: ["view"],
       },
       {
         name: "Part Locations",
         key: "partLocations",
+        description: "Define storage locations for inventory parts",
         accessibility: ["view"],
       },
       {
         name: "Work Order Statuses",
         key: "workOrderStatuses",
+        description: "Customize workflow statuses for work orders",
         accessibility: ["view"],
       },
     ],

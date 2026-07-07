@@ -106,10 +106,10 @@ async function resolveDriverRoleId(tenantOid: ObjectId, createdByOid: ObjectId):
     permissions: {
       v: 2,
       forms: [
-        { id: 'inspections.inspections.inspection', v: 'ALL', c: true, e: false },
+        { id: 'inspections.inspectionHistory.inspection', v: 'ALL', c: false, e: false },
       ],
       m: ['inspections'],
-      sm: ['inspections.inspections'],
+      sm: ['inspections.inspectionHistory'],
     },
     teamScoped: true,
     mobileOnly: true,

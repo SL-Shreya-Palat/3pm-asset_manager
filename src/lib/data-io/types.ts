@@ -20,3 +20,23 @@ export interface ImportResult {
   readyRows: number;
   errors: RowError[];
 }
+
+/** Preview returned by the AI import endpoint (no rows inserted yet). */
+export interface AiFuelImportPreview {
+  /** Whether the AI determined the document contains fuel transaction data. */
+  matchesModule: boolean;
+  /** Short label describing the document type (e.g. "fuel receipt"). */
+  detectedType: string;
+  /** AI confidence in the extraction, 0–1. */
+  confidence: number;
+  /** Template column headers in canonical order. */
+  headers: string[];
+  /** Extracted rows keyed by header name (all string values). */
+  rows: Record<string, string>[];
+  /** Dry-run validation result, null when matchesModule is false. */
+  validation: {
+    totalRows: number;
+    readyRows: number;
+    errors: RowError[];
+  } | null;
+}

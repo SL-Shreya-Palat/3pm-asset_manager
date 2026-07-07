@@ -17,7 +17,7 @@
 import { createOpenAI, type OpenAIProvider } from "@ai-sdk/openai";
 import { createOpenRouter, type OpenRouterProvider } from "@openrouter/ai-sdk-provider";
 import { createGoogleGenerativeAI, type GoogleGenerativeAIProvider } from "@ai-sdk/google";
-import type { LanguageModel } from "ai";
+import { wrapLanguageModel, type LanguageModel, type LanguageModelMiddleware } from "ai";
 import { env } from "@/lib/env";
 
 const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
@@ -56,6 +56,73 @@ export function getModel(): LanguageModel {
       cachedGoogle = createGoogleGenerativeAI({ apiKey: env.google.genAiApiKey });
     }
     return cachedGoogle(process.env.GOOGLE_GENAI_MODEL || DEFAULT_GOOGLE_MODEL);
+  }
+
+  throw new Error(
+    "No AI provider configured — set OPENAI_API_KEY, OPENROUTER_API_KEY, or GOOGLE_GENAI_API_KEY."
+  );
+}
+
+/**
+ * ai v7 wraps file-part data in tagged shapes ({ type: "data", data } /
+ * { type: "url", url }). @ai-sdk/openai and @ai-sdk/google handle these
+ * natively, but @openrouter/ai-sdk-provider 2.x was built for ai v6 and
+ * stringifies the tag object — images/PDFs reach the API as broken base-64.
+ *
+ * This middleware un-tags back to the raw bytes/URL the provider expects.
+ * Remove once @openrouter/ai-sdk-provider is upgraded past 2.x.
+ */
+const untagFileParts: LanguageModelMiddleware = {
+  transformParams: async ({ params }) => {
+    for (const msg of params.prompt) {
+      if (!Array.isArray(msg.content)) continue;
+      for (const part of msg.content) {
+        if (part.type !== "file" || part.data == null || typeof part.data !== "object") continue;
+        const tagged = part.data as { type?: string; data?: unknown; url?: string };
+        if (tagged.type === "data") part.data = tagged.data as typeof part.data;
+        else if (tagged.type === "url" && tagged.url) {
+          part.data = new URL(tagged.url) as unknown as typeof part.data;
+        }
+      }
+    }
+    return params;
+  },
+};
+
+/**
+ * Vision model for AI document extraction (fuel import).
+ *
+ * Same provider priority as getModel(). Each provider can override the
+ * extraction model separately via *_EXTRACT_MODEL env vars so you can use
+ * a cheaper vision-specific model without changing the assistant model.
+ *
+ * OpenRouter is wrapped with untagFileParts middleware (see above).
+ * OpenAI and Google SDKs are ai-v7-native — no middleware needed.
+ */
+export function getExtractModel(): LanguageModel {
+  const openAiKey = process.env.OPENAI_API_KEY;
+  if (openAiKey) {
+    if (!cachedOpenAI) cachedOpenAI = createOpenAI({ apiKey: openAiKey });
+    return cachedOpenAI(
+      process.env.OPENAI_EXTRACT_MODEL || process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL,
+    );
+  }
+
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  if (openRouterKey) {
+    if (!cachedOpenRouter) cachedOpenRouter = createOpenRouter({ apiKey: openRouterKey });
+    const modelId =
+      process.env.OPENROUTER_EXTRACT_MODEL || process.env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL;
+    return wrapLanguageModel({ model: cachedOpenRouter.chat(modelId), middleware: untagFileParts });
+  }
+
+  if (env.google.genAiApiKey) {
+    if (!cachedGoogle) {
+      cachedGoogle = createGoogleGenerativeAI({ apiKey: env.google.genAiApiKey });
+    }
+    return cachedGoogle(
+      process.env.GOOGLE_GENAI_EXTRACT_MODEL || process.env.GOOGLE_GENAI_MODEL || DEFAULT_GOOGLE_MODEL,
+    );
   }
 
   throw new Error(

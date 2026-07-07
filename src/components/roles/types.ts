@@ -55,6 +55,7 @@ export interface PermissionForm {
 export interface PermissionSubModule {
   name: string;
   key: string;
+  description?: string;
   view: boolean;
   forms: PermissionForm[];
 }

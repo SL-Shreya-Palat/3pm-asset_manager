@@ -19,17 +19,24 @@ export const allForms: FormDef[] = [
   // Inspections Module
   {
     module: "inspections",
-    subModule: "inspections",
+    subModule: "inspectionHistory",
     key: "inspection",
-    name: "Inspection",
-    accessibility: ["view", "create", "edit", "archive", "delete"],
+    name: "Inspection History",
+    accessibility: ["view"],
   },
   {
     module: "inspections",
     subModule: "forms",
     key: "form",
     name: "Form",
-    accessibility: ["view", "create", "edit", "archive", "delete"],
+    accessibility: ["view"],
+  },
+  {
+    module: "inspections",
+    subModule: "defectSettings",
+    key: "defectSetting",
+    name: "Defect Settings",
+    accessibility: ["view"],
   },
   {
     module: "inspections",

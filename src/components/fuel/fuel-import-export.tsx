@@ -13,6 +13,7 @@ import {
   ArrowDownToLine,
   ChevronDown,
   Loader2,
+  Sparkles,
 } from 'lucide-react';
 import axios from 'axios';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { FuelImportIssuesModal } from './fuel-import-issues-modal';
+import { FuelAiImportDialog } from './fuel-ai-import-dialog';
 import type { ImportResult } from '@/lib/data-io/types';
 
 /** Trigger a browser download from an API endpoint. */
@@ -53,6 +55,7 @@ export function FuelImportExport({
   const [busy, setBusy] = useState(false);
   const [issueResult, setIssueResult] = useState<ImportResult | null>(null);
   const [issuesOpen, setIssuesOpen] = useState(false);
+  const [aiImportOpen, setAiImportOpen] = useState(false);
 
   /** Send file to import API with optional proceedValidOnly flag. */
   async function sendImport(file: File, proceedValidOnly: boolean): Promise<ImportResult> {
@@ -158,6 +161,10 @@ export function FuelImportExport({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
+          <DropdownMenuItem onClick={() => setAiImportOpen(true)}>
+            <Sparkles className="h-4 w-4 text-violet-500" />
+            Import with AI
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => fileRef.current?.click()}>
             <FileDown className="h-4 w-4 text-red-500" />
             Import from Excel
@@ -190,6 +197,12 @@ export function FuelImportExport({
         result={issueResult}
         busy={busy}
         onProceed={handleProceedValid}
+      />
+
+      <FuelAiImportDialog
+        open={aiImportOpen}
+        onOpenChange={setAiImportOpen}
+        onImported={onImported}
       />
     </>
   );

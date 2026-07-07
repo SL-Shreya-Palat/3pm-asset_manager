@@ -93,7 +93,7 @@ export function expandPermissionsForUI(
         return applyGrant(fd, grant);
       });
 
-      return { name: sm.name, key: sm.key, view: subModuleView, forms };
+      return { name: sm.name, key: sm.key, description: sm.description, view: subModuleView, forms };
     });
 
     return { name: mod.name, key: mod.key, view: moduleView, subModules };
@@ -225,6 +225,7 @@ export function buildEmptyPermissionTree(): PermissionModule[] {
       return {
         name: sm.name,
         key: sm.key,
+        description: sm.description,
         view: false,
         forms: formDefs.map((fd) => resetForm(fd)),
       };

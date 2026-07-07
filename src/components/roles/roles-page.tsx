@@ -154,9 +154,6 @@ export function RolesPage() {
           </div>
           <div>
             <span className="font-medium text-foreground">{role.name}</span>
-            {role.isSystem && (
-              <Badge variant="secondary" className="ml-2 text-xs">System</Badge>
-            )}
           </div>
         </div>
       ),
@@ -166,7 +163,10 @@ export function RolesPage() {
       header: 'Type',
       label: 'Type',
       render: (role) => (
-        <Badge variant={role.type === 'system' ? 'secondary' : 'outline'}>
+        <Badge
+          variant={role.type === 'system' ? 'secondary' : 'outline'}
+          className={role.type === 'system' ? 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300 dark:border-purple-800' : ''}
+        >
           {role.type === 'system' ? 'System' : 'Custom'}
         </Badge>
       ),
