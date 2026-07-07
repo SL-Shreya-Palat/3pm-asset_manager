@@ -1,23 +1,125 @@
 /**
- * SendGrid email service — sends transactional emails (invitations, etc.).
+ * Transactional email service (invitations, etc.).
  *
- * Gracefully degrades when SENDGRID_API_KEY is not configured:
- * logs a warning and returns without throwing.
+ * Delivers via the first available provider in priority order:
+ * Resend → SendGrid → Gmail. Each provider is only used when configured, and a
+ * failure falls through to the next so a single broken provider never blocks
+ * email. Gracefully degrades to a warning + no-op when nothing is configured.
  */
 import sgMail from '@sendgrid/mail';
+import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import { env } from '@/lib/env';
 
-let initialized = false;
+const resendClient = env.resend ? new Resend(env.resend.apiKey) : null;
 
-function ensureInitialized(): boolean {
-  if (initialized) return true;
-  if (!env.sendgrid) {
-    console.warn('[email] SendGrid not configured — skipping email send');
+let sendgridInitialized = false;
+function ensureSendgrid(): boolean {
+  if (!env.sendgrid) return false;
+  if (!sendgridInitialized) {
+    sgMail.setApiKey(env.sendgrid.apiKey);
+    sendgridInitialized = true;
+  }
+  return true;
+}
+
+interface NormalizedMessage {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  fromName?: string;
+}
+
+async function sendViaResend(msg: NormalizedMessage): Promise<void> {
+  const from = msg.fromName
+    ? `${msg.fromName} <${env.resend!.fromEmail}>`
+    : env.resend!.fromEmail;
+  const { error } = await resendClient!.emails.send({
+    from,
+    to: msg.to,
+    subject: msg.subject,
+    html: msg.html,
+    text: msg.text,
+  });
+  // Resend resolves with { data, error } rather than throwing, so surface the
+  // error ourselves to trigger the fallback chain.
+  if (error) {
+    throw new Error(
+      `${error.name || 'resend_error'}: ${error.message || 'Unknown Resend error'}`,
+    );
+  }
+}
+
+async function sendViaSendgrid(msg: NormalizedMessage): Promise<void> {
+  ensureSendgrid();
+  await sgMail.send({
+    to: msg.to,
+    from: msg.fromName
+      ? { name: msg.fromName, email: env.sendgrid!.fromEmail }
+      : env.sendgrid!.fromEmail,
+    subject: msg.subject,
+    html: msg.html,
+    text: msg.text,
+  });
+}
+
+async function sendViaGmail(msg: NormalizedMessage): Promise<void> {
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user: env.gmail!.user, pass: env.gmail!.appPassword },
+  });
+  await transporter.sendMail({
+    from: `"${msg.fromName || '3PM'}" <${env.gmail!.user}>`,
+    to: msg.to,
+    subject: msg.subject,
+    html: msg.html,
+    text: msg.text,
+  });
+}
+
+/** Pull the most useful, human-readable detail out of a provider error. */
+function providerErrorDetail(error: unknown): unknown {
+  const sgErrors = (error as { response?: { body?: { errors?: unknown } } })
+    ?.response?.body?.errors;
+  if (sgErrors) return sgErrors;
+  return error instanceof Error ? error.message : error;
+}
+
+/**
+ * Send an email via the first available provider (Resend → SendGrid → Gmail),
+ * falling through on failure. Returns true on success, false otherwise.
+ */
+async function dispatchEmail(msg: NormalizedMessage): Promise<boolean> {
+  const providers: Array<{
+    name: string;
+    send: (m: NormalizedMessage) => Promise<void>;
+  }> = [];
+  if (env.resend) providers.push({ name: 'Resend', send: sendViaResend });
+  if (env.sendgrid) providers.push({ name: 'SendGrid', send: sendViaSendgrid });
+  if (env.gmail) providers.push({ name: 'Gmail', send: sendViaGmail });
+
+  if (providers.length === 0) {
+    console.warn('[email] No email provider configured — skipping email send');
     return false;
   }
-  sgMail.setApiKey(env.sendgrid.apiKey);
-  initialized = true;
-  return true;
+
+  for (let i = 0; i < providers.length; i++) {
+    const provider = providers[i];
+    try {
+      await provider.send(msg);
+      return true;
+    } catch (error) {
+      console.error(
+        `[email] ${provider.name} send failed:`,
+        providerErrorDetail(error),
+      );
+      const next = providers[i + 1];
+      if (next) console.warn(`[email] Falling back to ${next.name}…`);
+    }
+  }
+
+  return false;
 }
 
 interface InvitationEmailParams {
@@ -34,8 +136,6 @@ interface InvitationEmailParams {
  * Returns true if sent successfully, false otherwise.
  */
 export async function sendInvitationEmail(params: InvitationEmailParams): Promise<boolean> {
-  if (!ensureInitialized()) return false;
-
   const { recipientEmail, recipientName, inviterName, tenantName, roleName, acceptUrl } = params;
 
   const html = `
@@ -97,21 +197,18 @@ export async function sendInvitationEmail(params: InvitationEmailParams): Promis
 </body>
 </html>`.trim();
 
-  try {
-    await sgMail.send({
-      to: recipientEmail,
-      from: {
-        email: env.sendgrid!.fromEmail,
-        name: '3PM Drive',
-      },
-      subject: `${inviterName} invited you to join ${tenantName}`,
-      html,
-      text: `Hi ${recipientName},\n\n${inviterName} has invited you to join ${tenantName} as a ${roleName}.\n\nAccept the invitation: ${acceptUrl}\n\nThis invitation expires in 7 days.\n\n- 3PM Drive`,
-    });
+  const sent = await dispatchEmail({
+    to: recipientEmail,
+    fromName: '3PM Drive',
+    subject: `${inviterName} invited you to join ${tenantName}`,
+    html,
+    text: `Hi ${recipientName},\n\n${inviterName} has invited you to join ${tenantName} as a ${roleName}.\n\nAccept the invitation: ${acceptUrl}\n\nThis invitation expires in 7 days.\n\n- 3PM Drive`,
+  });
+
+  if (sent) {
     console.log(`[email] Invitation sent to ${recipientEmail}`);
-    return true;
-  } catch (error) {
-    console.error('[email] Failed to send invitation email:', error);
-    return false;
+  } else {
+    console.error(`[email] Failed to send invitation email to ${recipientEmail}`);
   }
+  return sent;
 }
