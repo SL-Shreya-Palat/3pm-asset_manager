@@ -16,9 +16,19 @@ type S3Config = {
   secretAccessKey: string;
 } | null;
 
+type ResendConfig = {
+  apiKey: string;
+  fromEmail: string;
+} | null;
+
 type SendGridConfig = {
   apiKey: string;
   fromEmail: string;
+} | null;
+
+type GmailConfig = {
+  user: string;
+  appPassword: string;
 } | null;
 
 interface EnvConfig {
@@ -34,7 +44,9 @@ interface EnvConfig {
   };
   auth3pm: Auth3PMConfig;
   s3: S3Config;
+  resend: ResendConfig;
   sendgrid: SendGridConfig;
+  gmail: GmailConfig;
   google: {
     genAiApiKey: string;
   };
@@ -71,11 +83,23 @@ function buildEnv(): EnvConfig {
     },
     auth3pm: resolveAuth3PMConfig(),
     s3: resolveS3Config(),
+    resend: resolveResendConfig(),
     sendgrid: resolveSendGridConfig(),
+    gmail: resolveGmailConfig(),
     google: {
       genAiApiKey: process.env.GOOGLE_GENAI_API_KEY || '',
     },
   };
+}
+
+function resolveResendConfig(): ResendConfig {
+  const apiKey = optionalString('RESEND_API_KEY');
+  const fromEmail = optionalString('RESEND_FROM_EMAIL');
+
+  if (apiKey && fromEmail) {
+    return { apiKey, fromEmail };
+  }
+  return null;
 }
 
 function resolveSendGridConfig(): SendGridConfig {
@@ -84,6 +108,16 @@ function resolveSendGridConfig(): SendGridConfig {
 
   if (apiKey && fromEmail) {
     return { apiKey, fromEmail };
+  }
+  return null;
+}
+
+function resolveGmailConfig(): GmailConfig {
+  const user = optionalString('GMAIL_USER');
+  const appPassword = optionalString('GMAIL_APP_PASSWORD');
+
+  if (user && appPassword) {
+    return { user, appPassword };
   }
   return null;
 }
