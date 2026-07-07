@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
 import {
   Plus,
@@ -12,7 +12,6 @@ import {
   DollarSign,
   Gauge,
   Droplets,
-  Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
@@ -37,6 +36,8 @@ import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
 import { FuelForm } from './fuel-form';
+import { FuelImportExport } from './fuel-import-export';
+import type { ImportResult } from '@/lib/data-io/types';
 import type { FuelTransactionRow, Pagination, FuelAnalyticsSummary } from './types';
 
 const FUEL_TYPE_FILTER: DataTableFilterDef[] = [
@@ -57,9 +58,9 @@ const FUEL_TYPE_FILTER: DataTableFilterDef[] = [
 
 function formatDate(iso: string) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', {
-    month: 'short',
+  return new Date(iso).toLocaleDateString('en-GB', {
     day: 'numeric',
+    month: 'short',
     year: 'numeric',
   });
 }
@@ -105,57 +106,9 @@ export function FuelPage() {
   const [deletingTransaction, setDeletingTransaction] = useState<FuelTransactionRow | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  // Import state
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [importing, setImporting] = useState(false);
+  // Import result dialog state
   const [importResultOpen, setImportResultOpen] = useState(false);
-  const [importResult, setImportResult] = useState<{
-    message: string;
-    success: number;
-    failed: number;
-    total: number;
-    errors: { row: number; error: string }[];
-  } | null>(null);
-
-  // ── Import handler ──
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Reset input so the same file can be re-selected
-    e.target.value = '';
-
-    setImporting(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const res = await axios.post('/api/fuel/import', formData, {
-        withCredentials: true,
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-
-      const data = res.data.data;
-      setImportResult(data);
-      setImportResultOpen(true);
-
-      // Refresh table & analytics
-      fetchTransactions(1);
-      fetchAnalytics();
-    } catch (err) {
-      const message = axios.isAxiosError(err) && err.response?.data?.error
-        ? String(err.response.data.error)
-        : 'Failed to import file';
-      setImportResult({ message, success: 0, failed: 0, total: 0, errors: [] });
-      setImportResultOpen(true);
-    } finally {
-      setImporting(false);
-    }
-  };
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
   // ── Fetch transactions ──
   const fetchTransactions = useCallback(async (page: number) => {
@@ -385,17 +338,10 @@ export function FuelPage() {
       <div className="flex flex-col flex-1 min-w-0">
         {/* Header */}
         <PageHeader title="Fuel" description="Record and monitor fuel transactions across your fleet" count={pagination.total}>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            className="hidden"
-            onChange={handleFileSelected}
+          <FuelImportExport
+            onImported={() => { fetchTransactions(1); fetchAnalytics(); }}
+            onImportResult={(r) => { setImportResult(r); setImportResultOpen(true); }}
           />
-          <Button variant="outline" onClick={handleImportClick} disabled={importing}>
-            <Upload className="h-4 w-4" />
-            {importing ? 'Importing...' : 'Import'}
-          </Button>
           <Button onClick={handleOpenCreate}>
             <Plus className="h-4 w-4" />
             Add Transaction
@@ -549,7 +495,11 @@ export function FuelPage() {
         <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Import Results</DialogTitle>
-            <DialogDescription>{importResult?.message}</DialogDescription>
+            <DialogDescription>
+              {importResult && importResult.failed > 0
+                ? `Import completed. ${importResult.success} imported, ${importResult.failed} failed.`
+                : importResult ? `Successfully imported ${importResult.success} fuel transaction(s).` : ''}
+            </DialogDescription>
           </DialogHeader>
 
           {importResult && (
@@ -557,7 +507,7 @@ export function FuelPage() {
               {/* Summary */}
               <div className="flex gap-4">
                 <div className="flex-1 rounded-md bg-muted/50 p-3 text-center">
-                  <p className="text-2xl font-semibold text-foreground">{importResult.total}</p>
+                  <p className="text-2xl font-semibold text-foreground">{importResult.totalRows}</p>
                   <p className="text-xs text-muted-foreground">Total Rows</p>
                 </div>
                 <div className="flex-1 rounded-md bg-green-500/10 p-3 text-center">
@@ -588,7 +538,7 @@ export function FuelPage() {
                         {importResult.errors.slice(0, 20).map((err, idx) => (
                           <tr key={idx} className="border-b last:border-0">
                             <td className="px-3 py-2 text-muted-foreground">{err.row}</td>
-                            <td className="px-3 py-2 text-destructive">{err.error}</td>
+                            <td className="px-3 py-2 text-destructive">{err.errors.join('; ')}</td>
                           </tr>
                         ))}
                         {importResult.errors.length > 20 && (

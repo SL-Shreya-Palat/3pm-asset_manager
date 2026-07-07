@@ -92,6 +92,7 @@ export async function createRole(tenantId: string, userId: string, input: Create
     teamScoped: input.teamScoped ?? false,
     mobileOnly: input.mobileOnly ?? false,
     isSystem: false,
+    type: 'custom',
 
     createdBy: userOid,
     updatedBy: userOid,

@@ -32,7 +32,7 @@ import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { Separator } from '@/components/ui/separator';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
 import { FaultForm } from './fault-form';
@@ -342,7 +342,7 @@ export function FaultsPage() {
       sortValue: (fault) => fault.reportedAt ? new Date(fault.reportedAt).getTime() : null,
       render: (fault) => (
         <span className="text-muted-foreground text-xs">
-          {fault.reportedAt ? new Date(fault.reportedAt).toLocaleDateString() : '\u2014'}
+          {formatDate(fault.reportedAt)}
         </span>
       ),
     },

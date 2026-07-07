@@ -49,7 +49,7 @@ interface Doc {
 
 function formatDate(iso?: string | null) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 /** Human "Expires in N days" / "Expired N days ago" line. */

@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { getTodayDateString } from '@/lib/utils';
 import type { DefectRow, LookupOption } from './types';
 
 interface DefectFormProps {
@@ -33,7 +34,7 @@ export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) 
 
   // Form fields
   const [name, setName] = useState('');
-  const [date, setDate] = useState('');
+  const [date, setDate] = useState(getTodayDateString());
   const [comment, setComment] = useState('');
   const [assetId, setAssetId] = useState('');
   const [driverId, setDriverId] = useState('');

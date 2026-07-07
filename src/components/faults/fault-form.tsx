@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { getTodayDateString } from '@/lib/utils';
 import type { FaultRow, LookupOption } from './types';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -32,11 +33,6 @@ interface FaultFormProps {
   fault?: FaultRow | null;
   onClose: () => void;
   onSaved: () => void;
-}
-
-function getTodayDateString(): string {
-  const d = new Date();
-  return d.toISOString().split('T')[0];
 }
 
 export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {

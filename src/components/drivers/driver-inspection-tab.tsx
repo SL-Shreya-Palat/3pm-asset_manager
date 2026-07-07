@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 
 // ── Field label map ─────────────────────────────────────────────────────────
 
@@ -186,7 +186,7 @@ export function DriverInspectionTab({ driverId }: { driverId: string }) {
                   {date && (
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
-                      {date.toLocaleDateString()} {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {formatDate(date)} {date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   )}
                   {sub.operatorName && (

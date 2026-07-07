@@ -72,7 +72,7 @@ export function DateField({
             )}
           >
             <CalendarIcon className="mr-2 h-4 w-4" />
-            {selectedDate ? format(selectedDate, 'MMM dd, yyyy') : <span>{placeholder}</span>}
+            {selectedDate ? selectedDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : <span>{placeholder}</span>}
           </Button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">

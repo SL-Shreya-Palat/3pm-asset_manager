@@ -20,7 +20,7 @@ import {
   DetailPageHeaderSkeleton,
 } from '@/components/ui/detail-page-header';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { isWildcardPermissions } from '@/lib/rbac';
 import { expandPermissionsForUI } from './utils/permissionFormatAdapter';
 import type { RoleRow } from './types';
@@ -122,7 +122,9 @@ export function RoleDetail() {
         title={role.name}
         badges={
           <>
-            {role.isSystem && <Badge variant="secondary">System</Badge>}
+            <Badge variant={role.type === 'system' ? 'secondary' : 'outline'}>
+              {role.type === 'system' ? 'System Role' : 'Custom Role'}
+            </Badge>
             {role.teamScoped && <Badge variant="outline">Team Scoped</Badge>}
             {role.mobileOnly && <Badge variant="outline">Mobile Only</Badge>}
           </>
@@ -146,11 +148,12 @@ export function RoleDetail() {
       {/* Overview */}
       <DetailCard icon={Info} title="Overview" columns={2}>
         <DetailField label="Description" value={role.description} />
+        <DetailField label="Type" value={role.type === 'system' ? 'System' : 'Custom'} />
         <DetailField label="Team Scoped" value={role.teamScoped ? 'Yes' : 'No'} />
         <DetailField label="Mobile Only" value={role.mobileOnly ? 'Yes' : 'No'} />
         <DetailField
           label="Created"
-          value={role.createdAt ? new Date(role.createdAt).toLocaleDateString() : undefined}
+          value={role.createdAt ? formatDate(role.createdAt) : undefined}
         />
       </DetailCard>
 

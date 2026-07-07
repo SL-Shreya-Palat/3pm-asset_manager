@@ -46,6 +46,7 @@ export function validateCreateRoleInput(input: CreateRoleInput): ValidationResul
 
 /** Serialize a role document for API response. */
 export function serializeRole(doc: Record<string, unknown>): Record<string, unknown> {
+  const isSystem = doc.isSystem ?? false;
   return {
     id: doc._id?.toString(),
     name: doc.name,
@@ -54,7 +55,8 @@ export function serializeRole(doc: Record<string, unknown>): Record<string, unkn
     baseCostPerHour: doc.baseCostPerHour ?? 0,
     chargeOutRate: doc.chargeOutRate ?? 0,
     permissions: doc.permissions,
-    isSystem: doc.isSystem ?? false,
+    isSystem,
+    type: (doc.type as string) || (isSystem ? 'system' : 'custom'),
     isActive: doc.isActive ?? true,
     teamScoped: doc.teamScoped ?? false,
     mobileOnly: doc.mobileOnly ?? false,

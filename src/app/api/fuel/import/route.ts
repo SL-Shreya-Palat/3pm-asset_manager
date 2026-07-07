@@ -1,9 +1,12 @@
 /**
  * POST /api/fuel/import -- Import fuel transactions from CSV/XLS/XLSX file upload
  *
- * Accepts multipart/form-data with a "file" field.
- * Parses the file server-side with xlsx, normalizes headers,
- * resolves asset names → asset IDs, and inserts valid rows.
+ * Two-phase import (adapted from dispatch portal pattern):
+ *   Phase 1: Validate all rows, collect errors, build ready documents.
+ *            If errors exist and proceedValidOnly=false → return errors, no insert.
+ *   Phase 2: Insert only the rows that passed validation.
+ *
+ * Accepts multipart/form-data with a "file" field and optional "proceedValidOnly" flag.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
@@ -12,6 +15,7 @@ import { getAuthenticatedUser } from '@/lib/auth-helper';
 import { getFuelTransactionsCollection, getAssetsCollection, getDriversCollection } from '@/lib/mongodb';
 import { calculateFuelMetrics } from '@/controller/fuel/utils';
 import { FUEL_TYPES } from '@/controller/fuel/types';
+import type { ImportResult, RowError } from '@/lib/data-io/types';
 
 const ALLOWED_MIME_TYPES = [
   'application/vnd.ms-excel',
@@ -121,6 +125,158 @@ const HEADER_MAP: Record<string, string> = {
   distanceunit: 'odometerUnit',
 };
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+/** A row that passed validation and is ready for insertion. */
+interface ReadyRow {
+  row: number;
+  doc: Record<string, any>;
+}
+
+/**
+ * Phase 1: Validate every row — resolve lookups, parse dates, check required
+ * fields, compute metrics, build the document — without inserting anything.
+ */
+function validateRows(
+  dataRows: unknown[][],
+  columnMap: { index: number; field: string }[],
+  assetNameMap: Map<string, string>,
+  driverNameMap: Map<string, string>,
+  tenantOid: ObjectId,
+  userOid: ObjectId,
+  importBatchId: string,
+): { ready: ReadyRow[]; errors: RowError[] } {
+  const ready: ReadyRow[] = [];
+  const errors: RowError[] = [];
+  const now = new Date();
+
+  for (let i = 0; i < dataRows.length; i++) {
+    const row = dataRows[i];
+    const rowNum = i + 2; // 1-indexed, +1 for header
+    const rowErrors: string[] = [];
+
+    // Extract values by mapped columns
+    const getValue = (field: string): unknown => {
+      const col = columnMap.find((c) => c.field === field);
+      return col ? row[col.index] : undefined;
+    };
+
+    const getStr = (field: string): string => {
+      const v = getValue(field);
+      return v != null && v !== '' ? String(v).trim() : '';
+    };
+
+    const getNum = (field: string): number | undefined => {
+      const v = getValue(field);
+      if (v == null || v === '') return undefined;
+      const n = Number(v);
+      return isNaN(n) ? undefined : n;
+    };
+
+    // Resolve asset
+    const assetRaw = getStr('asset');
+    const assetId = assetRaw ? assetNameMap.get(assetRaw.toLowerCase()) : undefined;
+    if (!assetId) {
+      rowErrors.push(assetRaw ? `Asset "${assetRaw}" not found` : 'Asset is required');
+    }
+
+    // Resolve driver (optional)
+    const driverRaw = getStr('driver');
+    const driverId = driverRaw ? driverNameMap.get(driverRaw.toLowerCase()) : undefined;
+
+    // Date
+    const dateRaw = getValue('date');
+    let parsedDate: Date | null = null;
+    if (dateRaw instanceof Date) {
+      parsedDate = dateRaw;
+    } else if (dateRaw) {
+      parsedDate = new Date(String(dateRaw));
+    }
+    if (!parsedDate || isNaN(parsedDate.getTime())) {
+      rowErrors.push(dateRaw ? `Invalid date "${String(dateRaw)}"` : 'Date is required');
+    }
+
+    // Merge time into date if provided (e.g. "08:30", "14:15")
+    const timeRaw = getStr('time');
+    if (timeRaw && parsedDate && !isNaN(parsedDate.getTime())) {
+      const timeParts = timeRaw.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+      if (timeParts) {
+        parsedDate.setHours(Number(timeParts[1]), Number(timeParts[2]), Number(timeParts[3] || 0));
+      }
+    }
+
+    // Volume
+    const volume = getNum('volume');
+    if (!volume || volume <= 0) {
+      rowErrors.push('Volume is required and must be > 0');
+    }
+
+    // Cost
+    const totalCost = getNum('totalCost');
+    const unitCost = getNum('unitCost');
+    const resolvedTotalCost = totalCost ?? (unitCost != null && volume ? unitCost * volume : undefined);
+    if (resolvedTotalCost == null || resolvedTotalCost < 0) {
+      rowErrors.push('Total cost (or unit cost) is required');
+    }
+
+    // If any validation errors, skip this row
+    if (rowErrors.length > 0) {
+      errors.push({ row: rowNum, errors: rowErrors });
+      continue;
+    }
+
+    // Fuel type
+    const fuelTypeRaw = getStr('fuelType').toLowerCase();
+    const fuelType = fuelTypeRaw && (FUEL_TYPES as readonly string[]).includes(fuelTypeRaw) ? fuelTypeRaw : 'diesel';
+
+    // Mileage
+    const startMileage = getNum('startMileage');
+    const endMileage = getNum('endMileage');
+
+    const metrics = calculateFuelMetrics({
+      startMileage,
+      endMileage,
+      volume: volume!,
+      totalCost: resolvedTotalCost!,
+    });
+
+    // Build document
+    const doc = {
+      tenantId: tenantOid,
+      assetId: ObjectId.createFromHexString(assetId!),
+      driverId: driverId ? ObjectId.createFromHexString(driverId) : undefined,
+      date: parsedDate!,
+      startMileage: startMileage ?? undefined,
+      endMileage: endMileage ?? undefined,
+      distance: metrics.distance,
+      volume: volume!,
+      unitCost: unitCost ?? (resolvedTotalCost! / volume!),
+      totalCost: resolvedTotalCost!,
+      fuelType,
+      economy: metrics.economy,
+      costPerMile: metrics.costPerMile,
+      volumeUnit: getStr('volumeUnit') || 'gallons',
+      currency: getStr('currency') || 'USD',
+      odometerUnit: getStr('odometerUnit') || 'miles',
+      station: getStr('station') || undefined,
+      notes: getStr('notes') || undefined,
+      source: 'manual' as const,
+      importBatchId,
+      createdBy: userOid,
+      updatedBy: userOid,
+      createdAt: now,
+      updatedAt: now,
+      isArchived: false,
+      archivedAt: null,
+      archivedBy: null,
+    };
+
+    ready.push({ row: rowNum, doc });
+  }
+
+  return { ready, errors };
+}
+
 export async function POST(request: NextRequest) {
   const user = await getAuthenticatedUser(request);
   if (!user?.currentTenantId) {
@@ -130,6 +286,7 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
+    const proceedValidOnly = formData.get('proceedValidOnly') === 'true';
 
     if (!file) {
       return NextResponse.json({ data: null, error: 'No file provided' }, { status: 400 });
@@ -243,159 +400,54 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const collection = await getFuelTransactionsCollection();
-    const now = new Date();
     const userOid = ObjectId.createFromHexString(user.id);
     const importBatchId = `import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    const results = {
-      success: 0,
-      failed: 0,
-      total: dataRows.length,
-      errors: [] as { row: number; error: string }[],
-    };
+    // ── Phase 1: Validate all rows ──
+    const { ready, errors } = validateRows(
+      dataRows, columnMap, assetNameMap, driverNameMap, tenantOid, userOid, importBatchId,
+    );
 
-    for (let i = 0; i < dataRows.length; i++) {
-      const row = dataRows[i];
-      const rowNum = i + 2; // 1-indexed, +1 for header
-
-      // Extract values by mapped columns
-      const getValue = (field: string): unknown => {
-        const col = columnMap.find((c) => c.field === field);
-        return col ? row[col.index] : undefined;
+    // Phase 1 gate: if errors exist and caller hasn't opted to proceed with valid only,
+    // return the validation result without inserting anything.
+    if (errors.length > 0 && !proceedValidOnly) {
+      const result: ImportResult = {
+        totalRows: dataRows.length,
+        success: 0,
+        failed: errors.length,
+        readyRows: ready.length,
+        errors,
       };
+      return NextResponse.json({ data: result, error: null }, { status: 200 });
+    }
 
-      const getStr = (field: string): string => {
-        const v = getValue(field);
-        return v != null && v !== '' ? String(v).trim() : '';
-      };
+    // ── Phase 2: Insert valid rows ──
+    const collection = await getFuelTransactionsCollection();
+    let success = 0;
+    const insertErrors: RowError[] = [];
 
-      const getNum = (field: string): number | undefined => {
-        const v = getValue(field);
-        if (v == null || v === '') return undefined;
-        const n = Number(v);
-        return isNaN(n) ? undefined : n;
-      };
-
-      // Resolve asset
-      const assetRaw = getStr('asset');
-      const assetId = assetRaw ? assetNameMap.get(assetRaw.toLowerCase()) : undefined;
-      if (!assetId) {
-        results.failed++;
-        results.errors.push({ row: rowNum, error: assetRaw ? `Asset "${assetRaw}" not found` : 'Asset is required' });
-        continue;
-      }
-
-      // Resolve driver (optional)
-      const driverRaw = getStr('driver');
-      const driverId = driverRaw ? driverNameMap.get(driverRaw.toLowerCase()) : undefined;
-
-      // Date
-      const dateRaw = getValue('date');
-      let parsedDate: Date | null = null;
-      if (dateRaw instanceof Date) {
-        parsedDate = dateRaw;
-      } else if (dateRaw) {
-        parsedDate = new Date(String(dateRaw));
-      }
-      if (!parsedDate || isNaN(parsedDate.getTime())) {
-        results.failed++;
-        results.errors.push({ row: rowNum, error: dateRaw ? `Invalid date "${String(dateRaw)}"` : 'Date is required' });
-        continue;
-      }
-
-      // Merge time into date if provided (e.g. "08:30", "14:15")
-      const timeRaw = getStr('time');
-      if (timeRaw && parsedDate) {
-        const timeParts = timeRaw.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
-        if (timeParts) {
-          parsedDate.setHours(Number(timeParts[1]), Number(timeParts[2]), Number(timeParts[3] || 0));
-        }
-      }
-
-      // Volume
-      const volume = getNum('volume');
-      if (!volume || volume <= 0) {
-        results.failed++;
-        results.errors.push({ row: rowNum, error: 'Volume is required and must be > 0' });
-        continue;
-      }
-
-      // Cost
-      const totalCost = getNum('totalCost');
-      const unitCost = getNum('unitCost');
-
-      // If totalCost missing but unitCost exists, calculate it
-      const resolvedTotalCost = totalCost ?? (unitCost != null ? unitCost * volume : undefined);
-      if (resolvedTotalCost == null || resolvedTotalCost < 0) {
-        results.failed++;
-        results.errors.push({ row: rowNum, error: 'Total cost (or unit cost) is required' });
-        continue;
-      }
-
-      // Fuel type
-      const fuelTypeRaw = getStr('fuelType').toLowerCase();
-      const fuelType = fuelTypeRaw && (FUEL_TYPES as readonly string[]).includes(fuelTypeRaw) ? fuelTypeRaw : 'diesel';
-
-      // Mileage
-      const startMileage = getNum('startMileage');
-      const endMileage = getNum('endMileage');
-
-      const metrics = calculateFuelMetrics({
-        startMileage,
-        endMileage,
-        volume,
-        totalCost: resolvedTotalCost,
-      });
-
-      // Build document
-      const doc = {
-        tenantId: tenantOid,
-        assetId: ObjectId.createFromHexString(assetId),
-        driverId: driverId ? ObjectId.createFromHexString(driverId) : undefined,
-        date: parsedDate,
-        startMileage: startMileage ?? undefined,
-        endMileage: endMileage ?? undefined,
-        distance: metrics.distance,
-        volume,
-        unitCost: unitCost ?? (resolvedTotalCost / volume),
-        totalCost: resolvedTotalCost,
-        fuelType,
-        economy: metrics.economy,
-        costPerMile: metrics.costPerMile,
-        volumeUnit: getStr('volumeUnit') || 'gallons',
-        currency: getStr('currency') || 'USD',
-        odometerUnit: getStr('odometerUnit') || 'miles',
-        station: getStr('station') || undefined,
-        notes: getStr('notes') || undefined,
-        source: 'manual' as const,
-        importBatchId,
-        createdBy: userOid,
-        updatedBy: userOid,
-        createdAt: now,
-        updatedAt: now,
-        isArchived: false,
-        archivedAt: null,
-        archivedBy: null,
-      };
-
+    for (const { row, doc } of ready) {
       try {
         await collection.insertOne(doc);
-        results.success++;
+        success++;
       } catch {
-        results.failed++;
-        results.errors.push({ row: rowNum, error: 'Database insert failed' });
+        insertErrors.push({ row, errors: ['Database insert failed'] });
       }
     }
 
-    const message = results.failed > 0
-      ? `Import completed. ${results.success} imported, ${results.failed} failed.`
-      : `Successfully imported ${results.success} fuel transaction(s).`;
+    const allErrors = [...errors, ...insertErrors];
+    const result: ImportResult = {
+      totalRows: dataRows.length,
+      success,
+      failed: allErrors.length,
+      readyRows: ready.length,
+      errors: allErrors,
+    };
 
     return NextResponse.json({
-      data: { message, importBatchId, ...results },
+      data: result,
       error: null,
-    }, { status: results.failed > 0 ? 207 : 201 });
+    }, { status: success > 0 ? 201 : 200 });
   } catch (err) {
     console.error('Fuel import error:', err);
     return NextResponse.json({ data: null, error: 'Failed to process file' }, { status: 400 });

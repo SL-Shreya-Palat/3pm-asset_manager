@@ -162,6 +162,16 @@ export function RolesPage() {
       ),
     },
     {
+      key: 'type',
+      header: 'Type',
+      label: 'Type',
+      render: (role) => (
+        <Badge variant={role.type === 'system' ? 'secondary' : 'outline'}>
+          {role.type === 'system' ? 'System' : 'Custom'}
+        </Badge>
+      ),
+    },
+    {
       key: 'description',
       header: 'Description',
       label: 'Description',

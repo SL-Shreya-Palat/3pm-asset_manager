@@ -1,10 +1,14 @@
 /**
- * Canonical system roles seeded for every tenant at org-creation time.
+ * Canonical roles seeded for every tenant at org-creation time.
  *
- * Admin / Manager / Driver / Team Manager / Mechanic are always present and `isSystem: true` (locked from
- * edit/delete in the UI). Seeding is idempotent: the role is created once per
- * tenant; on subsequent logins only `isSystem`/`updatedAt` are touched, so a
- * tenant's own permission tweaks (if any) are never clobbered.
+ * Only **Admin** is a system role (`isSystem: true`, `type: 'system'`) — it
+ * cannot be edited or deleted.  Manager / Driver / Team Manager / Mechanic
+ * are seeded as custom roles (`isSystem: false`, `type: 'custom'`) so tenants
+ * can freely adjust them.
+ *
+ * Seeding is idempotent: the role is created once per tenant; on subsequent
+ * logins only classification flags and `updatedAt` are touched, so a tenant's
+ * own permission tweaks (if any) are never clobbered.
  *
  * NOTE: the tenant's `Owner` role is created via the SSO provisioning path
  * (see provisioning.ts) — it is intentionally not part of this set.
@@ -12,6 +16,7 @@
 import { ObjectId } from 'mongodb';
 import { getRolesCollection } from '@/lib/mongodb';
 import type { SparsePermissions, SparseFormGrant } from '@/lib/rbac';
+import type { RoleType } from '@/controller/roles/types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -42,6 +47,10 @@ interface SystemRoleDef {
   permissions: SparsePermissions;
   teamScoped: boolean;
   mobileOnly: boolean;
+  /** True only for Owner and Admin — locks the role from edit/delete. */
+  isSystem: boolean;
+  /** 'system' for Owner/Admin, 'custom' for everything else. */
+  type: RoleType;
   isManager?: boolean;
   isTeamManager?: boolean;
   isMechanic?: boolean;
@@ -57,6 +66,8 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
     permissions: { v: 2, forms: ['*'], m: ['*'], sm: [] },
     teamScoped: false,
     mobileOnly: false,
+    isSystem: true,
+    type: 'system',
     isAdmin: true,
   },
 
@@ -100,6 +111,8 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
     },
     teamScoped: false,
     mobileOnly: false,
+    isSystem: false,
+    type: 'custom',
     isManager: true,
   },
 
@@ -129,6 +142,8 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
     },
     teamScoped: false,
     mobileOnly: true,
+    isSystem: false,
+    type: 'custom',
     isDriver: true,
   },
 
@@ -157,6 +172,8 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
     },
     teamScoped: true,
     mobileOnly: false,
+    isSystem: false,
+    type: 'custom',
     isTeamManager: true,
   },
 
@@ -181,6 +198,8 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
     },
     teamScoped: false,
     mobileOnly: false,
+    isSystem: false,
+    type: 'custom',
     isMechanic: true,
   },
 ];
@@ -215,7 +234,8 @@ export async function seedSystemRoles(tenantId: ObjectId, userId: ObjectId): Pro
             isActive: true,
           },
           $set: {
-            isSystem: true,
+            isSystem: def.isSystem,
+            type: def.type,
             permissions: def.permissions,
             teamScoped: def.teamScoped,
             mobileOnly: def.mobileOnly,

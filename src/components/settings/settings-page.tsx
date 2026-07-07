@@ -91,7 +91,7 @@ const PART_CATEGORY_FIELDS: SettingsFieldConfig[] = [
 ];
 
 const PART_LOCATION_FIELDS: SettingsFieldConfig[] = [
-  { key: 'name', label: 'Part location', type: 'text', required: true, placeholder: 'e.g. Main Warehouse' },
+  { key: 'name', label: 'Part location', type: 'address', required: true, placeholder: 'Search address...' },
   { key: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional description' },
   {
     key: 'isDefault',

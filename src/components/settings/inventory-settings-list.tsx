@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import { AddressInput } from '@/components/ui/address-input';
 import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/ui/search-input';
 import { DataTable, type DataTableColumn, type DataTablePagination } from '@/components/ui/data-table';
@@ -40,7 +41,7 @@ export interface SettingsItem {
 export interface SettingsFieldConfig {
   key: string;
   label: string;
-  type: 'text' | 'textarea' | 'checkbox';
+  type: 'text' | 'textarea' | 'checkbox' | 'address';
   required?: boolean;
   placeholder?: string;
   helpText?: string;
@@ -390,6 +391,15 @@ export function InventorySettingsList({
                         placeholder={field.placeholder}
                         rows={3}
                         className={`mt-1.5 ${fieldErrors[field.key] ? 'border-destructive' : ''}`}
+                      />
+                    ) : field.type === 'address' ? (
+                      <AddressInput
+                        value={formData[field.key] as string || ''}
+                        onChange={(v) =>
+                          setFormData((prev) => ({ ...prev, [field.key]: v }))
+                        }
+                        placeholder={field.placeholder}
+                        className={`mt-1.5 ${fieldErrors[field.key] ? '[&_input]:border-destructive' : ''}`}
                       />
                     ) : (
                       <Input
