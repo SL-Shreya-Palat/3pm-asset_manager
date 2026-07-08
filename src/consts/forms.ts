@@ -148,14 +148,14 @@ export const allForms: FormDef[] = [
     module: "settings",
     subModule: "partCategories",
     key: "partCategory",
-    name: "Part Category",
+    name: "Stock Category",
     accessibility: ["view", "create", "edit", "archive", "delete"],
   },
   {
     module: "settings",
     subModule: "partLocations",
     key: "partLocation",
-    name: "Part Location",
+    name: "Stock Location",
     accessibility: ["view", "create", "edit", "archive", "delete"],
   },
   {
@@ -164,5 +164,26 @@ export const allForms: FormDef[] = [
     key: "workOrderStatus",
     name: "Work Order Status",
     accessibility: ["view", "create", "edit", "archive", "delete"],
+  },
+  {
+    module: "settings",
+    subModule: "notifications",
+    key: "notification",
+    name: "Notification",
+    accessibility: ["view"],
+  },
+  {
+    module: "settings",
+    subModule: "connections",
+    key: "connection",
+    name: "Connection",
+    accessibility: ["view"],
+  },
+  {
+    module: "settings",
+    subModule: "integrations",
+    key: "integration",
+    name: "Integration",
+    accessibility: ["view"],
   },
 ];

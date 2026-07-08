@@ -188,6 +188,26 @@ export function RoleForm({ mode, initialData, roleId }: RoleFormProps) {
           }),
         );
       }
+
+      // Auto-disable submodule/module view when all forms have viewLevel = 'none'
+      if (field === 'viewLevel' && value === 'none') {
+        setPermissionModules((prev) =>
+          prev.map((mod) => {
+            if (mod.key !== moduleKey) return mod;
+            const updatedSubModules = mod.subModules.map((sm) => {
+              if (sm.key !== subModuleKey) return sm;
+              const allFormsNone = sm.forms.every((f) => f.viewLevel === 'none');
+              return allFormsNone ? { ...sm, view: false } : sm;
+            });
+            const anySmVisible = updatedSubModules.some((sm) => sm.view);
+            return {
+              ...mod,
+              view: anySmVisible ? mod.view : false,
+              subModules: updatedSubModules,
+            };
+          }),
+        );
+      }
     },
     [],
   );
@@ -200,13 +220,9 @@ export function RoleForm({ mode, initialData, roleId }: RoleFormProps) {
     (field: 'viewLevel' | 'inspectLevel' | 'editLevel' | 'archiveLevel' | 'deleteLevel', level: PermissionLevel) => {
       const accessKey = field === 'viewLevel' ? 'view' : field === 'inspectLevel' ? 'inspect' : field === 'editLevel' ? 'edit' : field === 'archiveLevel' ? 'archive' : 'delete';
       setPermissionModules((prev) =>
-        prev.map((mod) => ({
-          ...mod,
-          view: level !== 'none' ? true : mod.view,
-          subModules: mod.subModules.map((sm) => ({
-            ...sm,
-            view: level !== 'none' ? true : sm.view,
-            forms: sm.forms.map((f) => {
+        prev.map((mod) => {
+          const updatedSubModules = mod.subModules.map((sm) => {
+            const updatedForms = sm.forms.map((f) => {
               if (!f.accessibility.includes(accessKey)) return f;
               const updated = { ...f, [field]: level };
 
@@ -228,9 +244,24 @@ export function RoleForm({ mode, initialData, roleId }: RoleFormProps) {
               }
 
               return updated;
-            }),
-          })),
-        })),
+            });
+
+            // Auto-clear sm.view when all forms have viewLevel='none'
+            const allFormsNone = field === 'viewLevel' && level === 'none'
+              ? updatedForms.every((f) => f.viewLevel === 'none')
+              : false;
+            const smView = level !== 'none' ? true : (allFormsNone ? false : sm.view);
+
+            return { ...sm, view: smView, forms: updatedForms };
+          });
+
+          const anySmVisible = updatedSubModules.some((sm) => sm.view);
+          return {
+            ...mod,
+            view: level !== 'none' ? true : (anySmVisible ? mod.view : false),
+            subModules: updatedSubModules,
+          };
+        }),
       );
     },
     [],

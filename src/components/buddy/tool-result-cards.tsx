@@ -174,7 +174,7 @@ function mapItem(name: string, item: Item): Mapped {
         status: item.status ? humanize(item.status) : undefined,
         tone: scheduleTone(item.status),
         meta: [
-          item.programTitle ? `Program · ${str(item.programTitle)}` : "",
+          item.planTitle ? `Plan · ${str(item.planTitle)}` : "",
           item.intervalType ? `Interval · ${humanize(item.intervalType)}` : "",
           item.nextDueValue != null ? `Next due · ${str(item.nextDueValue)}` : "",
         ].filter(Boolean),

@@ -148,6 +148,9 @@ export function validateFuelRows(
     // ── Optional: Driver ──
     const driverRaw = getStr('driver');
     const driverId = driverRaw ? driverNameMap.get(driverRaw.toLowerCase()) : undefined;
+    if (driverRaw && !driverId) {
+      rowErrors.push(`Driver "${driverRaw}" not found`);
+    }
 
     // ── Required: Date ──
     const dateRaw = getStr('date');

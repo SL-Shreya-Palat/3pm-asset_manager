@@ -182,6 +182,24 @@ export const allModules: Modules = [
         description: "Customize workflow statuses for work orders",
         accessibility: ["view"],
       },
+      {
+        name: "Notifications",
+        key: "notifications",
+        description: "Configure notification routing and preferences",
+        accessibility: ["view"],
+      },
+      {
+        name: "Connections",
+        key: "connections",
+        description: "Manage external command connections",
+        accessibility: ["view"],
+      },
+      {
+        name: "Integrations",
+        key: "integrations",
+        description: "Configure IoT Hub and other integrations",
+        accessibility: ["view"],
+      },
     ],
   },
 ];

@@ -5,8 +5,25 @@ import { ObjectId } from 'mongodb';
 import { getAssetTypesCollection } from '@/lib/mongodb';
 import { isNonEmptyString } from '@/lib/validation/commonValidators';
 
+/** Get a single asset type by ID (includes createdBy for ownership checks). */
+export async function getAssetTypeById(tenantId: string, assetTypeId: string) {
+  const collection = await getAssetTypesCollection();
+  const doc = await collection.findOne({
+    _id: ObjectId.createFromHexString(assetTypeId),
+    tenantId: ObjectId.createFromHexString(tenantId),
+  });
+  if (!doc) return null;
+  return {
+    id: doc._id.toString(),
+    name: doc.name,
+    description: doc.description || '',
+    createdBy: doc.createdBy?.toString() || null,
+    createdAt: doc.createdAt?.toISOString(),
+  };
+}
+
 /** List all asset types for a tenant. */
-export async function getAllAssetTypes(tenantId: string, search?: string, options?: { showArchived?: boolean }) {
+export async function getAllAssetTypes(tenantId: string, search?: string, options?: { showArchived?: boolean; createdBy?: string }) {
   const collection = await getAssetTypesCollection();
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
@@ -19,6 +36,9 @@ export async function getAllAssetTypes(tenantId: string, search?: string, option
   if (search) {
     filter.name = { $regex: search, $options: 'i' };
   }
+  if (options?.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+  }
   const items = await collection
     .find(filter)
     .sort({ name: 1 })
@@ -28,6 +48,7 @@ export async function getAllAssetTypes(tenantId: string, search?: string, option
     id: item._id.toString(),
     name: item.name,
     description: item.description || '',
+    createdBy: item.createdBy?.toString() || null,
     createdAt: item.createdAt?.toISOString(),
   }));
 }

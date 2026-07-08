@@ -19,16 +19,28 @@ function serialize(doc: Record<string, unknown>): Record<string, unknown> {
     description: doc.description || undefined,
     type: doc.type ?? 'open',
     sequence: doc.sequence ?? 0,
+    createdBy: doc.createdBy?.toString() || null,
     createdAt: doc.createdAt ? (doc.createdAt as Date).toISOString() : null,
     updatedAt: doc.updatedAt ? (doc.updatedAt as Date).toISOString() : null,
   };
+}
+
+/** Get a single work order status by ID (includes createdBy for ownership checks). */
+export async function getWorkOrderStatusById(tenantId: string, id: string) {
+  const col = await getWorkOrderStatusesCollection();
+  const doc = await col.findOne({
+    _id: ObjectId.createFromHexString(id),
+    tenantId: ObjectId.createFromHexString(tenantId),
+  });
+  if (!doc) return null;
+  return serialize(doc as Record<string, unknown>);
 }
 
 // ---------------------------------------------------------------------------
 // List
 // ---------------------------------------------------------------------------
 
-export async function getAllWorkOrderStatuses(tenantId: string, search?: string, options?: { showArchived?: boolean }) {
+export async function getAllWorkOrderStatuses(tenantId: string, search?: string, options?: { showArchived?: boolean; createdBy?: string }) {
   const col = await getWorkOrderStatusesCollection();
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
@@ -44,6 +56,9 @@ export async function getAllWorkOrderStatuses(tenantId: string, search?: string,
       { label: { $regex: search, $options: 'i' } },
       { description: { $regex: search, $options: 'i' } },
     ];
+  }
+  if (options?.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
   }
 
   const items = await col.find(filter).sort({ sequence: 1 }).toArray();

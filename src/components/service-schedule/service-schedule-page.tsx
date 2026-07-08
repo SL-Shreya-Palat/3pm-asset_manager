@@ -170,12 +170,12 @@ export function ServiceSchedulePage() {
       ),
     },
     {
-      key: 'program',
-      header: 'Service Program',
-      label: 'Service Program',
+      key: 'plan',
+      header: 'Service Plan',
+      label: 'Service Plan',
       render: (row) => (
         <div className="min-w-0">
-          <p className="text-sm text-foreground truncate">{row.programTitle}</p>
+          <p className="text-sm text-foreground truncate">{row.planTitle}</p>
           <p className="text-xs text-muted-foreground">
             {row.intervalType === 'repeat' ? 'Repeat' : 'One Time'}
           </p>
@@ -342,7 +342,7 @@ export function ServiceSchedulePage() {
           density={density}
           onDensityChange={setDensity}
           searchNode={
-            <SearchInput value={search} onChange={setSearch} placeholder="Search by asset name, program title..." />
+            <SearchInput value={search} onChange={setSearch} placeholder="Search by asset name, plan title..." />
           }
         />
         <DataTable<ServiceScheduleRow>
@@ -359,7 +359,7 @@ export function ServiceSchedulePage() {
           emptyMessage={
             debouncedSearch
               ? 'No scheduled services match your search.'
-              : 'No scheduled services found. Create service programs with assigned assets to see the schedule.'
+              : 'No scheduled services found. Create service plans with assigned assets to see the schedule.'
           }
         />
       </div>

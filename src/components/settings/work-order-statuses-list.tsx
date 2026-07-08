@@ -27,6 +27,9 @@ import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { PermissionGuard } from '@/components/auth/permission-guard';
 import { Permissions } from '@/consts/permissions';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
 
 const STATUS_TYPES = [
   { value: 'open', label: 'Open' },
@@ -54,11 +57,22 @@ interface WorkOrderStatusItem {
   type: StatusType;
   sequence: number;
   workOrderCount: number;
+  createdBy?: string | null;
 }
 
 const DEFAULT_COLOR = '#3B82F6';
 
+const WO_STATUS_FORM_ID = 'settings.workOrderStatuses.workOrderStatus';
+
 export function WorkOrderStatusesList() {
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+
+  // Permission levels for row-level "OWN" checks
+  const editLevel = hasFullAccess ? 'ALL' as const : permissionIndex.getEditLevel(WO_STATUS_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' as const : permissionIndex.getArchiveLevel(WO_STATUS_FORM_ID);
+  const deleteLevel = hasFullAccess ? 'ALL' as const : permissionIndex.getDeleteLevel(WO_STATUS_FORM_ID);
+
   const [items, setItems] = useState<WorkOrderStatusItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch, debouncedSearch] = useDebouncedSearch(300);
@@ -91,6 +105,14 @@ export function WorkOrderStatusesList() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingItem, setDeletingItem] = useState<WorkOrderStatusItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // General API error (shown as inline alert, auto-dismissed)
+  const [apiError, setApiError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!apiError) return;
+    const t = setTimeout(() => setApiError(null), 5000);
+    return () => clearTimeout(t);
+  }, [apiError]);
 
   const apiEndpoint = '/api/work-order-statuses';
 
@@ -189,40 +211,48 @@ export function WorkOrderStatusesList() {
         <RowActions>
           {showArchived ? (
             <>
-              <PermissionGuard permission={Permissions.settings.workOrderStatuses.form.archive}>
-                <RowActionButton
-                  label="Unarchive"
-                  icon={<ArchiveRestore />}
-                  onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
-                />
-              </PermissionGuard>
-              <PermissionGuard permission={Permissions.settings.workOrderStatuses.form.delete}>
-                <RowActionButton
-                  label="Delete"
-                  tone="destructive"
-                  icon={<Trash2 />}
-                  onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
-                />
-              </PermissionGuard>
+              {checkRecordOwnership(archiveLevel, item.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.settings.workOrderStatuses.form.archive}>
+                  <RowActionButton
+                    label="Unarchive"
+                    icon={<ArchiveRestore />}
+                    onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
+                  />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(deleteLevel, item.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.settings.workOrderStatuses.form.delete}>
+                  <RowActionButton
+                    label="Delete"
+                    tone="destructive"
+                    icon={<Trash2 />}
+                    onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
+                  />
+                </PermissionGuard>
+              )}
             </>
           ) : (
             <>
-              <PermissionGuard permission={Permissions.settings.workOrderStatuses.form.edit}>
-                <RowActionButton label="Edit" icon={<Edit />} onClick={() => openEditDialog(item)} />
-              </PermissionGuard>
-              <PermissionGuard permission={Permissions.settings.workOrderStatuses.form.archive}>
-                <RowActionButton
-                  label="Archive"
-                  icon={<Archive />}
-                  onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
-                />
-              </PermissionGuard>
+              {checkRecordOwnership(editLevel, item.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.settings.workOrderStatuses.form.edit}>
+                  <RowActionButton label="Edit" icon={<Edit />} onClick={() => openEditDialog(item)} />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(archiveLevel, item.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.settings.workOrderStatuses.form.archive}>
+                  <RowActionButton
+                    label="Archive"
+                    icon={<Archive />}
+                    onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
+                  />
+                </PermissionGuard>
+              )}
             </>
           )}
         </RowActions>
       ),
     },
-  ], [showArchived]);
+  ], [showArchived, user?.id, editLevel, archiveLevel, deleteLevel]);
 
   const openCreateDialog = () => {
     setDialogMode('create');
@@ -273,7 +303,12 @@ export function WorkOrderStatusesList() {
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {
         const errData = err.response.data.error;
-        if (typeof errData === 'object') setFieldErrors(errData as Record<string, string>);
+        if (typeof errData === 'string') {
+          setApiError(errData);
+          setDialogOpen(false);
+        } else if (typeof errData === 'object') {
+          setFieldErrors(errData as Record<string, string>);
+        }
       }
     } finally {
       setSaving(false);
@@ -288,7 +323,13 @@ export function WorkOrderStatusesList() {
       setArchiveDialogOpen(false);
       setArchivingItem(null);
       fetchItems();
-    } catch { /* silent */ } finally { setArchiving(false); }
+    } catch (err) {
+      setArchiveDialogOpen(false);
+      setArchivingItem(null);
+      if (axios.isAxiosError(err) && typeof err.response?.data?.error === 'string') {
+        setApiError(err.response.data.error);
+      }
+    } finally { setArchiving(false); }
   };
 
   const handleDelete = async () => {
@@ -299,7 +340,13 @@ export function WorkOrderStatusesList() {
       setDeleteDialogOpen(false);
       setDeletingItem(null);
       fetchItems();
-    } catch { /* silent */ } finally { setDeleting(false); }
+    } catch (err) {
+      setDeleteDialogOpen(false);
+      setDeletingItem(null);
+      if (axios.isAxiosError(err) && typeof err.response?.data?.error === 'string') {
+        setApiError(err.response.data.error);
+      }
+    } finally { setDeleting(false); }
   };
 
   return (
@@ -319,6 +366,16 @@ export function WorkOrderStatusesList() {
           </PermissionGuard>
         )}
       </div>
+
+      {/* API error alert */}
+      {apiError && (
+        <div className="mb-4 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive flex items-center justify-between">
+          <span>{apiError}</span>
+          <button onClick={() => setApiError(null)} className="ml-4 text-destructive/70 hover:text-destructive">
+            &times;
+          </button>
+        </div>
+      )}
 
       {/* Toolbar */}
       <DataTableToolbar

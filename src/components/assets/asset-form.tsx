@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
-import { Settings, SquarePen } from 'lucide-react';
+import { ChevronRight, Settings, SquarePen } from 'lucide-react';
 import { Spinner } from '@/components/ui/spinner';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,6 +21,7 @@ import { BaseForm } from '@/components/ui/base-form';
 import { AssetTypeDialog } from './asset-type-dialog';
 import { CURRENCIES } from '@/constants/assets';
 import { Skeleton } from '@/components/ui/skeleton';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import type { AssetTypeOption, TeamOption, FormItem } from './types';
 
 interface AssetFormProps {
@@ -42,6 +43,12 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
   const [formsList, setFormsList] = useState<FormItem[]>([]);
   const [formsLoading, setFormsLoading] = useState(true);
   const [selectedFormIds, setSelectedFormIds] = useState<Set<string>>(new Set());
+
+  // Service Plans
+  const [servicePlansList, setServicePlansList] = useState<{ id: string; name: string }[]>([]);
+  const [servicePlansLoading, setServicePlansLoading] = useState(true);
+  const [selectedServicePlanId, setSelectedServicePlanId] = useState<string | null>(null);
+
   const [vinDecoding, setVinDecoding] = useState(false);
   const [vinDecoded, setVinDecoded] = useState(false);
 
@@ -159,6 +166,10 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
       if (Array.isArray(initialData.formIds)) {
         setSelectedFormIds(new Set(initialData.formIds as string[]));
       }
+      // Populate service plan selection
+      if (initialData.servicePlanId) {
+        setSelectedServicePlanId(initialData.servicePlanId as string);
+      }
     }
   }, [initialData]);
 
@@ -215,11 +226,32 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
     }
   }, []);
 
+  const fetchServicePlans = useCallback(async () => {
+    try {
+      setServicePlansLoading(true);
+      const res = await axios.get('/api/service-plans?limit=100', { withCredentials: true });
+      const items = res.data.data?.items || [];
+      setServicePlansList(
+        items
+          .filter((p: Record<string, unknown>) => !p.isArchived)
+          .map((p: Record<string, unknown>) => ({
+            id: p.id as string,
+            name: (p.name as string) || '',
+          })),
+      );
+    } catch {
+      setServicePlansList([]);
+    } finally {
+      setServicePlansLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchAssetTypes();
     fetchTeams();
     fetchForms();
-  }, [fetchAssetTypes, fetchTeams, fetchForms]);
+    fetchServicePlans();
+  }, [fetchAssetTypes, fetchTeams, fetchForms, fetchServicePlans]);
 
   /**
    * Find an existing asset type by name (case-insensitive) or create a new one.
@@ -355,6 +387,7 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
         : undefined,
       hubometer: hubometer ? parseFloat(hubometer) : undefined,
       formIds: Array.from(selectedFormIds),
+      servicePlanId: selectedServicePlanId || null,
     };
 
     try {
@@ -548,21 +581,17 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
           title: 'Other Details',
           children: (
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="team">Team</Label>
-                <Select value={teamId} onValueChange={setTeamId}>
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder="Select team" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">None</SelectItem>
-                    {teams.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="col-span-2">
+                <SearchableSelect
+                  label="Team"
+                  options={teams.map((t) => ({ label: t.name, value: t.id }))}
+                  value={teamId || null}
+                  onValueChange={(val) => setTeamId(val || '')}
+                  placeholder="Select team"
+                  searchPlaceholder="Search teams..."
+                  emptyMessage="No teams found"
+                  isClearable
+                />
               </div>
               <div className="col-span-2 grid grid-cols-3 gap-4">
                 <div>
@@ -767,6 +796,73 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
               {selectedFormIds.size > 0 && (
                 <p className="text-xs text-muted-foreground mt-2">
                   {selectedFormIds.size} form{selectedFormIds.size !== 1 ? 's' : ''} selected
+                </p>
+              )}
+            </div>
+          ),
+        },
+        {
+          title: 'Service Plans',
+          headerRight: selectedServicePlanId ? (
+            <button
+              type="button"
+              onClick={() => setSelectedServicePlanId(null)}
+              className="text-xs text-primary hover:underline font-medium"
+            >
+              Clear Selection
+            </button>
+          ) : undefined,
+          children: (
+            <div>
+              <p className="text-sm text-muted-foreground mb-4">
+                Select a service plan for this asset
+              </p>
+              <div className="rounded-md border border-border overflow-hidden">
+                <div className="max-h-[300px] overflow-y-auto divide-y divide-border">
+                  {servicePlansLoading ? (
+                    Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className="flex items-center gap-3 px-3 py-2.5">
+                        <Skeleton className="h-4 w-4 rounded-full shrink-0" />
+                        <Skeleton className="h-4 w-32" />
+                      </div>
+                    ))
+                  ) : servicePlansList.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-6 text-center">
+                      No service plans available
+                    </p>
+                  ) : (
+                    servicePlansList.map((plan) => (
+                      <div
+                        key={plan.id}
+                        className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/30 transition-colors"
+                      >
+                        <label className="flex items-center gap-3 flex-1 cursor-pointer">
+                          <Checkbox
+                            checked={selectedServicePlanId === plan.id}
+                            onCheckedChange={(checked) => {
+                              setSelectedServicePlanId(checked ? plan.id : null);
+                            }}
+                          />
+                          <span className="text-sm text-foreground">{plan.name}</span>
+                        </label>
+                        <a
+                          href="/maintenance/service-plans"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="p-1 rounded-md hover:bg-muted text-primary hover:text-primary/80 transition-colors"
+                          title="Manage service plans (opens in a new tab)"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </a>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+              {selectedServicePlanId && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  1 service plan selected
                 </p>
               )}
             </div>

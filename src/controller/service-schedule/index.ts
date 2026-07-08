@@ -71,8 +71,8 @@ export async function getServiceSchedule(
 
       allItems.push({
         id: `${assetId}_${s.scheduleId}`,
-        programId: s.scheduleId,
-        programTitle: s.scheduleName,
+        planId: s.scheduleId,
+        planTitle: s.scheduleName,
         assetId,
         assetName: (asset.name as string) || 'Asset',
         assetNumber: (asset.assetNumber as string) || undefined,
@@ -93,7 +93,7 @@ export async function getServiceSchedule(
     const q = options.search.toLowerCase();
     filtered = allItems.filter(
       (i) =>
-        i.programTitle.toLowerCase().includes(q) ||
+        i.planTitle.toLowerCase().includes(q) ||
         i.assetName.toLowerCase().includes(q) ||
         (i.assetNumber && i.assetNumber.toLowerCase().includes(q)),
     );
