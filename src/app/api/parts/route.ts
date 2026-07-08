@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   const categoryId = searchParams.get('categoryId') || undefined;
   const showArchived = searchParams.get('showArchived') === 'true';
 
-  const result = await getAllParts(user.currentTenantId, { page, limit, search, categoryId, showArchived });
+  const result = await getAllParts(user.currentTenantId, { page, limit, search, categoryId, showArchived, userId: user.id });
   return NextResponse.json({ data: result, error: null });
 }
 

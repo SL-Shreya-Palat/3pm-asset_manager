@@ -41,9 +41,10 @@ export interface AssetAvailabilityPush {
 export interface AssetActivityPush {
   /** Activity type key (e.g. 'prestart_submitted', 'service_completed'). */
   type: string;
-  title?: string;
-  description?: string;
-  meta?: Record<string, unknown>;
+  /** Human summary line shown on Command's asset Activity tab. */
+  summary: string;
+  /** Extra structured context (source, meter values, etc.). */
+  details?: Record<string, unknown>;
 }
 
 /** Push meter readings onto the Command asset (+ meter_reading activity). */

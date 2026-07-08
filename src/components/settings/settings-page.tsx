@@ -2,13 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ChevronDown, ChevronRight, Ruler, Tag, MapPin, Wrench, CircleDot, Box, Layers, Bell, Cable, Radio } from 'lucide-react';
+import { ChevronDown, ChevronRight, Ruler, Tag, MapPin, Wrench, CircleDot, Box, Layers, Bell, Cable, Radio, Gauge } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useConnection } from '@/hooks/use-connection';
 import { InventorySettingsList, type SettingsFieldConfig } from './inventory-settings-list';
 import { WorkOrderStatusesList } from './work-order-statuses-list';
 import { NotificationSettingsPage } from './notification-settings-page';
 import { CommandConnectionPanel } from './command-connection-panel';
 import { IoTSettingsPanel } from './iot-settings-panel';
+import { MeterSettingsPanel } from './meter-settings-panel';
 
 /** Settings tabs. */
 const TABS = [
@@ -50,6 +52,7 @@ const ADMIN_SIDEBAR: SidebarItem[] = [
     icon: Wrench,
     children: [
       { key: 'work-order-statuses', label: 'Work Order Statuses' },
+      { key: 'meter-settings', label: 'Meter Readings' },
     ],
   },
   {
@@ -106,10 +109,12 @@ const ASSET_TYPE_FIELDS: SettingsFieldConfig[] = [
   { key: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional description' },
 ];
 
-const VALID_SIDEBAR_KEYS = new Set(['asset-types', 'measurement-units', 'part-categories', 'part-locations', 'work-order-statuses', 'notification-routing', 'command-connection', 'iot-hub']);
+const VALID_SIDEBAR_KEYS = new Set(['asset-types', 'measurement-units', 'part-categories', 'part-locations', 'work-order-statuses', 'meter-settings', 'notification-routing', 'command-connection', 'iot-hub']);
 
 export function SettingsPage() {
   const searchParams = useSearchParams();
+  // When connected to Command, units + part locations are mastered there.
+  const { connected } = useConnection();
   const [activeTab, setActiveTab] = useState<TabKey>('admin');
   const [activeSidebarKey, setActiveSidebarKey] = useState('measurement-units');
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set(['inventory']));
@@ -126,7 +131,7 @@ export function SettingsPage() {
         setExpandedKeys((prev) => new Set([...prev, 'assets']));
       } else if (['measurement-units', 'part-categories', 'part-locations'].includes(section)) {
         setExpandedKeys((prev) => new Set([...prev, 'inventory']));
-      } else if (['work-order-statuses'].includes(section)) {
+      } else if (['work-order-statuses', 'meter-settings'].includes(section)) {
         setExpandedKeys((prev) => new Set([...prev, 'work-orders']));
       } else if (['notification-routing'].includes(section)) {
         setExpandedKeys((prev) => new Set([...prev, 'notifications']));
@@ -167,6 +172,7 @@ export function SettingsPage() {
             fields={MEASUREMENT_UNIT_FIELDS}
             createLabel="Add Unit"
             extraColumns={[{ key: 'symbol', header: 'Symbol' }]}
+            commandManaged={connected}
           />
         );
       case 'part-categories':
@@ -185,10 +191,13 @@ export function SettingsPage() {
             apiEndpoint="/api/inventory-settings/part-locations"
             fields={PART_LOCATION_FIELDS}
             createLabel="Add Location"
+            commandManaged={connected}
           />
         );
       case 'work-order-statuses':
         return <WorkOrderStatusesList />;
+      case 'meter-settings':
+        return <MeterSettingsPanel />;
       case 'notification-routing':
         return <NotificationSettingsPage />;
       case 'command-connection':
@@ -207,6 +216,7 @@ export function SettingsPage() {
       case 'part-categories': return Tag;
       case 'part-locations': return MapPin;
       case 'work-order-statuses': return CircleDot;
+      case 'meter-settings': return Gauge;
       case 'notification-routing': return Bell;
       case 'command-connection': return Cable;
       case 'iot-hub': return Radio;

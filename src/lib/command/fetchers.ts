@@ -19,6 +19,7 @@ const ENDPOINTS: Record<CommandEntity, string> = {
   suppliers: '/api/business-contact/dropdown',
   locations: '/api/company-location/dropdown',
   stock: '/api/stock/dropdown',
+  units: '/api/units/dropdown',
 };
 
 /**
@@ -32,6 +33,7 @@ const LIST_ENDPOINTS: Record<CommandEntity, string> = {
   suppliers: '/api/business-contact',
   locations: '/api/company-location',
   stock: '/api/stock',
+  units: '/api/units',
 };
 
 export interface CommandPage {
@@ -123,6 +125,38 @@ export async function getPage(
   const total = Number(pg.totalCount ?? pg.total ?? items.length);
   const hasMore = Boolean(pg.hasNextPage ?? opts.page * opts.limit < total);
   return { ok: true, data: { items, total, hasMore } };
+}
+
+/** Pull the record object out of a Command by-id response (shape varies). */
+function extractRecord(body: any): any {
+  const d = body?.data;
+  if (!d || typeof d !== 'object') return null;
+  if (d._id || d.id) return d; // record sits directly under `data`
+  for (const k of Object.keys(d)) {
+    const v = (d as any)[k];
+    if (v && typeof v === 'object' && !Array.isArray(v) && (v._id || v.id)) return v;
+  }
+  return null;
+}
+
+/**
+ * Fetch ONE raw Command record by id. Used by the single-record auto-sync
+ * (asset detail view) — returns the raw record so the import mappers can
+ * translate it exactly as they do for a full page.
+ */
+export async function getRecord(
+  entity: CommandEntity,
+  id: string,
+  authTenantId: string,
+): Promise<CommandResult<Record<string, unknown>>> {
+  const res = await commandRequest<any>(
+    `${LIST_ENDPOINTS[entity]}/${encodeURIComponent(id)}`,
+    authTenantId,
+  );
+  if (!res.ok) return res;
+  const raw = extractRecord(res.data);
+  if (!raw) return { ok: false, reason: 'not_found' };
+  return { ok: true, data: raw };
 }
 
 export interface CommandStaff {

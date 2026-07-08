@@ -100,5 +100,8 @@ export function serializeDriver(doc: Record<string, unknown>): Record<string, un
     isArchived: doc.isArchived ?? false,
     createdAt: doc.createdAt ? (doc.createdAt as Date).toISOString() : null,
     updatedAt: doc.updatedAt ? (doc.updatedAt as Date).toISOString() : null,
+    // Command linkage — 'command'-sourced drivers badge as read-only master data.
+    source: doc.source || 'local',
+    commandSyncedAt: doc.commandSyncedAt ? (doc.commandSyncedAt as Date).toISOString() : null,
   };
 }

@@ -338,11 +338,12 @@ export function CommandConnectionPanel() {
         <div className="rounded-lg border border-border bg-card p-5">
           <div className="flex items-center gap-2">
             <Download className="h-4 w-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold text-foreground">Import master data from Command</h3>
+            <h3 className="text-sm font-semibold text-foreground">Refresh master data from Command</h3>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            Imports are idempotent — re-running refreshes Command-sourced records without
-            creating duplicates. Command-owned identity fields stay read-only here.
+            Command data refreshes automatically when you open each page — no import needed.
+            Use this to force an immediate refresh (e.g. right after connecting). It&apos;s
+            idempotent: re-running never creates duplicates, and Command-owned fields stay read-only here.
           </p>
 
           <div className="mt-4 space-y-2">
@@ -376,11 +377,11 @@ export function CommandConnectionPanel() {
           >
             {importing ? (
               <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Importing…
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Refreshing…
               </>
             ) : (
               <>
-                <Download className="h-3.5 w-3.5" /> Import selected
+                <Download className="h-3.5 w-3.5" /> Refresh selected
               </>
             )}
           </button>

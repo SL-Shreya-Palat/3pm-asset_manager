@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
 
   const search = request.nextUrl.searchParams.get('search') || undefined;
   const showArchived = request.nextUrl.searchParams.get('showArchived') === 'true';
-  const items = await getAllMeasurementUnits(user.currentTenantId, search, { showArchived });
+  const items = await getAllMeasurementUnits(user.currentTenantId, search, { showArchived, userId: user.id });
   return NextResponse.json({ data: items, error: null });
 }
 

@@ -22,7 +22,6 @@ import { logServiceEntry } from '@/controller/service-history';
 import {
   writebackActivityIfLinked,
   writebackAvailabilityIfLinked,
-  writebackMetersIfLinked,
 } from '@/controller/command-connection/hooks';
 
 /** Teams that own a work order's asset — used to route WO notifications. */
@@ -42,7 +41,7 @@ async function resolveWorkOrderAssetTeamIds(
 
 export async function getAllWorkOrders(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; statusId?: string; assigneeId?: string; showArchived?: boolean },
+  options: { page?: number; limit?: number; search?: string; statusId?: string; assigneeId?: string; assetId?: string; showArchived?: boolean },
 ) {
   const col = await getWorkOrdersCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
@@ -55,6 +54,15 @@ export async function getAllWorkOrders(
     filter.isArchived = true;
   } else {
     filter.isArchived = { $ne: true };
+  }
+
+  // Asset filter (e.g. the work orders for one asset).
+  if (options.assetId) {
+    try {
+      filter.assetId = ObjectId.createFromHexString(options.assetId);
+    } catch {
+      // Invalid ObjectId, ignore filter
+    }
   }
 
   // Status filter
@@ -813,22 +821,16 @@ export async function completeWorkOrder(
       { source: 'work_order', performedById },
     );
 
-    // Command-linked assets: mirror the completed service + meter reading.
+    // Command-linked assets: mirror the completed service on the activity feed.
+    // The meter reading itself is pushed to Command by logServiceEntry above,
+    // which honours the tenant's "service updates current meter" setting — so
+    // there's no separate meter write-back here (it would double-push and bypass
+    // that setting).
     await writebackActivityIfLinked(tenantId, wo.assetId as ObjectId, {
       type: 'service_completed',
       summary: `Service completed via work order ${wo.workOrderNumber}`,
       details: { workOrderNumber: wo.workOrderNumber as string },
     });
-    if (typeof input.meterAtService === 'number' && Number.isFinite(input.meterAtService)) {
-      await writebackMetersIfLinked(
-        tenantId,
-        wo.assetId as ObjectId,
-        input.meterType === 'engine_hours'
-          ? { engineHours: input.meterAtService }
-          : { odometer: input.meterAtService },
-        'work_order',
-      );
-    }
   }
 
   // 5) Notify the responsible team the WO is complete.

@@ -10,6 +10,7 @@ import {
   User,
   Archive,
   ArchiveRestore,
+  Cable,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
@@ -21,7 +22,9 @@ import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
+import { useConnection } from '@/hooks/use-connection';
 import { InviteUserDialog } from './invite-user-dialog';
+import { ImportCommandStaffDialog } from './import-command-dialog';
 import type { UserRow, Pagination } from './types';
 
 export function UsersPage() {
@@ -36,6 +39,9 @@ export function UsersPage() {
 
   // Invite dialog
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  // Import-from-Command dialog (staff → members) — only when connected.
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const { connected } = useConnection();
 
   // Archive state
   const [showArchived, setShowArchived] = useState(false);
@@ -200,6 +206,12 @@ export function UsersPage() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <PageHeader title="Users" description="Invite, manage, and assign roles to your team members" count={pagination.total}>
+        {connected && (
+          <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+            <Cable className="h-4 w-4" />
+            Import from Command
+          </Button>
+        )}
         <Button onClick={() => setInviteDialogOpen(true)}>
           <Plus className="h-4 w-4" />
           Invite User
@@ -242,6 +254,13 @@ export function UsersPage() {
         open={inviteDialogOpen}
         onOpenChange={setInviteDialogOpen}
         onSuccess={handleInviteSuccess}
+      />
+
+      {/* Import staff from Command (invite as members) */}
+      <ImportCommandStaffDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        onImported={() => fetchUsers(1)}
       />
 
       {/* Archive User Dialog */}

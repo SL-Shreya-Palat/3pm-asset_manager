@@ -18,6 +18,7 @@ import {
   getUsersCollection,
 } from '@/lib/mongodb';
 import { writebackMetersIfLinked } from '@/controller/command-connection/hooks';
+import { shouldServiceUpdateCurrentMeter } from '@/controller/meter-settings';
 import type { LogServiceInput, ServiceMeterType } from './types';
 
 function toOidArray(ids: string[] | undefined): ObjectId[] {
@@ -98,6 +99,13 @@ export async function logServiceEntry(
   const meterAtService =
     typeof input.meterAtService === 'number' && input.meterAtService >= 0 ? input.meterAtService : null;
 
+  // Meter policy: when the tenant has turned "service updates current meter" off,
+  // the reading is kept on the history record below for reference only — it must
+  // not advance the asset's current meter, reset the service baseline, spawn a
+  // meter-reading row, or push back to Command.
+  const advanceCurrentMeter =
+    meterAtService != null ? await shouldServiceUpdateCurrentMeter(tenantOid) : false;
+
   // Resolve the serviced schedule's name from its plan (for stable history display).
   let servicePlanOid: ObjectId | null =
     input.servicePlanId && ObjectId.isValid(input.servicePlanId)
@@ -143,7 +151,7 @@ export async function logServiceEntry(
 
   // 2) Update the asset's last-service + current meter (resets the schedule).
   const assetSet: Record<string, unknown> = { lastServiceDate: performedAt, updatedAt: now };
-  if (meterAtService != null) {
+  if (meterAtService != null && advanceCurrentMeter) {
     if (meterType === 'engine_hours') {
       assetSet.lastServiceEngineHours = meterAtService;
       if (meterAtService > ((asset.currentEngineHours as number) || 0)) assetSet.currentEngineHours = meterAtService;
@@ -155,7 +163,7 @@ export async function logServiceEntry(
   await assetsCol.updateOne({ _id: assetOid, tenantId: tenantOid }, { $set: assetSet });
 
   // 3) Write a meter reading row for history/traceability.
-  if (meterAtService != null) {
+  if (meterAtService != null && advanceCurrentMeter) {
     const metersCol = await getMeterReadingsCollection();
     await metersCol.insertOne({
       tenantId: tenantOid,

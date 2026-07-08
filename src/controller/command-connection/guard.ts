@@ -24,7 +24,7 @@ import { isCommandConfigured } from '@/lib/command/client';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export const MASTER_DATA_MANAGED_MESSAGE =
-  'Master data is managed in Command while the connection is on. Add or edit this record in Command, then use Import from Command (Settings → Connections) to refresh it here.';
+  'Master data is managed in Command while the connection is on. Add or edit this record in Command — it refreshes here automatically.';
 
 /**
  * Is the Command connection ON for this tenant (entitled, not manually
@@ -109,6 +109,9 @@ export const COMMAND_OWNED_FIELDS = {
     'color',
     'fuelType',
     'assetTypeId',
+    // The asset photo mirrors Command's image and is refreshed on every sync —
+    // strip it from local edits so an AM upload can't be silently overwritten.
+    'photoUrls',
   ],
   drivers: ['firstName', 'lastName', 'email', 'mobileNumber'],
   vendors: ['name', 'contactName', 'email', 'phone'],

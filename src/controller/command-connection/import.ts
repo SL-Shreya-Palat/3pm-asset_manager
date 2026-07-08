@@ -22,13 +22,22 @@ import {
   getVendorsCollection,
   getLocationsCollection,
   getPartsCollection,
+  getMeasurementUnitsCollection,
+  getPartLocationsCollection,
 } from '@/lib/mongodb';
-import { getPage, getCommandStaff } from '@/lib/command/fetchers';
+import { getPage, getRecord, getCommandStaff } from '@/lib/command/fetchers';
 import type { CommandEntity } from '@/lib/command/types';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export type ImportEntity = 'assets' | 'drivers' | 'vendors' | 'locations' | 'stock';
+export type ImportEntity =
+  | 'assets'
+  | 'drivers'
+  | 'vendors'
+  | 'locations'
+  | 'stock'
+  | 'units'
+  | 'partLocations';
 
 export interface ImportCounts {
   created: number;
@@ -51,6 +60,15 @@ function num(v: unknown): number | undefined {
   if (v == null || v === '') return undefined;
   const n = Number(v);
   return Number.isFinite(n) ? n : undefined;
+}
+
+/** Compose a Command company-location address object into one display string. */
+function joinAddress(addr: Record<string, unknown> | undefined | null): string {
+  const a = addr ?? {};
+  return [a.addressLine1, a.addressLine2, a.city, a.state]
+    .map((p: unknown) => str(p))
+    .filter(Boolean)
+    .join(', ');
 }
 
 /** Page through a Command list endpoint, collecting raw rows. */
@@ -109,27 +127,21 @@ async function resolveAssetTypeId(
   return id ?? undefined;
 }
 
-/** Assets: Command is the master; identity fields overwrite, operational seed-once. */
-async function importAssets(
+/**
+ * Upsert ONE Command asset row into its local anchor doc. Shared by the full
+ * import sweep AND the single-record auto-sync (asset detail refresh), so the
+ * mapping + ownership tiers stay identical in both paths.
+ */
+async function upsertAssetRow(
+  assets: Awaited<ReturnType<typeof getAssetsCollection>>,
   tenantId: ObjectId,
   userId: ObjectId,
-  authTenantId: string,
-): Promise<ImportCounts> {
-  // Command's list hides archived assets by default and `showArchived=true`
-  // returns ONLY archived — sweep both so archive state syncs losslessly.
-  const rows = [
-    ...(await fetchAll('assets', authTenantId)),
-    ...(await fetchAll('assets', authTenantId, { showArchived: 'true' })),
-  ];
-  const assets = await getAssetsCollection();
-  const typeCache = new Map<string, ObjectId>();
-  const counts: ImportCounts = { created: 0, updated: 0, skipped: 0 };
-
-  for (const row of rows) {
+  typeCache: Map<string, ObjectId>,
+  row: Record<string, any>,
+): Promise<'created' | 'updated' | 'skipped'> {
     const commandAssetId = str(row._id ?? row.id);
     if (!commandAssetId) {
-      counts.skipped++;
-      continue;
+      return 'skipped';
     }
 
     const registry = row.assetRegistry ?? {};
@@ -186,38 +198,85 @@ async function importAssets(
     // Drop undefined so $set never writes nulls over good data.
     for (const k of Object.keys(identity)) identity[k] === undefined && delete identity[k];
 
+    // The asset photo is Command-owned identity data (Command's
+    // assetRegistry.image — a public Azure blob URL). Refresh it on EVERY sync,
+    // NOT seed-once, so an image added or changed in Command shows here on the
+    // next auto-sync. Only overwrite when Command actually has an image, so a
+    // momentarily-empty Command image never wipes an existing photo.
     const photo = str(row.image) ?? str(registry.image);
+    if (photo) identity.photoUrls = [photo];
+
     const now = new Date();
+    // Operational fields — seeded once, owned by Asset Manager after import.
+    const setOnInsert: Record<string, unknown> = {
+      tenantId,
+      commandAssetId,
+      source: 'command',
+      // Normalize Command's status strings into AM's model (in_service /
+      // out_of_service). Archived assets seed as in_service — the archive
+      // flag (identity tier, above) is what hides them.
+      status: /maint/i.test(cmdStatus) ? 'out_of_service' : 'in_service',
+      teamIds: [],
+      formIds: [],
+      assetGroupIds: [],
+      driverAccessIds: [],
+      customFields: {},
+      createdBy: userId,
+      createdAt: now,
+      isActive: true,
+    };
+    // Seed an empty gallery only when Command has no image — setting `photoUrls`
+    // in both $set (above) and $setOnInsert would be a Mongo path conflict.
+    if (!photo) setOnInsert.photoUrls = [];
+
     const result = await assets.updateOne(
       { tenantId, commandAssetId },
-      {
-        $set: identity,
-        // Operational fields — seeded once, owned by Asset Manager after import.
-        $setOnInsert: {
-          tenantId,
-          commandAssetId,
-          source: 'command',
-          // Normalize Command's status strings into AM's model (in_service /
-          // out_of_service). Archived assets seed as in_service — the archive
-          // flag (identity tier, above) is what hides them.
-          status: /maint/i.test(cmdStatus) ? 'out_of_service' : 'in_service',
-          photoUrls: photo ? [photo] : [],
-          teamIds: [],
-          formIds: [],
-          assetGroupIds: [],
-          driverAccessIds: [],
-          customFields: {},
-          createdBy: userId,
-          createdAt: now,
-          isActive: true,
-        },
-      },
+      { $set: identity, $setOnInsert: setOnInsert },
       { upsert: true },
     );
-    if (result.upsertedCount > 0) counts.created++;
-    else counts.updated++;
+    return result.upsertedCount > 0 ? 'created' : 'updated';
+}
+
+/** Assets: Command is the master; identity fields overwrite, operational seed-once. */
+async function importAssets(
+  tenantId: ObjectId,
+  userId: ObjectId,
+  authTenantId: string,
+): Promise<ImportCounts> {
+  // Command's list hides archived assets by default and `showArchived=true`
+  // returns ONLY archived — sweep both so archive state syncs losslessly.
+  const rows = [
+    ...(await fetchAll('assets', authTenantId)),
+    ...(await fetchAll('assets', authTenantId, { showArchived: 'true' })),
+  ];
+  const assets = await getAssetsCollection();
+  const typeCache = new Map<string, ObjectId>();
+  const counts: ImportCounts = { created: 0, updated: 0, skipped: 0 };
+
+  for (const row of rows) {
+    counts[await upsertAssetRow(assets, tenantId, userId, typeCache, row)]++;
   }
   return counts;
+}
+
+/**
+ * Refresh a SINGLE Command-sourced asset into its local anchor (asset detail
+ * view). Cheap — one Command GET + one upsert. Best-effort: no-ops if the record
+ * can't be fetched. `getRecord` returns the raw Command row so `upsertAssetRow`
+ * maps it exactly as the full sweep does.
+ */
+export async function syncOneAssetFromCommand(
+  tenantId: string,
+  userId: string,
+  authTenantId: string,
+  commandAssetId: string,
+): Promise<void> {
+  const res = await getRecord('assets', commandAssetId, authTenantId);
+  if (!res.ok) return;
+  const tid = ObjectId.createFromHexString(tenantId);
+  const uid = ObjectId.isValid(userId) ? ObjectId.createFromHexString(userId) : new ObjectId();
+  const assets = await getAssetsCollection();
+  await upsertAssetRow(assets, tid, uid, new Map<string, ObjectId>(), res.data);
 }
 
 /** Staff → drivers: one-time idempotent import, linked by commandStaffId/email. */
@@ -357,11 +416,7 @@ async function importLocations(
       continue;
     }
 
-    const addr = row.address ?? {};
-    const address = [addr.addressLine1, addr.addressLine2, addr.city, addr.state]
-      .map((p: unknown) => str(p))
-      .filter(Boolean)
-      .join(', ');
+    const address = joinAddress(row.address);
 
     const now = new Date();
     const result = await locations.updateOne(
@@ -457,6 +512,112 @@ async function importStock(
 }
 
 /**
+ * Command units → measurement units. Command is master when connected; the unit
+ * name is the identity (refreshed each sync), operational flags seed-once.
+ */
+async function importUnits(
+  tenantId: ObjectId,
+  userId: ObjectId,
+  authTenantId: string,
+): Promise<ImportCounts> {
+  const rows = await fetchAll('units', authTenantId);
+  const units = await getMeasurementUnitsCollection();
+  const counts: ImportCounts = { created: 0, updated: 0, skipped: 0 };
+
+  for (const row of rows) {
+    const commandUnitId = str(row._id ?? row.id ?? row.value);
+    const name = str(row.unit) ?? str(row.name) ?? str(row.label);
+    if (!commandUnitId || !name) {
+      counts.skipped++;
+      continue;
+    }
+    // Command has no separate symbol/abbreviation — use one if present, else blank.
+    const symbol = str(row.symbol) ?? str(row.abbreviation) ?? str(row.shortCode);
+
+    const now = new Date();
+    const result = await units.updateOne(
+      { tenantId, commandUnitId },
+      {
+        $set: {
+          source: 'command',
+          name,
+          ...(symbol ? { symbol } : {}),
+          commandSyncedAt: now,
+          updatedBy: userId,
+          updatedAt: now,
+        },
+        $setOnInsert: {
+          tenantId,
+          commandUnitId,
+          isDefault: false,
+          createdBy: userId,
+          createdAt: now,
+          isArchived: false,
+        },
+      },
+      { upsert: true },
+    );
+    if (result.upsertedCount > 0) counts.created++;
+    else counts.updated++;
+  }
+  return counts;
+}
+
+/**
+ * Command company locations → part locations (the inventory stock-location
+ * lookup). Command is master when connected; name is identity, refreshed each
+ * sync. (Kept distinct from the `locations` collection, which stays as-is.)
+ */
+async function importPartLocations(
+  tenantId: ObjectId,
+  userId: ObjectId,
+  authTenantId: string,
+): Promise<ImportCounts> {
+  const rows = await fetchAll('locations', authTenantId);
+  const partLocations = await getPartLocationsCollection();
+  const counts: ImportCounts = { created: 0, updated: 0, skipped: 0 };
+
+  for (const row of rows) {
+    const commandLocationId = str(row._id ?? row.id ?? row.value);
+    const name = str(row.name) ?? str(row.locationName) ?? str(row.label);
+    if (!commandLocationId || !name) {
+      counts.skipped++;
+      continue;
+    }
+
+    const joinedAddress = joinAddress(row.address);
+    const description = str(row.description) ?? (joinedAddress || undefined);
+
+    const now = new Date();
+    const result = await partLocations.updateOne(
+      { tenantId, commandLocationId },
+      {
+        $set: {
+          source: 'command',
+          name,
+          ...(description ? { description } : {}),
+          commandSyncedAt: now,
+          updatedBy: userId,
+          updatedAt: now,
+        },
+        $setOnInsert: {
+          tenantId,
+          commandLocationId,
+          isDefault: false,
+          createdBy: userId,
+          createdAt: now,
+          isArchived: false,
+        },
+      },
+      { upsert: true },
+    );
+    if (result.upsertedCount > 0) counts.created++;
+    else counts.updated++;
+  }
+  return counts;
+}
+
+/**
  * Run the selected imports for a tenant. Each entity is independent — one
  * failing does not abort the others; failures surface in `errors`.
  */
@@ -480,6 +641,8 @@ export async function importFromCommand(
     vendors: () => importVendors(tid, uid, authTenantId),
     locations: () => importLocations(tid, uid, authTenantId),
     stock: () => importStock(tid, uid, authTenantId),
+    units: () => importUnits(tid, uid, authTenantId),
+    partLocations: () => importPartLocations(tid, uid, authTenantId),
   };
 
   for (const entity of entities) {

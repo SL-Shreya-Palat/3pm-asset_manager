@@ -27,6 +27,7 @@ import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
+import { SourceBadge, CommandManagedBanner } from '@/components/command/source-badge';
 
 /** Generic settings item shape. */
 export interface SettingsItem {
@@ -35,6 +36,8 @@ export interface SettingsItem {
   symbol?: string;
   description?: string;
   isDefault?: boolean;
+  /** 'command' when mastered in Command (read-only, auto-synced), else 'local'. */
+  source?: string;
 }
 
 /** Field configuration for the create/edit dialog. */
@@ -56,6 +59,11 @@ interface InventorySettingsListProps {
   extraColumns?: Array<{ key: string; header: string }>;
   /** Optional callback fired after a create, update, or delete succeeds. */
   onDataChange?: () => void;
+  /**
+   * When true, this lookup is mastered in Command: hide create, mark
+   * Command-sourced rows read-only + badge them, and show the managed banner.
+   */
+  commandManaged?: boolean;
 }
 
 export function InventorySettingsList({
@@ -66,6 +74,7 @@ export function InventorySettingsList({
   nameField = 'name',
   extraColumns = [],
   onDataChange,
+  commandManaged = false,
 }: InventorySettingsListProps) {
   const [items, setItems] = useState<SettingsItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -169,38 +178,51 @@ export function InventorySettingsList({
         header: 'Actions',
         align: 'right' as const,
         pinned: true,
-        render: (item) => (
-          <RowActions>
-            {showArchived ? (
-              <>
-                <RowActionButton
-                  label="Unarchive"
-                  icon={<ArchiveRestore />}
-                  onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
-                />
-                <RowActionButton
-                  label="Delete"
-                  tone="destructive"
-                  icon={<Trash2 />}
-                  onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
-                />
-              </>
-            ) : (
-              <>
-                <RowActionButton label="Edit" icon={<Edit />} onClick={() => openEditDialog(item)} />
-                <RowActionButton
-                  label="Archive"
-                  icon={<Archive />}
-                  onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
-                />
-              </>
-            )}
-          </RowActions>
-        ),
+        render: (item) => {
+          // Command-mastered rows are read-only here — no Edit/Archive.
+          const isCommandRow = commandManaged && item.source === 'command';
+          if (isCommandRow) return null;
+          return (
+            <RowActions>
+              {showArchived ? (
+                <>
+                  <RowActionButton
+                    label="Unarchive"
+                    icon={<ArchiveRestore />}
+                    onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
+                  />
+                  <RowActionButton
+                    label="Delete"
+                    tone="destructive"
+                    icon={<Trash2 />}
+                    onClick={() => { setDeletingItem(item); setDeleteDialogOpen(true); }}
+                  />
+                </>
+              ) : (
+                <>
+                  <RowActionButton label="Edit" icon={<Edit />} onClick={() => openEditDialog(item)} />
+                  <RowActionButton
+                    label="Archive"
+                    icon={<Archive />}
+                    onClick={() => { setArchivingItem(item); setArchiveDialogOpen(true); }}
+                  />
+                </>
+              )}
+            </RowActions>
+          );
+        },
       },
     ];
+    // Source column (Command / Local) only when this lookup is Command-managed.
+    if (commandManaged) {
+      cols.splice(cols.length - 1, 0, {
+        key: 'source',
+        header: 'Source',
+        render: (item) => <SourceBadge source={item.source} />,
+      });
+    }
     return cols;
-  }, [nameField, extraColumns, showArchived]);
+  }, [nameField, extraColumns, showArchived, commandManaged]);
 
   // Dialog helpers
   const openCreateDialog = () => {
@@ -307,13 +329,15 @@ export function InventorySettingsList({
           <h2 className="text-lg font-semibold text-foreground">{title}</h2>
           <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
         </div>
-        {!showArchived && (
+        {!showArchived && !commandManaged && (
           <Button size="sm" onClick={openCreateDialog}>
             <Plus className="h-4 w-4" />
             {createLabel}
           </Button>
         )}
       </div>
+
+      {commandManaged && <CommandManagedBanner className="mb-4" />}
 
       {/* Toolbar */}
       <DataTableToolbar

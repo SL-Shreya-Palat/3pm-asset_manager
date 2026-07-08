@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   const teamId = searchParams.get('teamId') || undefined;
   const showArchived = searchParams.get('showArchived') === 'true';
 
-  const result = await getAllDrivers(user.currentTenantId, { page, limit, search, teamId, showArchived });
+  const result = await getAllDrivers(user.currentTenantId, { page, limit, search, teamId, showArchived, userId: user.id });
   return NextResponse.json({ data: result, error: null });
 }
 

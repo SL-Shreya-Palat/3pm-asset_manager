@@ -42,6 +42,22 @@ function isOpen(tenantId: string): boolean {
   return b ? Date.now() < b.openUntil : false;
 }
 
+/**
+ * Per-tenant circuit-breaker snapshot for diagnostics (the health endpoint).
+ * `openForMs` is the remaining cooldown (0 when closed).
+ */
+export function getCircuitState(tenantId: string | null): {
+  open: boolean;
+  consecutiveFailures: number;
+  openForMs: number;
+} {
+  if (!tenantId) return { open: false, consecutiveFailures: 0, openForMs: 0 };
+  const b = breakers.get(tenantId);
+  if (!b) return { open: false, consecutiveFailures: 0, openForMs: 0 };
+  const openForMs = Math.max(0, b.openUntil - Date.now());
+  return { open: openForMs > 0, consecutiveFailures: b.consecutiveFailures, openForMs };
+}
+
 interface CommandConfig {
   baseUrl: string;
   clientId: string;

@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
   const vendorType = searchParams.get('vendorType') || undefined;
   const showArchived = searchParams.get('showArchived') === 'true';
 
-  const result = await getAllVendors(user.currentTenantId, { page, limit, search, vendorType, showArchived });
+  const result = await getAllVendors(user.currentTenantId, { page, limit, search, vendorType, showArchived, userId: user.id });
   return NextResponse.json({ data: result, error: null });
 }
 

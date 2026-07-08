@@ -26,6 +26,8 @@ export interface PartRow {
   vendors: PartVendorRow[];
   stockLocations: StockLocationRow[];
   createdAt: string;
+  /** 'command' when mastered in Command (read-only, auto-synced), else 'local'. */
+  source?: string;
 }
 
 /** Lookup option for settings dropdowns. */

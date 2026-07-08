@@ -22,6 +22,8 @@ export interface DriverRow {
   healthCertificate?: string;
   tenantMemberId?: string;
   createdAt: string;
+  /** 'command' when mastered in Command (read-only, auto-synced), else 'local'. */
+  source?: string;
 }
 
 export interface TeamOption {

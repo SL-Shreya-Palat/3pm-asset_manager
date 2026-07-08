@@ -26,6 +26,8 @@ import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
+import { useConnection } from '@/hooks/use-connection';
+import { SourceBadge, CommandManagedBanner } from '@/components/command/source-badge';
 import { VendorForm } from './vendor-form';
 import type { VendorRow, Pagination } from './types';
 
@@ -50,6 +52,9 @@ export function VendorsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch, debouncedSearch] = useDebouncedSearch(300);
   const [rowsPerPage, setRowsPerPage] = useState(25);
+
+  // Connected to Command → vendors are mastered there (read-only, auto-synced).
+  const { connected } = useConnection();
 
   // Table features
   const {
@@ -272,28 +277,45 @@ export function VendorsPage() {
       ),
     },
     {
+      key: 'source',
+      header: 'Source',
+      label: 'Source',
+      render: (vendor) => <SourceBadge source={vendor.source} />,
+    },
+    {
       key: 'actions',
       header: 'Actions',
       align: 'right',
-      render: (vendor) => (
-        <RowActions>
-          {!showArchived && (
-            <>
-              <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/vendors/${vendor.id}`)} />
-              <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(vendor)} />
-              <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(vendor)} />
-            </>
-          )}
-          {showArchived && (
-            <>
-              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(vendor)} />
-              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(vendor)} />
-            </>
-          )}
-        </RowActions>
-      ),
+      render: (vendor) => {
+        // Command-mastered vendors are read-only here — only View.
+        const isCommandRow = connected && vendor.source === 'command';
+        return (
+          <RowActions>
+            {!showArchived && (
+              <>
+                <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/vendors/${vendor.id}`)} />
+                {!isCommandRow && (
+                  <>
+                    <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(vendor)} />
+                    <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(vendor)} />
+                  </>
+                )}
+              </>
+            )}
+            {showArchived && (
+              <>
+                <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(vendor)} />
+                <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(vendor)} />
+              </>
+            )}
+          </RowActions>
+        );
+      },
     },
   ];
+
+  // Hide the Source column when standalone (every row would just read "Local").
+  const columns = connected ? vendorColumns : vendorColumns.filter((c) => c.key !== 'source');
 
   return (
     <div className="relative flex h-full">
@@ -301,20 +323,23 @@ export function VendorsPage() {
       <div className="flex flex-col flex-1 min-w-0">
         {/* Header */}
         <PageHeader title="Vendors" description="Manage suppliers and service providers for your operations" count={pagination.total}>
-          <Button onClick={handleOpenCreate}>
-            <Plus className="h-4 w-4" />
-            Add Vendor
-          </Button>
+          {!connected && (
+            <Button onClick={handleOpenCreate}>
+              <Plus className="h-4 w-4" />
+              Add Vendor
+            </Button>
+          )}
         </PageHeader>
 
-        <div className="px-6 pb-3">
+        <div className="space-y-3 px-6 pb-3">
+          {connected && <CommandManagedBanner />}
           <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
         </div>
 
         {/* Toolbar + Table */}
         <div className="flex-1 overflow-auto px-6 pb-6">
           <DataTableToolbar
-            columns={vendorColumns}
+            columns={columns}
             hiddenColumnKeys={hiddenColumnKeys}
             onHiddenColumnKeysChange={setHiddenColumnKeys}
             density={density}
@@ -328,7 +353,7 @@ export function VendorsPage() {
             }
           />
           <DataTable<VendorRow>
-            columns={vendorColumns}
+            columns={columns}
             data={vendors}
             pagination={pagination}
             loading={loading}
