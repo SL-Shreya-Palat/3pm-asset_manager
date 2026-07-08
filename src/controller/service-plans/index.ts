@@ -152,12 +152,20 @@ export async function updateServicePlan(
     $set.name = trimmed;
   }
   if (input.schedules !== undefined) {
-    // Preserve existing schedule ids by name/id so history references survive edits.
+    // Preserve existing schedule ids (and task links) by name so history
+    // references survive edits even when the UI doesn't round-trip them.
     const prior = new Map(
-      (existing.schedules as ScheduleItem[] | undefined)?.map((s) => [s.name, s.id]) ?? [],
+      (existing.schedules as ScheduleItem[] | undefined)?.map((s) => [s.name, s]) ?? [],
     );
     $set.schedules = buildSchedules(
-      input.schedules.map((s) => ({ ...s, id: s.id || prior.get(s.name) })),
+      input.schedules.map((s) => ({
+        ...s,
+        id: s.id || prior.get(s.name)?.id,
+        serviceTaskId:
+          s.serviceTaskId !== undefined
+            ? s.serviceTaskId
+            : prior.get(s.name)?.serviceTaskId?.toString() ?? null,
+      })),
     );
   }
   if (input.serviceTaskIds !== undefined) {

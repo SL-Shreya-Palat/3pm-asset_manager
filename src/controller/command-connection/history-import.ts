@@ -26,6 +26,7 @@ import { ObjectId } from 'mongodb';
 import {
   getAssetsCollection,
   getServicePlansCollection,
+  getServiceTasksCollection,
   getServiceHistoryCollection,
   getMeterReadingsCollection,
   getInspectionSubmissionsCollection,
@@ -49,6 +50,8 @@ export interface HistoryBatchResult {
   errors: string[];
   nextCursor: number | null;
   done: boolean;
+  /** Service tasks auto-created from unique schedule names (servicePlans only). */
+  tasksCreated?: number;
 }
 
 const PAGE_LIMIT = 100;
@@ -211,26 +214,85 @@ async function importServicePlans(
   const assetsCol = await getAssetsCollection();
   const now = new Date();
 
+  // ── Service tasks FIRST: one task per unique schedule name (tenant-wide) ──
+  // Existing tasks (user-created or from a prior run) are reused by title
+  // (case-insensitive); only the missing ones are inserted, in one insertMany.
+  const normName = (s: string) => s.trim().toLowerCase();
+  const wantedNames = new Map<string, string>(); // normalized → display title
+  for (const plan of plans) {
+    for (const s of Array.isArray(plan.schedules) ? plan.schedules : []) {
+      const name = str(s?.name);
+      if (name && s.archived !== true) wantedNames.set(normName(name), name);
+    }
+  }
+  const taskByName = new Map<string, ObjectId>();
+  if (wantedNames.size > 0) {
+    const tasksCol = await getServiceTasksCollection();
+    const existingTasks = await tasksCol
+      .find({ tenantId: tenantOid }, { projection: { title: 1 } })
+      .toArray();
+    for (const t of existingTasks) {
+      const key = normName(String(t.title ?? ''));
+      if (key && !taskByName.has(key)) taskByName.set(key, t._id);
+    }
+    const missing = [...wantedNames].filter(([key]) => !taskByName.has(key));
+    if (missing.length > 0) {
+      const docs = missing.map(([, title]) => ({
+        _id: new ObjectId(),
+        tenantId: tenantOid,
+        title,
+        description: 'Created from Command service plan import',
+        createdBy: userOid,
+        updatedBy: userOid,
+        createdAt: now,
+        updatedAt: now,
+        isActive: true,
+        isArchived: false,
+        archivedAt: null,
+        archivedBy: null,
+      }));
+      await tasksCol.insertMany(docs);
+      for (const d of docs) taskByName.set(normName(d.title), d._id);
+      result.tasksCreated = docs.length;
+    }
+  }
+
   for (const plan of plans) {
     result.processed++;
     const commandPlanId = str(plan._id);
     const planName = str(plan.servicePlan) ?? 'Service plan';
     if (!commandPlanId) { result.skipped++; continue; }
+    try {
 
     // Preserve every schedule with its group + order (id from Command's schedule
-    // _id when present, so servicing references resolve after import).
+    // _id when present, so servicing references resolve after import). Each
+    // schedule links its service task (created above) by name.
     const schedules = (Array.isArray(plan.schedules) ? plan.schedules : []).map(
-      (s: any, i: number) => ({
-        id: str(s._id) ?? `${commandPlanId}-${i}`,
-        name: str(s.name) ?? `Schedule ${i + 1}`,
-        unitOfMeasurement: str(s.unitOfMeasurement) ?? '',
-        serviceInterval: num(s.serviceInterval) ?? null,
-        recurring: s.recurring !== false,
-        archived: s.archived === true,
-        sortOrder: num(s.sortOrder) ?? i + 1,
-        serviceGroup: num(s.serviceGroup) ?? null,
-      }),
+      (s: any, i: number) => {
+        const name = str(s.name) ?? `Schedule ${i + 1}`;
+        return {
+          id: str(s._id) ?? `${commandPlanId}-${i}`,
+          name,
+          unitOfMeasurement: str(s.unitOfMeasurement) ?? '',
+          serviceInterval: num(s.serviceInterval) ?? null,
+          recurring: s.recurring !== false,
+          archived: s.archived === true,
+          sortOrder: num(s.sortOrder) ?? i + 1,
+          serviceGroup: num(s.serviceGroup) ?? null,
+          serviceTaskId: taskByName.get(normName(name)) ?? null,
+        };
+      },
     );
+
+    // Unique task ids across this plan's schedules → plan-level serviceTaskIds.
+    const planTaskIds: ObjectId[] = [];
+    const seenTask = new Set<string>();
+    for (const s of schedules) {
+      if (s.serviceTaskId && !seenTask.has(String(s.serviceTaskId))) {
+        seenTask.add(String(s.serviceTaskId));
+        planTaskIds.push(s.serviceTaskId);
+      }
+    }
 
     const upsert = await plansCol.updateOne(
       { tenantId: tenantOid, commandServicePlanId: commandPlanId },
@@ -241,7 +303,7 @@ async function importServicePlans(
           source: 'command',
           name: planName,
           schedules,
-          serviceTaskIds: [],
+          serviceTaskIds: planTaskIds,
           createdBy: userOid,
           createdAt: now,
           updatedBy: userOid,
@@ -255,6 +317,35 @@ async function importServicePlans(
       { upsert: true },
     );
     if (upsert.upsertedCount > 0) result.created++;
+
+    // Plan existed already (seed-once): ADDITIVE task backfill only — add task
+    // ids and fill schedule links that are still missing; never overwrites an
+    // AM edit (an existing serviceTaskId or renamed schedule is left alone).
+    // One filter per UNIQUE name: `$[st]` updates every matching element, and
+    // per-index filters would conflict when a plan repeats a schedule name.
+    if (upsert.upsertedCount === 0 && planTaskIds.length > 0) {
+      const fillSet: Record<string, unknown> = {};
+      const arrayFilters: Record<string, unknown>[] = [];
+      const filteredNames = new Set<string>();
+      schedules.forEach((s: { name: string; serviceTaskId: ObjectId | null }) => {
+        if (!s.serviceTaskId || filteredNames.has(normName(s.name))) return;
+        filteredNames.add(normName(s.name));
+        const key = `st${arrayFilters.length}`;
+        fillSet[`schedules.$[${key}].serviceTaskId`] = s.serviceTaskId;
+        // `null` matches both explicit null and a missing field.
+        arrayFilters.push({ [`${key}.name`]: s.name, [`${key}.serviceTaskId`]: null });
+      });
+      // No updatedAt bump: this only writes when a link/id is actually added,
+      // so an idempotent re-run leaves untouched plans byte-for-byte identical.
+      await plansCol.updateOne(
+        { tenantId: tenantOid, commandServicePlanId: commandPlanId },
+        {
+          $set: fillSet,
+          $addToSet: { serviceTaskIds: { $each: planTaskIds } },
+        },
+        { arrayFilters },
+      );
+    }
 
     // Resolve the AM plan id + link assets that don't already have a plan.
     const amPlan = await plansCol.findOne(
@@ -273,6 +364,10 @@ async function importServicePlans(
         },
         { $set: { servicePlanId: amPlan._id, updatedAt: now } },
       );
+    }
+    } catch (e) {
+      // One bad plan must not abort the batch — report and keep going.
+      result.errors.push(`${planName}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   return result;

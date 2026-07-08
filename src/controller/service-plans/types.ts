@@ -26,6 +26,8 @@ export interface ScheduleItem {
   sortOrder: number;
   /** Hierarchical service group number (starts at 1); null = own group. */
   serviceGroup: number | null;
+  /** Service task performed by this schedule (seeded by the Command import). */
+  serviceTaskId?: ObjectId | null;
 }
 
 /** Stored service plan document. */
@@ -61,6 +63,7 @@ export interface ScheduleItemInput {
   archived?: boolean;
   sortOrder?: number;
   serviceGroup?: number | null;
+  serviceTaskId?: string | null;
 }
 
 export interface CreateServicePlanInput {
@@ -81,6 +84,7 @@ export interface ScheduleItemResponse {
   archived: boolean;
   sortOrder: number;
   serviceGroup: number | null;
+  serviceTaskId: string | null;
 }
 
 /** Serialized plan for API responses. */

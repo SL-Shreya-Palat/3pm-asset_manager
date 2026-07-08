@@ -40,6 +40,10 @@ export function buildSchedules(inputs: ScheduleItemInput[] | undefined): Schedul
         s.serviceGroup == null || Number.isNaN(Number(s.serviceGroup))
           ? null
           : Number(s.serviceGroup),
+      serviceTaskId:
+        s.serviceTaskId && ObjectId.isValid(s.serviceTaskId)
+          ? ObjectId.createFromHexString(String(s.serviceTaskId))
+          : null,
     }));
 }
 
@@ -60,6 +64,7 @@ export function serializeServicePlan(
       archived: s.archived === true,
       sortOrder: s.sortOrder ?? 0,
       serviceGroup: s.serviceGroup ?? null,
+      serviceTaskId: s.serviceTaskId ? String(s.serviceTaskId) : null,
     })),
     serviceTaskIds: Array.isArray(doc.serviceTaskIds)
       ? (doc.serviceTaskIds as ObjectId[]).map((id) => id.toString())
