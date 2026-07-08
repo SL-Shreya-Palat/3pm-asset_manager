@@ -46,6 +46,11 @@ import { MeterTypeSelect } from "@/components/maintenance/service-fields";
 import { cn, formatDate } from "@/lib/utils";
 import { useDebouncedSearch } from "@/hooks/use-debounced-search";
 import { useDataTable } from "@/hooks/use-data-table";
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 import { WorkOrderForm } from "./work-order-form";
 import type {
   WorkOrderRow,
@@ -54,8 +59,17 @@ import type {
   Pagination,
 } from "./types";
 
+const WO_FORM_ID = 'maintenance.workOrders.workOrder';
+
 export function WorkOrdersPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+
+  // Permission levels for row-level "OWN" checks
+  const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(WO_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(WO_FORM_ID);
+  const deleteLevel = hasFullAccess ? 'ALL' : permissionIndex.getDeleteLevel(WO_FORM_ID);
   const [orders, setOrders] = useState<WorkOrderRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1,
@@ -400,17 +414,25 @@ export function WorkOrdersPage() {
         <RowActions>
           {showArchived ? (
             <>
-              <RowActionButton
-                label="Unarchive"
-                icon={<ArchiveRestore />}
-                onClick={() => handleOpenArchive(order)}
-              />
-              <RowActionButton
-                label="Delete"
-                tone="destructive"
-                icon={<Trash2 />}
-                onClick={() => handleOpenDelete(order)}
-              />
+              {checkRecordOwnership(archiveLevel, order.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.workOrders.form.archive}>
+                  <RowActionButton
+                    label="Unarchive"
+                    icon={<ArchiveRestore />}
+                    onClick={() => handleOpenArchive(order)}
+                  />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(deleteLevel, order.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.workOrders.form.delete}>
+                  <RowActionButton
+                    label="Delete"
+                    tone="destructive"
+                    icon={<Trash2 />}
+                    onClick={() => handleOpenDelete(order)}
+                  />
+                </PermissionGuard>
+              )}
             </>
           ) : (
             <>
@@ -422,17 +444,25 @@ export function WorkOrdersPage() {
                   router.push(`/maintenance/work-orders/${order.id}`)
                 }
               />
-              <RowActionButton
-                label="Edit"
-                icon={<Edit />}
-                onClick={() => handleOpenEdit(order)}
-              />
-              <RowActionButton
-                label="Archive"
-                tone="destructive"
-                icon={<Archive />}
-                onClick={() => handleOpenArchive(order)}
-              />
+              {checkRecordOwnership(editLevel, order.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.workOrders.form.edit}>
+                  <RowActionButton
+                    label="Edit"
+                    icon={<Edit />}
+                    onClick={() => handleOpenEdit(order)}
+                  />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(archiveLevel, order.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.workOrders.form.archive}>
+                  <RowActionButton
+                    label="Archive"
+                    tone="destructive"
+                    icon={<Archive />}
+                    onClick={() => handleOpenArchive(order)}
+                  />
+                </PermissionGuard>
+              )}
             </>
           )}
         </RowActions>
@@ -449,10 +479,12 @@ export function WorkOrdersPage() {
           description="Schedule, assign, and track maintenance and repair jobs"
           count={pagination.total}
         >
-          <Button onClick={handleOpenCreate}>
-            <Plus className="h-4 w-4" />
-            Create Work Order
-          </Button>
+          <PermissionGuard permission={Permissions.maintenance.workOrders.form.create}>
+            <Button onClick={handleOpenCreate}>
+              <Plus className="h-4 w-4" />
+              Create Work Order
+            </Button>
+          </PermissionGuard>
         </PageHeader>
 
         {/* Dynamic Status Tabs + Archive Toggle */}

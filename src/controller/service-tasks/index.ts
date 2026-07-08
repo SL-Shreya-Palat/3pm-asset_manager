@@ -10,7 +10,7 @@ import type { CreateServiceTaskInput, UpdateServiceTaskInput } from './types';
 /** List service tasks with pagination and search. */
 export async function getAllServiceTasks(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; showArchived?: boolean },
+  options: { page?: number; limit?: number; search?: string; showArchived?: boolean; createdBy?: string },
 ) {
   const collection = await getServiceTasksCollection();
   const page = Math.max(1, options.page || 1);
@@ -20,6 +20,10 @@ export async function getAllServiceTasks(
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
   };
+
+  if (options.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+  }
 
   if (options.showArchived) {
     filter.isArchived = true;

@@ -14,15 +14,15 @@ export function validateCreatePartInput(input: CreatePartInput): ValidationResul
   const errors: Record<string, string> = {};
 
   if (!isNonEmptyString(input.name)) {
-    errors.name = 'Part name is required';
+    errors.name = 'Stock name is required';
   } else if (input.name.trim().length > 160) {
-    errors.name = 'Part name must be at most 160 characters';
+    errors.name = 'Stock name must be at most 160 characters';
   }
 
   if (!isNonEmptyString(input.partNumber)) {
-    errors.partNumber = 'Part number is required';
+    errors.partNumber = 'Stock number is required';
   } else if (input.partNumber.trim().length > 80) {
-    errors.partNumber = 'Part number must be at most 80 characters';
+    errors.partNumber = 'Stock number must be at most 80 characters';
   }
 
   if (input.upc) {
@@ -117,5 +117,6 @@ export function serializePart(doc: Record<string, unknown>): Record<string, unkn
     // Command linkage — 'command'-sourced stock badges as read-only master data.
     source: doc.source || 'local',
     commandSyncedAt: doc.commandSyncedAt ? (doc.commandSyncedAt as Date).toISOString() : null,
+    createdBy: doc.createdBy ? (doc.createdBy as { toString(): string }).toString() : null,
   };
 }

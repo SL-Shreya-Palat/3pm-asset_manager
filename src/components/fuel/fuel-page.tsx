@@ -1,20 +1,25 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   Plus,
   Edit,
-  Trash2,
   Fuel,
   Eye,
   TrendingUp,
   DollarSign,
   Gauge,
   Droplets,
+  Archive,
+  ArchiveRestore,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 
 import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/ui/search-input';
@@ -31,8 +36,12 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
 import { FuelForm } from './fuel-form';
@@ -75,7 +84,17 @@ function formatNumber(value?: number, decimals = 2) {
   return value.toFixed(decimals);
 }
 
+const FUEL_FORM_ID = 'fuel.fuel.fuelEntry';
+
 export function FuelPage() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+
+  // Permission levels for row-level "OWN" checks
+  const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(FUEL_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(FUEL_FORM_ID);
+  const deleteLevel = hasFullAccess ? 'ALL' : permissionIndex.getDeleteLevel(FUEL_FORM_ID);
   const [transactions, setTransactions] = useState<FuelTransactionRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1, limit: 25, total: 0, hasMore: false,
@@ -97,14 +116,18 @@ export function FuelPage() {
   const [panelMode, setPanelMode] = useState<'create' | 'edit'>('create');
   const [editingTransaction, setEditingTransaction] = useState<FuelTransactionRow | null>(null);
 
-  // View dialog
-  const [viewDialogOpen, setViewDialogOpen] = useState(false);
-  const [viewTransaction, setViewTransaction] = useState<FuelTransactionRow | null>(null);
+  // Archive dialog
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingTransaction, setArchivingTransaction] = useState<FuelTransactionRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
   // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingTransaction, setDeletingTransaction] = useState<FuelTransactionRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Show archived toggle
+  const [showArchived, setShowArchived] = useState(false);
 
   // Import result dialog state
   const [importResultOpen, setImportResultOpen] = useState(false);
@@ -118,6 +141,7 @@ export function FuelPage() {
       params.set('page', String(page));
       params.set('limit', String(rowsPerPage));
       if (debouncedSearch) params.set('search', debouncedSearch);
+      if (showArchived) params.set('showArchived', 'true');
 
       const fuelTypeFilter = filters.fuelType;
       if (fuelTypeFilter && Array.isArray(fuelTypeFilter) && fuelTypeFilter.length === 1) {
@@ -134,7 +158,7 @@ export function FuelPage() {
     } finally {
       setLoading(false);
     }
-  }, [rowsPerPage, debouncedSearch, filters.fuelType]);
+  }, [rowsPerPage, debouncedSearch, filters.fuelType, showArchived]);
 
   // ── Fetch analytics ──
   const fetchAnalytics = useCallback(async () => {
@@ -178,13 +202,36 @@ export function FuelPage() {
     fetchAnalytics();
   };
 
-  // ── View dialog ──
+  // ── Navigate to detail page ──
   const handleOpenView = (txn: FuelTransactionRow) => {
-    setViewTransaction(txn);
-    setViewDialogOpen(true);
+    router.push(`/fuel/${txn.id}`);
   };
 
-  // ── Delete dialog ──
+  // ── Archive dialog ──
+  const handleOpenArchive = (txn: FuelTransactionRow) => {
+    setArchivingTransaction(txn);
+    setArchiveDialogOpen(true);
+  };
+
+  const handleArchive = async () => {
+    if (!archivingTransaction) return;
+    setArchiving(true);
+    try {
+      await axios.patch(`/api/fuel/${archivingTransaction.id}/archive`, {
+        archived: !archivingTransaction.isArchived,
+      }, { withCredentials: true });
+      setArchiveDialogOpen(false);
+      setArchivingTransaction(null);
+      fetchTransactions(pagination.page);
+      fetchAnalytics();
+    } catch (err) {
+      console.error('Failed to archive fuel transaction:', err);
+    } finally {
+      setArchiving(false);
+    }
+  };
+
+  // ── Delete handlers ──
   const handleOpenDelete = (txn: FuelTransactionRow) => {
     setDeletingTransaction(txn);
     setDeleteDialogOpen(true);
@@ -324,9 +371,47 @@ export function FuelPage() {
       align: 'right',
       render: (txn) => (
         <RowActions>
-          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(txn)} />
-          <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(txn)} />
-          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(txn)} />
+          {showArchived ? (
+            <>
+              {checkRecordOwnership(archiveLevel, txn.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.fuel.fuel.form.archive}>
+                  <RowActionButton
+                    label="Unarchive"
+                    icon={<ArchiveRestore />}
+                    onClick={() => handleOpenArchive(txn)}
+                  />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(deleteLevel, txn.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.fuel.fuel.form.delete}>
+                  <RowActionButton
+                    label="Delete"
+                    tone="destructive"
+                    icon={<Trash2 />}
+                    onClick={() => handleOpenDelete(txn)}
+                  />
+                </PermissionGuard>
+              )}
+            </>
+          ) : (
+            <>
+              <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(txn)} />
+              {checkRecordOwnership(editLevel, txn.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.fuel.fuel.form.edit}>
+                  <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(txn)} />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(archiveLevel, txn.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.fuel.fuel.form.archive}>
+                  <RowActionButton
+                    label="Archive"
+                    icon={<Archive />}
+                    onClick={() => handleOpenArchive(txn)}
+                  />
+                </PermissionGuard>
+              )}
+            </>
+          )}
         </RowActions>
       ),
     },
@@ -338,14 +423,18 @@ export function FuelPage() {
       <div className="flex flex-col flex-1 min-w-0">
         {/* Header */}
         <PageHeader title="Fuel" description="Record and monitor fuel transactions across your fleet" count={pagination.total}>
-          <FuelImportExport
-            onImported={() => { fetchTransactions(1); fetchAnalytics(); }}
-            onImportResult={(r) => { setImportResult(r); setImportResultOpen(true); }}
-          />
-          <Button onClick={handleOpenCreate}>
-            <Plus className="h-4 w-4" />
-            Add Transaction
-          </Button>
+          <PermissionGuard permission={Permissions.fuel.fuel.form.create}>
+            <FuelImportExport
+              onImported={() => { fetchTransactions(1); fetchAnalytics(); }}
+              onImportResult={(r) => { setImportResult(r); setImportResultOpen(true); }}
+            />
+          </PermissionGuard>
+          <PermissionGuard permission={Permissions.fuel.fuel.form.create}>
+            <Button onClick={handleOpenCreate}>
+              <Plus className="h-4 w-4" />
+              Add Transaction
+            </Button>
+          </PermissionGuard>
         </PageHeader>
 
         {/* Analytics summary cards */}
@@ -389,11 +478,17 @@ export function FuelPage() {
             onFilterChange={setFilter}
             onFiltersClear={clearFilters}
             searchNode={
-              <SearchInput
-                value={search}
-                onChange={setSearch}
-                placeholder="Search by asset, driver, station..."
-              />
+              <div className="flex items-center gap-2">
+                <ShowArchivedToggle
+                  checked={showArchived}
+                  onCheckedChange={setShowArchived}
+                />
+                <SearchInput
+                  value={search}
+                  onChange={setSearch}
+                  placeholder="Search by asset, driver, station..."
+                />
+              </div>
             }
           />
           <DataTable<FuelTransactionRow>
@@ -442,53 +537,25 @@ export function FuelPage() {
         )}
       </div>
 
-      {/* View Transaction Dialog */}
-      <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle>Fuel Transaction Details</DialogTitle>
-            <DialogDescription>
-              {viewTransaction?.assetName || 'Transaction'} — {viewTransaction ? formatDate(viewTransaction.date) : ''}
-            </DialogDescription>
-          </DialogHeader>
+      {/* Archive/Unarchive Transaction Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={archivingTransaction?.assetName || 'Fuel Transaction'}
+        action={archivingTransaction?.isArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
 
-          <div className="flex-1 overflow-y-auto py-4">
-            {viewTransaction && <ViewTransactionContent txn={viewTransaction} />}
-          </div>
-
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setViewDialogOpen(false);
-                if (viewTransaction) handleOpenEdit(viewTransaction);
-              }}
-            >
-              <Edit className="h-4 w-4 mr-1" />
-              Edit
-            </Button>
-            <Button variant="outline" onClick={() => setViewDialogOpen(false)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Delete Transaction Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Fuel Transaction</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this fuel transaction for &quot;{deletingTransaction?.assetName}&quot;? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Delete Confirmation Dialog */}
+      <ArchiveConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={deletingTransaction?.assetName || 'Fuel Transaction'}
+        action="delete"
+        onConfirm={handleDelete}
+        loading={deleting}
+      />
 
       {/* Import Result Dialog */}
       <Dialog open={importResultOpen} onOpenChange={setImportResultOpen}>
@@ -561,77 +628,6 @@ export function FuelPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-/** Read-only view of transaction details shown in the view dialog. */
-function ViewTransactionContent({ txn }: { txn: FuelTransactionRow }) {
-  return (
-    <div className="space-y-6">
-      {/* Transaction Info */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Transaction Info</h3>
-        <Separator className="mb-4" />
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <ViewField label="Date" value={formatDate(txn.date)} />
-            <ViewField label="Fuel Type" value={txn.fuelType} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <ViewField label="Asset" value={txn.assetName} />
-            <ViewField label="Driver" value={txn.driverName} />
-          </div>
-          <ViewField label="Station" value={txn.station} />
-          <ViewField label="Notes" value={txn.notes} />
-        </div>
-      </div>
-
-      {/* Cost & Volume */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Cost & Volume</h3>
-        <Separator className="mb-4" />
-        <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
-            <ViewField label="Volume" value={`${formatNumber(txn.volume)} gal`} />
-            <ViewField label="Unit Cost" value={formatCurrency(txn.unitCost)} />
-            <ViewField label="Total Cost" value={formatCurrency(txn.totalCost)} />
-          </div>
-        </div>
-      </div>
-
-      {/* Mileage & Efficiency */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Mileage & Efficiency</h3>
-        <Separator className="mb-4" />
-        <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
-            <ViewField label="Start Mileage" value={txn.startMileage != null ? formatNumber(txn.startMileage, 0) : undefined} />
-            <ViewField label="End Mileage" value={txn.endMileage != null ? formatNumber(txn.endMileage, 0) : undefined} />
-            <ViewField label="Distance" value={txn.distance != null ? `${formatNumber(txn.distance, 1)} mi` : undefined} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <ViewField label="Fuel Economy" value={txn.economy != null ? `${formatNumber(txn.economy)} MPG` : undefined} />
-            <ViewField label="Cost per Mile" value={formatCurrency(txn.costPerMile)} />
-          </div>
-        </div>
-      </div>
-
-      {/* Source */}
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-3">Source</h3>
-        <Separator className="mb-4" />
-        <ViewField label="Data Source" value={txn.source} />
-      </div>
-    </div>
-  );
-}
-
-function ViewField({ label, value }: { label: string; value?: string }) {
-  return (
-    <div>
-      <p className="text-sm font-medium text-muted-foreground">{label}</p>
-      <p className="text-sm text-foreground mt-0.5 capitalize">{value || '—'}</p>
     </div>
   );
 }

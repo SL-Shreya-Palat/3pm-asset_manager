@@ -10,6 +10,9 @@ import {
   updateFault,
   deleteFault,
 } from '@/controller/faults';
+import { getFormPermissionLevels } from '@/lib/server-permissions';
+
+const FORM_ID = 'maintenance.faults.fault';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -24,6 +27,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
   if (!fault) {
     return NextResponse.json({ data: null, error: 'Fault not found' }, { status: 404 });
   }
+
+  // "OWN" view: block access to records the user didn't create
+  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
+  if (perms.view === 'OWN' && fault.createdBy !== user.id) {
+    return NextResponse.json({ data: null, error: 'Fault not found' }, { status: 404 });
+  }
+
   return NextResponse.json({ data: fault, error: null });
 }
 
@@ -35,6 +45,19 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 
   try {
     const { id } = await context.params;
+
+    // "OWN" edit: verify the user created this fault
+    const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
+    if (perms.edit === 'OWN') {
+      const existing = await getFaultById(user.currentTenantId, id);
+      if (!existing) {
+        return NextResponse.json({ data: null, error: 'Fault not found' }, { status: 404 });
+      }
+      if (existing.createdBy !== user.id) {
+        return NextResponse.json({ data: null, error: 'You can only edit faults you created' }, { status: 403 });
+      }
+    }
+
     const body = await request.json();
     const result = await updateFault(user.currentTenantId, user.id, id, body);
 
@@ -56,6 +79,19 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params;
+
+  // "OWN" delete: verify the user created this fault
+  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
+  if (perms.delete === 'OWN') {
+    const existing = await getFaultById(user.currentTenantId, id);
+    if (!existing) {
+      return NextResponse.json({ data: null, error: 'Fault not found' }, { status: 404 });
+    }
+    if (existing.createdBy !== user.id) {
+      return NextResponse.json({ data: null, error: 'You can only delete faults you created' }, { status: 403 });
+    }
+  }
+
   const deleted = await deleteFault(user.currentTenantId, user.id, id);
   if (!deleted) {
     return NextResponse.json(

@@ -21,6 +21,7 @@ export interface DriverRow {
   licenseNumber?: string;
   healthCertificate?: string;
   tenantMemberId?: string;
+  createdBy: string | null;
   createdAt: string;
   /** 'command' when mastered in Command (read-only, auto-synced), else 'local'. */
   source?: string;

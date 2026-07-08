@@ -27,6 +27,7 @@ export interface DefectRow {
   createdAt: string;
   updatedAt: string;
   isArchived: boolean;
+  createdBy: string | null;
 }
 
 export interface LookupOption {

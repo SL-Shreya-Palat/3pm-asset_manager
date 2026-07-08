@@ -95,4 +95,5 @@ export interface ServicePlanResponse {
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;
+  createdBy: string | null;
 }

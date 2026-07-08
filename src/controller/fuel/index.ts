@@ -19,6 +19,8 @@ export async function getAllFuelTransactions(
     fuelType?: string;
     startDate?: string;
     endDate?: string;
+    showArchived?: boolean;
+    createdBy?: string;
   },
 ) {
   const collection = await getFuelTransactionsCollection();
@@ -28,8 +30,17 @@ export async function getAllFuelTransactions(
 
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
-    isArchived: { $ne: true },
   };
+
+  if (options.showArchived) {
+    filter.isArchived = true;
+  } else {
+    filter.isArchived = { $ne: true };
+  }
+
+  if (options.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+  }
 
   if (options.assetId) {
     filter.assetId = ObjectId.createFromHexString(options.assetId);
@@ -246,29 +257,17 @@ export async function updateFuelTransaction(
   return { data: updated ? serializeFuelTransaction(updated) : null, error: null };
 }
 
-/** Archive (soft-delete) a fuel transaction. */
+/** Permanently delete a fuel transaction. */
 export async function deleteFuelTransaction(tenantId: string, userId: string, transactionId: string) {
   const collection = await getFuelTransactionsCollection();
   const transactionOid = ObjectId.createFromHexString(transactionId);
   const tenantOid = ObjectId.createFromHexString(tenantId);
 
-  const now = new Date();
-  const userOid = ObjectId.createFromHexString(userId);
-
-  const result = await collection.updateOne(
-    { _id: transactionOid, tenantId: tenantOid, isArchived: { $ne: true } },
-    {
-      $set: {
-        isArchived: true,
-        archivedAt: now,
-        archivedBy: userOid,
-        updatedBy: userOid,
-        updatedAt: now,
-      },
-    },
+  const result = await collection.deleteOne(
+    { _id: transactionOid, tenantId: tenantOid },
   );
 
-  return result.modifiedCount > 0;
+  return result.deletedCount > 0;
 }
 
 /** Get fuel analytics/summary for a tenant. */

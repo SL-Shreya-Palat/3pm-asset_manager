@@ -25,6 +25,7 @@ export interface PartRow {
   maximumQuantity?: number;
   vendors: PartVendorRow[];
   stockLocations: StockLocationRow[];
+  createdBy: string | null;
   createdAt: string;
   /** 'command' when mastered in Command (read-only, auto-synced), else 'local'. */
   source?: string;

@@ -15,7 +15,7 @@ import type { CreatePartInput, UpdatePartInput } from './types';
 /** List parts with pagination, search, and optional category filter. */
 export async function getAllParts(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; categoryId?: string; showArchived?: boolean; userId?: string },
+  options: { page?: number; limit?: number; search?: string; categoryId?: string; showArchived?: boolean; userId?: string; createdBy?: string },
 ) {
   // Fresh on every call: pull the latest Command stock before reading local, so
   // new/changed records show on this load (no-op when standalone).
@@ -29,6 +29,11 @@ export async function getAllParts(
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
   };
+
+  // "OWN" view scope — only show records created by this user
+  if (options.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+  }
 
   if (options.showArchived) {
     filter.isArchived = true;
@@ -85,14 +90,14 @@ export async function createPart(tenantId: string, userId: string, input: Create
   const collection = await getPartsCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
 
-  // Check unique part number within tenant
+  // Check unique stock number within tenant
   const existing = await collection.findOne({
     tenantId: tenantOid,
     partNumber: input.partNumber.trim(),
     isArchived: { $ne: true },
   });
   if (existing) {
-    return { data: null, error: { partNumber: 'Part number already exists' } };
+    return { data: null, error: { partNumber: 'Stock number already exists' } };
   }
 
   const now = new Date();
@@ -167,18 +172,18 @@ export async function updatePart(
 
   if (input.name !== undefined) {
     const trimmed = input.name.trim();
-    if (!trimmed) return { data: null, error: { name: 'Part name is required' } };
+    if (!trimmed) return { data: null, error: { name: 'Stock name is required' } };
     $set.name = trimmed;
   }
 
   if (input.partNumber !== undefined) {
     const trimmed = input.partNumber.trim();
-    if (!trimmed) return { data: null, error: { partNumber: 'Part number is required' } };
+    if (!trimmed) return { data: null, error: { partNumber: 'Stock number is required' } };
     // Check uniqueness
     const dup = await collection.findOne({
       tenantId: tenantOid, partNumber: trimmed, _id: { $ne: partOid }, isArchived: { $ne: true },
     });
-    if (dup) return { data: null, error: { partNumber: 'Part number already exists' } };
+    if (dup) return { data: null, error: { partNumber: 'Stock number already exists' } };
     $set.partNumber = trimmed;
   }
 

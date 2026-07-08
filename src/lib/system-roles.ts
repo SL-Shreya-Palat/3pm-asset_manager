@@ -27,9 +27,19 @@ function fullGrant(formId: string): SparseFormGrant {
   return { id: formId, v: 'ALL', c: true, e: 'ALL', ar: 'ALL' };
 }
 
+/** Build a form grant with full access + inspect (for asset forms). */
+function fullGrantWithInspect(formId: string): SparseFormGrant {
+  return { id: formId, v: 'ALL', c: true, e: 'ALL', ar: 'ALL', ins: 'ALL' };
+}
+
 /** Build a form grant with view-only access. */
 function viewOnlyGrant(formId: string): SparseFormGrant {
   return { id: formId, v: 'ALL', c: false, e: false };
+}
+
+/** Build a form grant with view-only access + OWN inspect (for drivers). */
+function viewOnlyWithOwnInspect(formId: string): SparseFormGrant {
+  return { id: formId, v: 'ALL', c: false, e: false, ins: 'OWN' };
 }
 
 /** Build a form grant with view + create (no edit/archive). */
@@ -78,7 +88,7 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
     permissions: {
       v: 2,
       forms: [
-        fullGrant('assets.assets.asset'),
+        fullGrantWithInspect('assets.assets.asset'),
         viewOnlyGrant('inspections.inspectionHistory.inspection'),
         viewOnlyGrant('inspections.forms.form'),
         viewOnlyGrant('inspections.exceptionReport.exceptionReport'),
@@ -123,7 +133,7 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
     permissions: {
       v: 2,
       forms: [
-        viewOnlyGrant('assets.assets.asset'),
+        viewOnlyWithOwnInspect('assets.assets.asset'),
         viewOnlyGrant('inspections.inspectionHistory.inspection'),
         viewCreateGrant('maintenance.defects.defect'),
         viewCreateGrant('maintenance.faults.fault'),
@@ -155,7 +165,7 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
     permissions: {
       v: 2,
       forms: [
-        fullGrant('assets.assets.asset'),
+        fullGrantWithInspect('assets.assets.asset'),
         viewOnlyGrant('inspections.inspectionHistory.inspection'),
         fullGrant('maintenance.defects.defect'),
         fullGrant('maintenance.workOrders.workOrder'),
@@ -229,6 +239,7 @@ export async function seedSystemRoles(tenantId: ObjectId, userId: ObjectId): Pro
             description: def.description,
             baseCostPerHour: 0,
             chargeOutRate: 0,
+            permissions: def.permissions,
             createdBy: userId,
             createdAt: now,
             isActive: true,
@@ -236,7 +247,6 @@ export async function seedSystemRoles(tenantId: ObjectId, userId: ObjectId): Pro
           $set: {
             isSystem: def.isSystem,
             type: def.type,
-            permissions: def.permissions,
             teamScoped: def.teamScoped,
             mobileOnly: def.mobileOnly,
             isManager: def.isManager ?? null,

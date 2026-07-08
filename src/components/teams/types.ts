@@ -3,6 +3,7 @@ export interface TeamRow {
   name: string;
   assetCount: number;
   driverCount: number;
+  createdBy: string | null;
   createdAt: string;
 }
 

@@ -38,6 +38,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
 import { useSyncSubmissions } from '@/hooks/use-sync-submissions';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 import { DefectForm } from './defect-form';
 import { WorkOrderForm } from '@/components/work-orders/work-order-form';
 import type { DefectRow, Pagination } from './types';
@@ -49,8 +54,18 @@ import {
   SEVERITY_DISPLAY_NAME,
 } from './types';
 
+const DEFECT_FORM_ID = 'maintenance.defects.defect';
+
 export function DefectsPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+
+  // Permission levels for row-level "OWN" checks
+  const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(DEFECT_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(DEFECT_FORM_ID);
+  const deleteLevel = hasFullAccess ? 'ALL' : permissionIndex.getDeleteLevel(DEFECT_FORM_ID);
+
   const [defects, setDefects] = useState<DefectRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1, limit: 25, total: 0, hasMore: false,
@@ -375,8 +390,16 @@ export function DefectsPage() {
         <RowActions>
           {showArchived ? (
             <>
-              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(defect)} />
-              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(defect)} />
+              {checkRecordOwnership(archiveLevel, defect.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.defects.form.archive}>
+                  <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(defect)} />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(deleteLevel, defect.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.defects.form.delete}>
+                  <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(defect)} />
+                </PermissionGuard>
+              )}
             </>
           ) : (
             <>
@@ -385,15 +408,25 @@ export function DefectsPage() {
                   <Wrench className="h-3 w-3" />{defect.workOrderNumber}
                 </Badge>
               ) : (
-                <RowActionButton
-                  label="Create work order"
-                  icon={<Wrench />}
-                  onClick={() => handleOpenCreateWO(defect)}
-                />
+                <PermissionGuard permission={Permissions.maintenance.workOrders.form.create}>
+                  <RowActionButton
+                    label="Create work order"
+                    icon={<Wrench />}
+                    onClick={() => handleOpenCreateWO(defect)}
+                  />
+                </PermissionGuard>
               )}
               <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(defect)} />
-              <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(defect)} />
-              <RowActionButton label="Archive" tone="destructive" icon={<Archive />} onClick={() => handleOpenArchive(defect)} />
+              {checkRecordOwnership(editLevel, defect.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.defects.form.edit}>
+                  <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(defect)} />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(archiveLevel, defect.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.defects.form.archive}>
+                  <RowActionButton label="Archive" tone="destructive" icon={<Archive />} onClick={() => handleOpenArchive(defect)} />
+                </PermissionGuard>
+              )}
             </>
           )}
         </RowActions>
@@ -406,10 +439,12 @@ export function DefectsPage() {
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0">
         <PageHeader title="Defects" description="Track inspection defects from discovery through to resolution" count={pagination.total}>
-          <Button onClick={handleOpenCreate}>
-            <Plus className="h-4 w-4" />
-            Create Defect
-          </Button>
+          <PermissionGuard permission={Permissions.maintenance.defects.form.create}>
+            <Button onClick={handleOpenCreate}>
+              <Plus className="h-4 w-4" />
+              Create Defect
+            </Button>
+          </PermissionGuard>
         </PageHeader>
 
         {/* Status Tabs */}

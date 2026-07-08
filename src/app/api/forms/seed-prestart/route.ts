@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { getAuthenticatedUser } from '@/lib/auth-helper';
-import { seedInspectionForms, updateInspectionForms, getOrCreateFbSession, fbFetch } from '@/controller/seeding';
+import { seedInspectionForms, updateInspectionForms, getOrCreateFbSession, fbFetch, cleanupDuplicateFormBuilderForms } from '@/controller/seeding';
 import { getFormsCollection, getDb } from '@/lib/mongodb';
 
 export async function POST(req: NextRequest) {
@@ -30,6 +30,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Clean up any duplicate forms in the form-builder service first.
+    const duplicatesRemoved = await cleanupDuplicateFormBuilderForms({
+      userEmail: user.email,
+      userName: user.name || user.email,
+    });
+
     const forms = await seedInspectionForms({
       tenantId: user.currentTenantId,
       userId: user.id,
@@ -41,7 +47,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         data: {
-          message: `Pre-start forms ready (${seeded} newly seeded, ${forms.length - seeded} already present)`,
+          message: `Pre-start forms ready (${seeded} newly seeded, ${forms.length - seeded} already present${duplicatesRemoved > 0 ? `, ${duplicatesRemoved} duplicates removed` : ''})`,
           forms,
         },
         error: null,

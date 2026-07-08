@@ -24,7 +24,7 @@ import type { CreateDriverInput, UpdateDriverInput } from './types';
 /** List drivers with pagination and search. */
 export async function getAllDrivers(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; teamId?: string; showArchived?: boolean; userId?: string },
+  options: { page?: number; limit?: number; search?: string; teamId?: string; showArchived?: boolean; userId?: string; createdBy?: string },
 ) {
   // Fresh on every call: pull the latest Command drivers before reading local,
   // so new/changed records show on this load (no-op when standalone).
@@ -38,6 +38,11 @@ export async function getAllDrivers(
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
   };
+
+  // "OWN" view scope — only show records created by this user
+  if (options.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+  }
 
   if (options.showArchived) {
     filter.isArchived = true;

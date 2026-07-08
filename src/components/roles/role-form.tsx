@@ -131,7 +131,7 @@ export function RoleForm({ mode, initialData, roleId }: RoleFormProps) {
       moduleKey: string,
       subModuleKey: string,
       formKey: string,
-      field: 'viewLevel' | 'create' | 'editLevel' | 'archiveLevel' | 'deleteLevel',
+      field: 'viewLevel' | 'create' | 'inspectLevel' | 'editLevel' | 'archiveLevel' | 'deleteLevel',
       value: PermissionLevel | boolean,
     ) => {
       setPermissionModules((prev) =>
@@ -149,11 +149,13 @@ export function RoleForm({ mode, initialData, roleId }: RoleFormProps) {
 
                   if (field === 'viewLevel' && value === 'none') {
                     updated.create = false;
+                    updated.inspectLevel = 'none';
                     updated.editLevel = 'none';
                     updated.archiveLevel = 'none';
                     updated.deleteLevel = 'none';
                   }
                   if (field === 'viewLevel' && value === 'own') {
+                    if (updated.inspectLevel === 'all') updated.inspectLevel = 'own';
                     if (updated.editLevel === 'all') updated.editLevel = 'own';
                     if (updated.archiveLevel === 'all') updated.archiveLevel = 'own';
                     if (updated.deleteLevel === 'all') updated.deleteLevel = 'own';
@@ -195,7 +197,8 @@ export function RoleForm({ mode, initialData, roleId }: RoleFormProps) {
   // ---------------------------------------------------------------------------
 
   const handleBulkLevelChange = useCallback(
-    (field: 'viewLevel' | 'editLevel' | 'archiveLevel' | 'deleteLevel', level: PermissionLevel) => {
+    (field: 'viewLevel' | 'inspectLevel' | 'editLevel' | 'archiveLevel' | 'deleteLevel', level: PermissionLevel) => {
+      const accessKey = field === 'viewLevel' ? 'view' : field === 'inspectLevel' ? 'inspect' : field === 'editLevel' ? 'edit' : field === 'archiveLevel' ? 'archive' : 'delete';
       setPermissionModules((prev) =>
         prev.map((mod) => ({
           ...mod,
@@ -204,16 +207,18 @@ export function RoleForm({ mode, initialData, roleId }: RoleFormProps) {
             ...sm,
             view: level !== 'none' ? true : sm.view,
             forms: sm.forms.map((f) => {
-              if (!f.accessibility.includes(field === 'viewLevel' ? 'view' : field === 'editLevel' ? 'edit' : field === 'archiveLevel' ? 'archive' : 'delete')) return f;
+              if (!f.accessibility.includes(accessKey)) return f;
               const updated = { ...f, [field]: level };
 
               if (field === 'viewLevel' && level === 'none') {
                 updated.create = false;
+                updated.inspectLevel = 'none';
                 updated.editLevel = 'none';
                 updated.archiveLevel = 'none';
                 updated.deleteLevel = 'none';
               }
               if (field === 'viewLevel' && level === 'own') {
+                if (updated.inspectLevel === 'all') updated.inspectLevel = 'own';
                 if (updated.editLevel === 'all') updated.editLevel = 'own';
                 if (updated.archiveLevel === 'all') updated.archiveLevel = 'own';
                 if (updated.deleteLevel === 'all') updated.deleteLevel = 'own';
@@ -245,6 +250,35 @@ export function RoleForm({ mode, initialData, roleId }: RoleFormProps) {
             }),
           })),
         })),
+      );
+    },
+    [],
+  );
+
+  // Toggle all permissions for an entire module (select-all checkbox)
+  const handleModuleToggle = useCallback(
+    (moduleKey: string, checked: boolean) => {
+      setPermissionModules((prev) =>
+        prev.map((mod) => {
+          if (mod.key !== moduleKey) return mod;
+          return {
+            ...mod,
+            view: checked,
+            subModules: mod.subModules.map((sm) => ({
+              ...sm,
+              view: checked,
+              forms: sm.forms.map((f) => ({
+                ...f,
+                viewLevel: checked ? 'all' as PermissionLevel : 'none' as PermissionLevel,
+                create: checked && f.accessibility.includes('create'),
+                inspectLevel: (checked && f.accessibility.includes('inspect') ? 'all' : 'none') as PermissionLevel,
+                editLevel: (checked && f.accessibility.includes('edit') ? 'all' : 'none') as PermissionLevel,
+                archiveLevel: (checked && f.accessibility.includes('archive') ? 'all' : 'none') as PermissionLevel,
+                deleteLevel: (checked && f.accessibility.includes('delete') ? 'all' : 'none') as PermissionLevel,
+              })),
+            })),
+          };
+        }),
       );
     },
     [],
@@ -554,6 +588,7 @@ export function RoleForm({ mode, initialData, roleId }: RoleFormProps) {
                 onFormPermissionChange={updateFormPermission}
                 onBulkLevelChange={handleBulkLevelChange}
                 onBulkBooleanChange={handleBulkBooleanChange}
+                onModuleToggle={handleModuleToggle}
               />
             </>
           )}
@@ -679,7 +714,7 @@ function PermissionInfoSection() {
 
 function calculateColumnLevelState(
   forms: FlatForm[],
-  field: 'viewLevel' | 'editLevel' | 'archiveLevel' | 'deleteLevel',
+  field: 'viewLevel' | 'inspectLevel' | 'editLevel' | 'archiveLevel' | 'deleteLevel',
   accessKey: string,
 ): PermissionLevel | 'mix' {
   const applicable = forms.filter((f) => f.accessibility.includes(accessKey));
@@ -702,6 +737,7 @@ function calculateColumnBooleanState(
 function calculateFormOverallLevel(form: FlatForm): PermissionLevel | 'mix' {
   const levels: PermissionLevel[] = [];
   if (form.accessibility.includes('view')) levels.push(form.viewLevel);
+  if (form.accessibility.includes('inspect')) levels.push(form.inspectLevel);
   if (form.accessibility.includes('edit')) levels.push(form.editLevel);
   if (form.accessibility.includes('archive')) levels.push(form.archiveLevel);
   if (form.accessibility.includes('delete')) levels.push(form.deleteLevel);
@@ -768,6 +804,7 @@ function FormViewTable({
   onFormPermissionChange,
   onBulkLevelChange,
   onBulkBooleanChange,
+  onModuleToggle,
 }: {
   flatForms: FlatForm[];
   searchQuery: string;
@@ -775,11 +812,12 @@ function FormViewTable({
     moduleKey: string,
     subModuleKey: string,
     formKey: string,
-    field: 'viewLevel' | 'create' | 'editLevel' | 'archiveLevel' | 'deleteLevel',
+    field: 'viewLevel' | 'create' | 'inspectLevel' | 'editLevel' | 'archiveLevel' | 'deleteLevel',
     value: PermissionLevel | boolean,
   ) => void;
-  onBulkLevelChange: (field: 'viewLevel' | 'editLevel' | 'archiveLevel' | 'deleteLevel', level: PermissionLevel) => void;
+  onBulkLevelChange: (field: 'viewLevel' | 'inspectLevel' | 'editLevel' | 'archiveLevel' | 'deleteLevel', level: PermissionLevel) => void;
   onBulkBooleanChange: (value: boolean) => void;
+  onModuleToggle: (moduleKey: string, checked: boolean) => void;
 }) {
   const q = searchQuery.toLowerCase().trim();
   const filteredForms = q
@@ -796,6 +834,7 @@ function FormViewTable({
   // Column header aggregate states
   const viewState = calculateColumnLevelState(filteredForms, 'viewLevel', 'view');
   const createState = calculateColumnBooleanState(filteredForms);
+  const inspectState = calculateColumnLevelState(filteredForms, 'inspectLevel', 'inspect');
   const editState = calculateColumnLevelState(filteredForms, 'editLevel', 'edit');
   const archiveState = calculateColumnLevelState(filteredForms, 'archiveLevel', 'archive');
   const deleteState = calculateColumnLevelState(filteredForms, 'deleteLevel', 'delete');
@@ -830,6 +869,18 @@ function FormViewTable({
                     value={createState === 'mix' ? false : createState}
                     isMix={createState === 'mix'}
                     onChange={(v) => onBulkBooleanChange(v)}
+                  />
+                </div>
+              </th>
+              <th className="text-center px-2 py-2.5 min-w-[100px]">
+                <div className="flex flex-col items-center gap-1.5">
+                  <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">
+                    Inspect
+                  </span>
+                  <PermissionLevelButton
+                    value={inspectState === 'mix' ? 'none' : inspectState}
+                    isMix={inspectState === 'mix'}
+                    onChange={(v) => onBulkLevelChange('inspectLevel', v)}
                   />
                 </div>
               </th>
@@ -877,12 +928,13 @@ function FormViewTable({
                 key={mod.moduleKey}
                 group={mod}
                 onFormPermissionChange={onFormPermissionChange}
+                onModuleToggle={onModuleToggle}
               />
             ))}
             {filteredForms.length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-3 py-8 text-center text-sm text-muted-foreground"
                 >
                   No forms matching &ldquo;{searchQuery}&rdquo;
@@ -900,19 +952,43 @@ function FormViewTable({
 function ModuleGroup({
   group,
   onFormPermissionChange,
+  onModuleToggle,
 }: {
   group: GroupedModule;
   onFormPermissionChange: (
     moduleKey: string,
     subModuleKey: string,
     formKey: string,
-    field: 'viewLevel' | 'create' | 'editLevel' | 'archiveLevel' | 'deleteLevel',
+    field: 'viewLevel' | 'create' | 'inspectLevel' | 'editLevel' | 'archiveLevel' | 'deleteLevel',
     value: PermissionLevel | boolean,
   ) => void;
+  onModuleToggle: (moduleKey: string, checked: boolean) => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
 
   const formCount = group.subModules.reduce((sum, sm) => sum + sm.forms.length, 0);
+
+  // Compute checked / indeterminate state for the module checkbox
+  const allForms = group.subModules.flatMap((sm) => sm.forms);
+  const allChecked = allForms.length > 0 && allForms.every(
+    (f) =>
+      f.viewLevel === 'all' &&
+      (!f.accessibility.includes('create') || f.create) &&
+      (!f.accessibility.includes('inspect') || f.inspectLevel === 'all') &&
+      (!f.accessibility.includes('edit') || f.editLevel === 'all') &&
+      (!f.accessibility.includes('archive') || f.archiveLevel === 'all') &&
+      (!f.accessibility.includes('delete') || f.deleteLevel === 'all'),
+  );
+  const allUnchecked = allForms.every(
+    (f) =>
+      f.viewLevel === 'none' &&
+      !f.create &&
+      f.inspectLevel === 'none' &&
+      f.editLevel === 'none' &&
+      f.archiveLevel === 'none' &&
+      f.deleteLevel === 'none',
+  );
+  const isIndeterminate = !allChecked && !allUnchecked;
 
   return (
     <>
@@ -921,8 +997,16 @@ function ModuleGroup({
         className="bg-muted/70 border-t cursor-pointer select-none hover:bg-muted transition-colors"
         onClick={() => setCollapsed((prev) => !prev)}
       >
-        <td colSpan={6} className="px-3 py-2">
+        <td colSpan={7} className="px-3 py-2">
           <div className="flex items-center gap-2">
+            <Checkbox
+              checked={isIndeterminate ? 'indeterminate' : allChecked}
+              onCheckedChange={(v) => {
+                onModuleToggle(group.moduleKey, v === true);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              className="shrink-0"
+            />
             {collapsed ? (
               <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
             ) : (
@@ -979,27 +1063,12 @@ function SubModuleGroup({
     moduleKey: string,
     subModuleKey: string,
     formKey: string,
-    field: 'viewLevel' | 'create' | 'editLevel' | 'archiveLevel' | 'deleteLevel',
+    field: 'viewLevel' | 'create' | 'inspectLevel' | 'editLevel' | 'archiveLevel' | 'deleteLevel',
     value: PermissionLevel | boolean,
   ) => void;
 }) {
   return (
     <>
-      {showHeader && (
-        <tr className="bg-muted/30 border-t">
-          <td colSpan={6} className="px-3 py-1.5 pl-6">
-            <span className="text-xs font-medium text-muted-foreground">
-              {subModuleName}
-            </span>
-            {subModuleDescription && (
-              <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-                {subModuleDescription}
-              </p>
-            )}
-          </td>
-        </tr>
-      )}
-
       {forms.map((form) => {
         const overall = calculateFormOverallLevel(form);
 
@@ -1017,6 +1086,8 @@ function SubModuleGroup({
                   onChange={(level) => {
                     if (form.accessibility.includes('view'))
                       onFormPermissionChange(moduleKey, subModuleKey, form.key, 'viewLevel', level);
+                    if (form.accessibility.includes('inspect'))
+                      onFormPermissionChange(moduleKey, subModuleKey, form.key, 'inspectLevel', level);
                     if (form.accessibility.includes('edit'))
                       onFormPermissionChange(moduleKey, subModuleKey, form.key, 'editLevel', level);
                     if (form.accessibility.includes('archive'))
@@ -1027,9 +1098,14 @@ function SubModuleGroup({
                       onFormPermissionChange(moduleKey, subModuleKey, form.key, 'create', level !== 'none');
                   }}
                 />
-                <span className="font-medium text-sm text-foreground truncate">
-                  {form.name}
-                </span>
+                <div className="min-w-0">
+                  <span className="font-medium text-sm text-foreground truncate block">
+                    {form.name}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground/70 truncate block">
+                    {form.moduleName} › {form.subModuleName}
+                  </span>
+                </div>
               </div>
             </td>
 
@@ -1058,6 +1134,24 @@ function SubModuleGroup({
                     disabled={form.viewLevel === 'none'}
                     onChange={(v) =>
                       onFormPermissionChange(moduleKey, subModuleKey, form.key, 'create', v)
+                    }
+                  />
+                </div>
+              ) : (
+                <span className="text-[10px] text-muted-foreground italic">N/A</span>
+              )}
+            </td>
+
+            {/* Inspect */}
+            <td className="text-center px-2 py-2">
+              {form.accessibility.includes('inspect') ? (
+                <div className="flex justify-center">
+                  <PermissionLevelButton
+                    value={form.inspectLevel}
+                    disabled={form.viewLevel === 'none'}
+                    maxLevel={form.viewLevel}
+                    onChange={(v) =>
+                      onFormPermissionChange(moduleKey, subModuleKey, form.key, 'inspectLevel', v)
                     }
                   />
                 </div>

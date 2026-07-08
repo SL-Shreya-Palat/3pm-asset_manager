@@ -12,9 +12,9 @@ export const listParts = defineTool({
   access: "read",
   permission: "maintenance:inventory:view",
   description:
-    "Returns inventory parts (spares, consumables) with stock info. Use for parts/stock queries.",
+    "Returns stock items (spares, consumables) with stock info. Use for stock queries.",
   inputSchema: z.object({
-    search: z.string().optional().describe("Free-text search over part name/number"),
+    search: z.string().optional().describe("Free-text search over stock name/number"),
     limit: z.number().optional().describe("Max results (default 10, max 25)"),
   }),
   execute: async (input, ctx) => {

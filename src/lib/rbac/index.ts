@@ -21,6 +21,7 @@ export type ViewLevel = "ALL" | "OWN" | "NONE";
 export type EditLevel = "ALL" | "OWN" | false;
 export type ArchiveLevel = "ALL" | "OWN" | false;
 export type DeleteLevel = "ALL" | "OWN" | false;
+export type InspectLevel = "ALL" | "OWN" | false;
 
 export type SparseFormGrant = {
   /** Form identifier: "module.submodule.form" */
@@ -35,6 +36,8 @@ export type SparseFormGrant = {
   ar?: ArchiveLevel;
   /** Delete (permanent) level */
   d?: DeleteLevel;
+  /** Inspect level (asset inspections) */
+  ins?: InspectLevel;
 };
 
 export type SparsePermissions = {
@@ -123,7 +126,7 @@ export class SparsePermissionIndex {
 
   hasFormPermission(
     formId: string,
-    permission: "view" | "create" | "edit" | "archive" | "delete",
+    permission: "view" | "create" | "edit" | "archive" | "delete" | "inspect",
   ): boolean | ViewLevel {
     if (this.wildcard) return permission === "view" ? "ALL" : true;
 
@@ -141,6 +144,8 @@ export class SparsePermissionIndex {
         return grant.ar === "ALL" || grant.ar === "OWN";
       case "delete":
         return grant.d === "ALL" || grant.d === "OWN";
+      case "inspect":
+        return grant.ins === "ALL" || grant.ins === "OWN";
       default:
         return false;
     }
@@ -164,6 +169,11 @@ export class SparsePermissionIndex {
   getDeleteLevel(formId: string): DeleteLevel {
     if (this.wildcard) return "ALL";
     return this.formIndex.get(formId)?.d ?? false;
+  }
+
+  getInspectLevel(formId: string): InspectLevel {
+    if (this.wildcard) return "ALL";
+    return this.formIndex.get(formId)?.ins ?? false;
   }
 
   getCreatePermission(formId: string): boolean {
@@ -233,10 +243,10 @@ export class PermissionChecker {
       const [mod, sub, form, action] = parts;
       const formId = `${mod}.${sub}.${form}`;
 
-      if (["view", "create", "edit", "archive", "delete"].includes(action)) {
+      if (["view", "create", "edit", "archive", "delete", "inspect"].includes(action)) {
         const result = this.index.hasFormPermission(
           formId,
-          action as "view" | "create" | "edit" | "archive" | "delete",
+          action as "view" | "create" | "edit" | "archive" | "delete" | "inspect",
         );
         return action === "view" ? result !== "NONE" : Boolean(result);
       }
@@ -253,7 +263,7 @@ export class PermissionChecker {
   /** Get the specific level for a permission (ALL/OWN/NONE or boolean). */
   getPermissionLevel(
     permission: string,
-  ): ViewLevel | EditLevel | ArchiveLevel | boolean {
+  ): ViewLevel | EditLevel | ArchiveLevel | InspectLevel | boolean {
     if (this.index.isWildcard()) return "ALL";
 
     const parts = permission.split(":");
@@ -271,6 +281,8 @@ export class PermissionChecker {
         return this.index.getArchiveLevel(formId);
       case "delete":
         return this.index.getDeleteLevel(formId);
+      case "inspect":
+        return this.index.getInspectLevel(formId);
       case "create":
         return this.index.getCreatePermission(formId);
       default:
@@ -285,4 +297,26 @@ export class PermissionChecker {
   clear(): void {
     this.index.clear();
   }
+}
+
+// ---------------------------------------------------------------------------
+// Ownership helper  (matches construction-portal  services/rbac/utils.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Check whether a user may act on a specific record based on the permission
+ * level (ALL / OWN / NONE or false).
+ *
+ * Usage:
+ *   const editLevel = permissionIndex.getEditLevel(formId);
+ *   const canEdit   = checkRecordOwnership(editLevel, record.createdBy, userId);
+ */
+export function checkRecordOwnership(
+  level: ViewLevel | EditLevel | ArchiveLevel | DeleteLevel | InspectLevel | boolean,
+  createdBy: string | null | undefined,
+  currentUserId: string | null | undefined,
+): boolean {
+  if (level === "ALL" || level === true) return true;
+  if (level === "OWN") return !!createdBy && !!currentUserId && createdBy === currentUserId;
+  return false; // "NONE", false, undefined
 }

@@ -28,6 +28,7 @@ export interface FaultRow {
   workOrderId: string | null;
   workOrderNumber: string | null;
   attachments: FaultAttachmentRow[];
+  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
   isArchived: boolean;

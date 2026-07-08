@@ -5,15 +5,16 @@ import axios from 'axios';
 import {
   Plus,
   Edit,
-  Trash2,
   Eye,
   DollarSign,
   Gauge,
   Droplets,
   TrendingUp,
+  Archive,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { Badge } from '@/components/ui/badge';
 import { StatCard } from '@/components/ui/stat-card';
 import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
@@ -69,10 +70,10 @@ export function AssetFuelTab({ assetId }: AssetFuelTabProps) {
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [viewTransaction, setViewTransaction] = useState<FuelTransactionRow | null>(null);
 
-  // Delete dialog
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deletingTransaction, setDeletingTransaction] = useState<FuelTransactionRow | null>(null);
-  const [deleting, setDeleting] = useState(false);
+  // Archive dialog
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingTransaction, setArchivingTransaction] = useState<FuelTransactionRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
   const fetchTransactions = useCallback(async (page: number) => {
     try {
@@ -138,24 +139,26 @@ export function AssetFuelTab({ assetId }: AssetFuelTabProps) {
     setViewDialogOpen(true);
   };
 
-  const handleOpenDelete = (txn: FuelTransactionRow) => {
-    setDeletingTransaction(txn);
-    setDeleteDialogOpen(true);
+  const handleOpenArchive = (txn: FuelTransactionRow) => {
+    setArchivingTransaction(txn);
+    setArchiveDialogOpen(true);
   };
 
-  const handleDelete = async () => {
-    if (!deletingTransaction) return;
-    setDeleting(true);
+  const handleArchive = async () => {
+    if (!archivingTransaction) return;
+    setArchiving(true);
     try {
-      await axios.delete(`/api/fuel/${deletingTransaction.id}`, { withCredentials: true });
-      setDeleteDialogOpen(false);
-      setDeletingTransaction(null);
+      await axios.patch(`/api/fuel/${archivingTransaction.id}/archive`, {
+        archived: !archivingTransaction.isArchived,
+      }, { withCredentials: true });
+      setArchiveDialogOpen(false);
+      setArchivingTransaction(null);
       fetchTransactions(pagination.page);
       fetchAnalytics();
     } catch {
-      console.error('Failed to delete');
+      console.error('Failed to archive');
     } finally {
-      setDeleting(false);
+      setArchiving(false);
     }
   };
 
@@ -206,7 +209,11 @@ export function AssetFuelTab({ assetId }: AssetFuelTabProps) {
         <RowActions>
           <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(txn)} />
           <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(txn)} />
-          <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(txn)} />
+          <RowActionButton
+            label="Archive"
+            icon={<Archive />}
+            onClick={() => handleOpenArchive(txn)}
+          />
         </RowActions>
       ),
     },
@@ -307,21 +314,15 @@ export function AssetFuelTab({ assetId }: AssetFuelTabProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Delete Dialog */}
-      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Fuel Transaction</DialogTitle>
-            <DialogDescription>Are you sure? This action cannot be undone.</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Archive Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={archivingTransaction?.assetName || 'Fuel Transaction'}
+        action={archivingTransaction?.isArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
     </div>
   );
 }

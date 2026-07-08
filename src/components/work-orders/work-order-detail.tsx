@@ -32,12 +32,23 @@ import {
 } from '@/components/ui/dialog';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { cn, formatDate } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 import { WorkOrderForm } from './work-order-form';
 import type { WorkOrderRow, WOStatusOption } from './types';
+
+const WO_FORM_ID = 'maintenance.workOrders.workOrder';
 
 export function WorkOrderDetail() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+  const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(WO_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(WO_FORM_ID);
   const [order, setOrder] = useState<WorkOrderRow | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -133,6 +144,7 @@ export function WorkOrderDetail() {
     );
   }
 
+  const createdBy = order.createdBy ? String(order.createdBy) : null;
   const statusColor = statusColorMap[order.statusId] || '#6B7280';
 
   const assigneeTypeLabel = order.assigneeType === 'vendor'
@@ -177,14 +189,22 @@ export function WorkOrderDetail() {
                 Complete &amp; Sign Off
               </Button>
             )}
-            <Button variant="outline" onClick={() => setEditPanelOpen(true)}>
-              <Edit className="h-4 w-4" />
-              Edit
-            </Button>
-            <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
-              <Archive className="h-4 w-4" />
-              Archive
-            </Button>
+            {checkRecordOwnership(editLevel, createdBy, user?.id) && (
+              <PermissionGuard permission={Permissions.maintenance.workOrders.form.edit}>
+                <Button variant="outline" onClick={() => setEditPanelOpen(true)}>
+                  <Edit className="h-4 w-4" />
+                  Edit
+                </Button>
+              </PermissionGuard>
+            )}
+            {checkRecordOwnership(archiveLevel, createdBy, user?.id) && (
+              <PermissionGuard permission={Permissions.maintenance.workOrders.form.archive}>
+                <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
+                  <Archive className="h-4 w-4" />
+                  Archive
+                </Button>
+              </PermissionGuard>
+            )}
           </>
         }
       />

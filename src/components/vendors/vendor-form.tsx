@@ -6,7 +6,6 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { AddressInput } from '@/components/ui/address-input';
 import { Separator } from '@/components/ui/separator';
 import type { VendorRow } from './types';
@@ -33,10 +32,9 @@ export function VendorForm({ mode, vendor, onClose, onSaved }: VendorFormProps) 
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
 
-  // Vendor Type & Access
+  // Vendor Type
   const [typeParts, setTypeParts] = useState(false);
   const [typeServices, setTypeServices] = useState(false);
-  const [publicEditAccess, setPublicEditAccess] = useState(true);
 
   // Labor Rate
   const [laborRatePerHour, setLaborRatePerHour] = useState('');
@@ -52,7 +50,6 @@ export function VendorForm({ mode, vendor, onClose, onSaved }: VendorFormProps) 
       setEmail(vendor.email || '');
       setTypeParts(vendor.vendorTypes?.includes('parts') || false);
       setTypeServices(vendor.vendorTypes?.includes('services') || false);
-      setPublicEditAccess(vendor.publicEditAccess !== false);
       setLaborRatePerHour(
         vendor.laborRatePerHour != null ? String(vendor.laborRatePerHour) : '',
       );
@@ -96,7 +93,6 @@ export function VendorForm({ mode, vendor, onClose, onSaved }: VendorFormProps) 
       phone: phone.trim() || undefined,
       email: email.trim() || undefined,
       vendorTypes,
-      publicEditAccess,
       laborRatePerHour: laborRatePerHour ? parseFloat(laborRatePerHour) : undefined,
     };
 
@@ -241,49 +237,37 @@ export function VendorForm({ mode, vendor, onClose, onSaved }: VendorFormProps) 
             </div>
           </div>
 
-          {/* Vendor Type & Access Section */}
+          {/* Vendor Type Section */}
           <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Vendor Type & Access</h3>
+            <h3 className="text-sm font-semibold text-foreground mb-3">Vendor Type</h3>
             <Separator className="mb-4" />
-            <div className="space-y-4">
-              <div>
-                <Label className="mb-2 block">Vendor Type</Label>
-                <div className="space-y-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={typeParts}
-                      onCheckedChange={(checked) => setTypeParts(checked === true)}
-                    />
-                    <span className="text-sm text-foreground">Parts</span>
-                    <span className="text-xs text-muted-foreground">- Supplier for purchase orders</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <Checkbox
-                      checked={typeServices}
-                      onCheckedChange={(checked) => setTypeServices(checked === true)}
-                    />
-                    <span className="text-sm text-foreground">Services</span>
-                    <span className="text-xs text-muted-foreground">- Assignable to work orders & defects</span>
-                  </label>
-                </div>
-                {fieldErrors.vendorTypes && (
-                  <p className="text-sm text-destructive mt-1">{fieldErrors.vendorTypes}</p>
-                )}
-              </div>
-              <div>
+            <div>
+              <Label className="mb-2 block">Vendor Type</Label>
+              <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
-                  <Checkbox
-                    checked={publicEditAccess}
-                    onCheckedChange={(checked) => setPublicEditAccess(checked === true)}
+                  <input
+                    type="checkbox"
+                    checked={typeParts}
+                    onChange={(e) => setTypeParts(e.target.checked)}
+                    className="rounded border-border"
                   />
-                  <div>
-                    <span className="text-sm text-foreground">Public edit access</span>
-                    <p className="text-xs text-muted-foreground">
-                      Allow vendor to view and edit assigned work orders & defects via magic link (no login required).
-                    </p>
-                  </div>
+                  <span className="text-sm text-foreground">Parts</span>
+                  <span className="text-xs text-muted-foreground">- Supplier for purchase orders</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={typeServices}
+                    onChange={(e) => setTypeServices(e.target.checked)}
+                    className="rounded border-border"
+                  />
+                  <span className="text-sm text-foreground">Services</span>
+                  <span className="text-xs text-muted-foreground">- Assignable to work orders & defects</span>
                 </label>
               </div>
+              {fieldErrors.vendorTypes && (
+                <p className="text-sm text-destructive mt-1">{fieldErrors.vendorTypes}</p>
+              )}
             </div>
           </div>
 

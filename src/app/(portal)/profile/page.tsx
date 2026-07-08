@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/auth/store';
 import axios from 'axios';
@@ -8,9 +9,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { User, Camera, Loader2 } from 'lucide-react';
+import { AddressInput } from '@/components/ui/address-input';
+import { User, Camera, Loader2, ArrowLeft } from 'lucide-react';
 
 export default function ProfilePage() {
+  const router = useRouter();
   const { user } = useAuth();
   const checkAuth = useAuthStore((s) => s.checkAuth);
 
@@ -173,11 +176,21 @@ export default function ProfilePage() {
     <div className="p-6 max-w-2xl">
       {/* Header with Edit / Save+Cancel */}
       <div className="mb-6 flex items-center justify-between">
-        <div>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => router.back()}
+            className="shrink-0"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div>
           <h1 className="text-2xl font-semibold text-foreground">Profile</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Your personal information and settings
           </p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {editing ? (
@@ -347,14 +360,29 @@ export default function ProfilePage() {
             <Label htmlFor="addressLine1" className="text-muted-foreground">
               Address Line 1
             </Label>
-            <Input
-              id="addressLine1"
-              value={addressLine1}
-              onChange={(e) => setAddressLine1(e.target.value)}
-              readOnly={!editing}
-              placeholder={editing ? 'Street address' : ''}
-              className={`mt-1.5 ${!editing ? 'bg-muted/50' : ''}`}
-            />
+            {editing ? (
+              <AddressInput
+                id="addressLine1"
+                value={addressLine1}
+                onChange={setAddressLine1}
+                onSelect={(s) => {
+                  setAddressLine1(s.address);
+                  setCity(s.city);
+                  setAddrState(s.state);
+                  setPostalCode(s.postalCode);
+                  setCountry(s.country);
+                }}
+                placeholder="Search address..."
+                className="mt-1.5"
+              />
+            ) : (
+              <Input
+                id="addressLine1"
+                value={addressLine1}
+                readOnly
+                className="mt-1.5 bg-muted/50"
+              />
+            )}
           </div>
 
           <div>

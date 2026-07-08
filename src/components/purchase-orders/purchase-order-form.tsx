@@ -340,10 +340,10 @@ export function PurchaseOrderForm({ mode, purchaseOrder, onClose, onSaved }: Pur
 
                     {/* Part select */}
                     <div>
-                      <Label className="text-xs">Part <span className="text-destructive">*</span></Label>
+                      <Label className="text-xs">Stock <span className="text-destructive">*</span></Label>
                       <Select value={line.partId} onValueChange={(val) => updateLineItem(idx, 'partId', val)}>
                         <SelectTrigger className={`mt-1 ${fieldErrors[`lineItems.${idx}.partId`] ? 'border-destructive' : ''}`}>
-                          <SelectValue placeholder="Select part" />
+                          <SelectValue placeholder="Select stock" />
                         </SelectTrigger>
                         <SelectContent>
                           {parts.length === 0 ? (
@@ -359,13 +359,13 @@ export function PurchaseOrderForm({ mode, purchaseOrder, onClose, onSaved }: Pur
                         <p className="text-xs text-destructive mt-1">{fieldErrors[`lineItems.${idx}.partId`]}</p>
                       )}
                       <p className="text-xs text-muted-foreground mt-1">
-                        Can&apos;t find the part? You can add it in{' '}
+                        Can&apos;t find the stock? You can add it in{' '}
                         <button
                           type="button"
                           onClick={() => router.push('/maintenance/inventory')}
                           className="text-primary hover:underline font-medium"
                         >
-                          the inventory
+                          the Stock
                         </button>
                       </p>
                     </div>

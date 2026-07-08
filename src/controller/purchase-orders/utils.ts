@@ -169,6 +169,7 @@ export function serializePurchaseOrder(doc: Record<string, unknown>): Record<str
     createdAt: po.createdAt instanceof Date ? po.createdAt.toISOString() : po.createdAt,
     updatedAt: po.updatedAt instanceof Date ? po.updatedAt.toISOString() : po.updatedAt,
     isArchived: po.isArchived,
+    createdBy: po.createdBy ? po.createdBy.toString() : null,
   };
 }
 

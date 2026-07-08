@@ -7,6 +7,7 @@ export interface ServiceTaskRow {
   laborCost?: number;
   partsCost?: number;
   totalCost?: number;
+  createdBy: string | null;
   createdAt: string;
 }
 

@@ -127,14 +127,10 @@ export function VendorDetail() {
       </DetailCard>
 
       {/* Vendor Type & Access */}
-      <DetailCard icon={Settings} title="Type & Access" columns={2} className="mt-6">
+      <DetailCard icon={Settings} title="Vendor Type" columns={1} className="mt-6">
         <DetailField
           label="Vendor Type"
           value={vendor.vendorTypes.length > 0 ? vendor.vendorTypes.join(', ') : undefined}
-        />
-        <DetailField
-          label="Public Edit Access"
-          value={vendor.publicEditAccess ? 'Enabled' : 'Disabled'}
         />
       </DetailCard>
 

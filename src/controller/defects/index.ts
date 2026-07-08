@@ -24,7 +24,7 @@ const RESOLVED_STATUSES = ['corrected', 'no_correction_needed'];
 
 export async function getAllDefects(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; status?: string; priority?: string; severity?: string; teamId?: string; assetId?: string; source?: string; showArchived?: boolean },
+  options: { page?: number; limit?: number; search?: string; status?: string; priority?: string; severity?: string; teamId?: string; assetId?: string; source?: string; showArchived?: boolean; createdBy?: string },
 ) {
   const collection = await getDefectsCollection();
   const page = Math.max(1, options.page || 1);
@@ -36,6 +36,11 @@ export async function getAllDefects(
   const filter: Record<string, unknown> = {
     tenantId: tenantOid,
   };
+
+  // "OWN" view scope — only show records created by this user
+  if (options.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+  }
 
   if (options.showArchived) {
     filter.isArchived = true;

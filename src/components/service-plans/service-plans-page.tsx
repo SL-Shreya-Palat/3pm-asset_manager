@@ -11,9 +11,17 @@
 
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { Plus, Trash2, Pencil, Archive, Loader2, Info, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Pencil, Archive, ArchiveRestore, Loader2, Info, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { SearchableSelect, type SearchableSelectOption } from '@/components/ui/searchable-select';
+import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { PageHeader } from '@/components/ui/page-header';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 
 const UNITS = ['Kilometers', 'Hours', 'Days', 'Months'] as const;
 
@@ -34,6 +42,8 @@ interface PlanRow {
   schedules: ScheduleRow[];
   source: string;
   assignedAssets?: number;
+  isArchived?: boolean;
+  createdBy: string | null;
 }
 
 const emptySchedule = (order: number): ScheduleRow => ({
@@ -46,7 +56,15 @@ const emptySchedule = (order: number): ScheduleRow => ({
   serviceGroup: 1,
 });
 
+const SERVICE_PLAN_FORM_ID = 'maintenance.servicePlans.servicePlan';
+
 export function ServicePlansPage() {
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+  const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(SERVICE_PLAN_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(SERVICE_PLAN_FORM_ID);
+
+
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -54,6 +72,35 @@ export function ServicePlansPage() {
   const [name, setName] = useState('');
   const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [showArchived, setShowArchived] = useState(false);
+
+  // Archive dialog
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [archivingPlan, setArchivingPlan] = useState<PlanRow | null>(null);
+  const [archiving, setArchiving] = useState(false);
+
+  // Service task options for schedule name field
+  const [serviceTaskOptions, setServiceTaskOptions] = useState<SearchableSelectOption[]>([]);
+  const [serviceTasksLoading, setServiceTasksLoading] = useState(false);
+
+  const fetchServiceTasks = useCallback(async () => {
+    setServiceTasksLoading(true);
+    try {
+      const res = await axios.get('/api/service-tasks', { params: { limit: 100 } });
+      const items = res.data?.data?.items ?? [];
+      setServiceTaskOptions(
+        items.map((t: { id: string; title: string; description?: string }) => ({
+          label: t.title,
+          value: t.title,
+          meta: t.description || undefined,
+        })),
+      );
+    } catch {
+      setServiceTaskOptions([]);
+    } finally {
+      setServiceTasksLoading(false);
+    }
+  }, []);
 
   const toggleExpand = (id: string) =>
     setExpanded((prev) => {
@@ -66,26 +113,28 @@ export function ServicePlansPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get('/api/service-plans', { params: { limit: 100 } });
+      const res = await axios.get('/api/service-plans', { params: { limit: 100, showArchived } });
       setPlans(res.data?.data?.items ?? []);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showArchived]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
   const openNew = () => {
-    setEditing({ id: '', name: '', schedules: [], source: 'local' });
+    setEditing({ id: '', name: '', schedules: [], source: 'local', createdBy: null });
     setName('');
     setSchedules([emptySchedule(1)]);
+    fetchServiceTasks();
   };
   const openEdit = (p: PlanRow) => {
     setEditing(p);
     setName(p.name);
     setSchedules(p.schedules.length ? p.schedules.map((s) => ({ ...s })) : [emptySchedule(1)]);
+    fetchServiceTasks();
   };
   const close = () => setEditing(null);
 
@@ -122,21 +171,34 @@ export function ServicePlansPage() {
     }
   };
 
-  const archive = async (p: PlanRow) => {
-    await axios.patch(`/api/service-plans/${p.id}/archive`, { archived: true });
-    await load();
+  const handleArchive = async () => {
+    if (!archivingPlan) return;
+    setArchiving(true);
+    try {
+      await axios.patch(`/api/service-plans/${archivingPlan.id}/archive`, {
+        archived: !archivingPlan.isArchived,
+      });
+      setArchiveDialogOpen(false);
+      setArchivingPlan(null);
+      await load();
+    } finally {
+      setArchiving(false);
+    }
   };
 
   return (
     <div className="flex h-full flex-col">
       <PageHeader
         title="Service Plans"
-        description="Group service schedules into a plan. Schedules sharing a Group reset together — completing a higher-order schedule (e.g. Service C) also completes the lower ones (A, B)."
+        description="Define grouped service schedules for your fleet."
         count={plans.length}
       >
-        <Button onClick={openNew}>
-          <Plus className="h-4 w-4" /> New Plan
-        </Button>
+        <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+        <PermissionGuard permission={Permissions.maintenance.servicePlans.form.create}>
+          <Button onClick={openNew}>
+            <Plus className="h-4 w-4" /> New Plan
+          </Button>
+        </PermissionGuard>
       </PageHeader>
 
       <div className="flex-1 overflow-auto p-6">
@@ -201,12 +263,31 @@ export function ServicePlansPage() {
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="icon-sm" onClick={() => openEdit(p)}>
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon-sm" onClick={() => archive(p)}>
-                              <Archive className="h-4 w-4" />
-                            </Button>
+                            {!p.isArchived && checkRecordOwnership(editLevel, p.createdBy, user?.id) && (
+                              <PermissionGuard permission={Permissions.maintenance.servicePlans.form.edit}>
+                                <Button variant="ghost" size="icon-sm" onClick={() => openEdit(p)}>
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                              </PermissionGuard>
+                            )}
+                            {checkRecordOwnership(archiveLevel, p.createdBy, user?.id) && (
+                              <PermissionGuard permission={Permissions.maintenance.servicePlans.form.archive}>
+                                <Button
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  onClick={() => {
+                                    setArchivingPlan(p);
+                                    setArchiveDialogOpen(true);
+                                  }}
+                                >
+                                  {p.isArchived ? (
+                                    <ArchiveRestore className="h-4 w-4" />
+                                  ) : (
+                                    <Archive className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </PermissionGuard>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -294,6 +375,16 @@ export function ServicePlansPage() {
         )}
       </div>
 
+      {/* Archive Dialog */}
+      <ArchiveConfirmDialog
+        open={archiveDialogOpen}
+        onOpenChange={setArchiveDialogOpen}
+        itemName={archivingPlan?.name || 'Service Plan'}
+        action={archivingPlan?.isArchived ? 'unarchive' : 'archive'}
+        onConfirm={handleArchive}
+        loading={archiving}
+      />
+
       {/* Editor */}
       {editing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -334,11 +425,15 @@ export function ServicePlansPage() {
                   {schedules.map((s, i) => (
                     <tr key={i} className="border-b border-border/60">
                       <td className="py-1.5 pr-2">
-                        <input
-                          value={s.name}
-                          onChange={(e) => updateSchedule(i, { name: e.target.value })}
-                          placeholder="Service A"
-                          className="w-full rounded border border-border bg-background px-2 py-1"
+                        <SearchableSelect
+                          options={serviceTaskOptions}
+                          value={s.name || null}
+                          onValueChange={(val) => updateSchedule(i, { name: val ?? '' })}
+                          placeholder="Select service task"
+                          searchPlaceholder="Search service tasks..."
+                          emptyMessage="No service tasks found"
+                          loading={serviceTasksLoading}
+                          isClearable
                         />
                       </td>
                       <td className="px-2">

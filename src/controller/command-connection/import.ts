@@ -24,9 +24,15 @@ import {
   getPartsCollection,
   getMeasurementUnitsCollection,
   getPartLocationsCollection,
+  getUsersCollection,
+  getTenantMembersCollection,
+  getRolesCollection,
+  getTenantsCollection,
 } from '@/lib/mongodb';
 import { getPage, getRecord, getCommandStaff } from '@/lib/command/fetchers';
 import type { CommandEntity } from '@/lib/command/types';
+import { createInvitation } from '@/controller/invitations';
+import { sendInvitationEmail } from '@/lib/email';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -279,7 +285,11 @@ export async function syncOneAssetFromCommand(
   await upsertAssetRow(assets, tid, uid, new Map<string, ObjectId>(), res.data);
 }
 
-/** Staff → drivers: one-time idempotent import, linked by commandStaffId/email. */
+/**
+ * Staff → drivers: idempotent import, linked by commandStaffId/email.
+ * Also creates user + tenantMember with Driver role and sends invitation
+ * emails so imported drivers can log in to the mobile app.
+ */
 async function importDrivers(
   tenantId: ObjectId,
   userId: ObjectId,
@@ -296,6 +306,9 @@ async function importDrivers(
       continue;
     }
 
+    const firstName = s.firstName || s.name || 'Unknown';
+    const lastName = s.lastName || '';
+
     // Link an existing local driver by email (never duplicate a person).
     const match: Record<string, unknown>[] = [{ commandStaffId: s.id }];
     if (s.email) match.push({ email: s.email });
@@ -307,8 +320,8 @@ async function importDrivers(
         $set: {
           commandStaffId: s.id,
           source: 'command',
-          firstName: s.firstName || s.name || 'Unknown',
-          lastName: s.lastName || '',
+          firstName,
+          lastName,
           ...(s.email ? { email: s.email } : {}),
           ...(s.phone ? { mobileNumber: s.phone } : {}),
           commandSyncedAt: now,
@@ -327,8 +340,172 @@ async function importDrivers(
     );
     if (result.upsertedCount > 0) counts.created++;
     else counts.updated++;
+
+    // Create tenantMember + invitation for this driver (if not already linked).
+    const driverDoc = await drivers.findOne({ tenantId, $or: match });
+    if (driverDoc && !driverDoc.tenantMemberId) {
+      try {
+        const { tenantMemberId, roleId } = await linkDriverToTenantMember(
+          tenantId, userId, now, { firstName, lastName, email: s.email || undefined },
+        );
+        await drivers.updateOne({ _id: driverDoc._id }, { $set: { tenantMemberId } });
+
+        // Send invitation email if driver has email
+        if (s.email) {
+          try {
+            const { rawToken } = await createInvitation(tenantId.toString(), {
+              email: s.email,
+              firstName,
+              lastName,
+              roleId: roleId.toString(),
+              invitedByUserId: userId.toString(),
+            });
+
+            const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+            const acceptUrl = `${appUrl}/invite/accept?token=${rawToken}`;
+
+            const usersCol = await getUsersCollection();
+            const inviter = await usersCol.findOne({ _id: userId });
+            const inviterName = inviter
+              ? `${inviter.firstName || ''} ${inviter.lastName || ''}`.trim()
+              : 'A team member';
+
+            const tenantsCol = await getTenantsCollection();
+            const tenant = await tenantsCol.findOne({ _id: tenantId });
+            const tenantName = (tenant?.name as string) || 'your organization';
+
+            await sendInvitationEmail({
+              recipientEmail: s.email,
+              recipientName: firstName,
+              inviterName,
+              tenantName,
+              roleName: 'Driver',
+              acceptUrl,
+            });
+          } catch (emailErr) {
+            console.error(`[importDrivers] Failed to send invitation for ${s.email}:`, emailErr);
+          }
+        }
+      } catch (memberErr) {
+        // Non-fatal: driver record is still created/updated
+        console.error(`[importDrivers] Failed to create tenantMember for ${s.name}:`, memberErr);
+      }
+    }
   }
   return counts;
+}
+
+/**
+ * Create user + tenantMember with Driver role for an imported driver.
+ * Mirrors createTenantMemberForDriver in src/controller/drivers/index.ts.
+ */
+async function linkDriverToTenantMember(
+  tenantId: ObjectId,
+  createdBy: ObjectId,
+  now: Date,
+  driver: { firstName: string; lastName: string; email?: string },
+): Promise<{ tenantMemberId: ObjectId; roleId: ObjectId }> {
+  const usersCol = await getUsersCollection();
+  const tenantMembersCol = await getTenantMembersCollection();
+  const rolesCol = await getRolesCollection();
+
+  // Resolve (or auto-create) Driver role
+  let driverRoleId: ObjectId;
+  const existingRole = await rolesCol.findOne({
+    tenantId,
+    key: 'driver',
+    isArchived: { $ne: true },
+  });
+  if (existingRole) {
+    driverRoleId = existingRole._id as ObjectId;
+  } else {
+    const roleResult = await rolesCol.insertOne({
+      tenantId,
+      name: 'Driver',
+      key: 'driver',
+      nameLower: 'driver',
+      description: 'Mobile-only access for completing inspections.',
+      permissions: {
+        v: 2,
+        forms: [
+          { id: 'inspections.inspectionHistory.inspection', v: 'ALL', c: false, e: false },
+        ],
+        m: ['inspections'],
+        sm: ['inspections.inspectionHistory'],
+      },
+      teamScoped: true,
+      mobileOnly: true,
+      isSystem: false,
+      isActive: true,
+      isArchived: false,
+      archivedAt: null,
+      archivedBy: null,
+      createdBy,
+      updatedBy: createdBy,
+      createdAt: now,
+      updatedAt: now,
+    });
+    driverRoleId = roleResult.insertedId;
+  }
+
+  // Upsert user
+  let localUserId: ObjectId;
+  if (driver.email) {
+    const userResult = await usersCol.findOneAndUpdate(
+      { email: driver.email },
+      {
+        $set: { firstName: driver.firstName, lastName: driver.lastName, updatedAt: now },
+        $setOnInsert: {
+          email: driver.email,
+          phoneNumber: null,
+          profileImageUrl: null,
+          isActive: true,
+          emailVerified: false,
+          createdAt: now,
+        },
+      },
+      { upsert: true, returnDocument: 'after' },
+    );
+    localUserId = userResult!._id as ObjectId;
+  } else {
+    const userResult = await usersCol.insertOne({
+      firstName: driver.firstName,
+      lastName: driver.lastName,
+      email: null,
+      phoneNumber: null,
+      profileImageUrl: null,
+      isActive: true,
+      emailVerified: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+    localUserId = userResult.insertedId;
+  }
+
+  // Upsert tenantMember
+  const tmResult = await tenantMembersCol.findOneAndUpdate(
+    { userId: localUserId, tenantId },
+    {
+      $set: {
+        firstName: driver.firstName,
+        lastName: driver.lastName,
+        roleId: driverRoleId,
+        email: driver.email || null,
+        isActive: true,
+        portalUser: false,
+        status: 'pending',
+        updatedAt: now,
+      },
+      $setOnInsert: {
+        userId: localUserId,
+        tenantId,
+        createdAt: now,
+      },
+    },
+    { upsert: true, returnDocument: 'after' },
+  );
+
+  return { tenantMemberId: tmResult!._id as ObjectId, roleId: driverRoleId };
 }
 
 /** Suppliers → vendors (business contacts with the supplier role). */

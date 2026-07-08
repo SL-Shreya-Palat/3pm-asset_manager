@@ -27,13 +27,6 @@ import { InspectFormPickerDialog } from '@/components/inspections/inspect-button
 import { VinLookupDialog } from './vin-lookup-dialog';
 import { GenerateBarcodeDialog } from './generate-barcode-dialog';
 import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/ui/page-header';
@@ -66,6 +59,8 @@ import {
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable, applyTableFilters } from '@/hooks/use-data-table';
 import { useConnection } from '@/hooks/use-connection';
@@ -123,9 +118,6 @@ export function AssetTable() {
   });
   const [loading, setLoading] = useState(true);
   const [search, setSearch, debouncedSearch] = useDebouncedSearch(300);
-  // Server-side compliance filter (accurate across pagination, unlike the
-  // client-side toolbar filters which only narrow the loaded page).
-  const [complianceFilter, setComplianceFilter] = useState<string>('all');
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [inspectAssetId, setInspectAssetId] = useState<string | null>(null);
   const [vinDialogOpen, setVinDialogOpen] = useState(false);
@@ -212,6 +204,17 @@ export function AssetTable() {
         { label: 'Other', value: 'other' },
       ],
     },
+    {
+      columnKey: 'complianceStatus',
+      label: 'Compliance',
+      type: 'select',
+      options: [
+        { label: 'Expired', value: 'expired' },
+        { label: 'Expiring Soon', value: 'expiring_soon' },
+        { label: 'Valid', value: 'valid' },
+        { label: 'No Documents', value: 'none' },
+      ],
+    },
   ], [assetTypeOptions, teamOptions, yearOptions]);
 
   const filteredAssets = useMemo(
@@ -270,7 +273,6 @@ export function AssetTable() {
       params.set('page', String(page));
       params.set('limit', String(rowsPerPage));
       if (debouncedSearch) params.set('search', debouncedSearch);
-      if (complianceFilter !== 'all') params.set('complianceStatus', complianceFilter);
       if (showArchived) params.set('showArchived', 'true');
 
       const res = await axios.get(`/api/assets?${params.toString()}`, {
@@ -285,7 +287,7 @@ export function AssetTable() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedSearch, rowsPerPage, complianceFilter, showArchived]);
+  }, [debouncedSearch, rowsPerPage, showArchived]);
 
   useEffect(() => {
     fetchAssets(1);
@@ -729,27 +731,31 @@ export function AssetTable() {
                 {/* Command-sourced assets are archived/unarchived in Command
                     only — the import syncs the state here. */}
                 {asset.source !== 'command' && (
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenArchive(asset);
-                    }}
-                  >
-                    <ArchiveRestore className="h-4 w-4" />
-                    Unarchive
-                  </DropdownMenuItem>
+                  <PermissionGuard permission={Permissions.assets.assets.form.archive}>
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenArchive(asset);
+                      }}
+                    >
+                      <ArchiveRestore className="h-4 w-4" />
+                      Unarchive
+                    </DropdownMenuItem>
+                  </PermissionGuard>
                 )}
                 {asset.source !== 'command' && (
-                  <DropdownMenuItem
-                    className="text-destructive"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenDelete(asset);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Delete
-                  </DropdownMenuItem>
+                  <PermissionGuard permission={Permissions.assets.assets.form.delete}>
+                    <DropdownMenuItem
+                      className="text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenDelete(asset);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete
+                    </DropdownMenuItem>
+                  </PermissionGuard>
                 )}
                 {asset.source === 'command' && (
                   <DropdownMenuItem disabled>
@@ -769,74 +775,88 @@ export function AssetTable() {
                   <Eye className="h-4 w-4" />
                   View
                 </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    router.push(`/assets/${asset.id}/edit`);
-                  }}
-                >
-                  <Edit className="h-4 w-4" />
-                  Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setInspectAssetId(asset.id);
-                  }}
-                >
-                  <ClipboardCheck className="h-4 w-4" />
-                  Inspect
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenChangeTeam(asset);
-                  }}
-                >
-                  <Users className="h-4 w-4" />
-                  Change Team
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenAssignForms(asset);
-                  }}
-                >
-                  <ClipboardList className="h-4 w-4" />
-                  Assign Forms
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleOpenDriverAccess(asset);
-                  }}
-                >
-                  <KeyRound className="h-4 w-4" />
-                  Driver Access
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleToggleStatus(asset.id, asset.status);
-                  }}
-                >
-                  <Power className="h-4 w-4" />
-                  {normalizeStatus(asset.status) === 'in_service'
-                    ? 'Mark as Under Maintenance'
-                    : 'Mark as Active'}
-                </DropdownMenuItem>
-                {/* Archive lives in Command for Command-sourced assets. */}
-                {asset.source !== 'command' && (
+                <PermissionGuard permission={Permissions.assets.assets.form.edit}>
                   <DropdownMenuItem
-                    className="text-destructive"
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleOpenArchive(asset);
+                      router.push(`/assets/${asset.id}/edit`);
                     }}
                   >
-                    <Archive className="h-4 w-4" />
-                    Archive
+                    <Edit className="h-4 w-4" />
+                    Edit
                   </DropdownMenuItem>
+                </PermissionGuard>
+                <PermissionGuard permission={Permissions.assets.assets.form.inspect}>
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setInspectAssetId(asset.id);
+                    }}
+                  >
+                    <ClipboardCheck className="h-4 w-4" />
+                    Inspect
+                  </DropdownMenuItem>
+                </PermissionGuard>
+                <PermissionGuard permission={Permissions.assets.assets.form.edit}>
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenChangeTeam(asset);
+                    }}
+                  >
+                    <Users className="h-4 w-4" />
+                    Change Team
+                  </DropdownMenuItem>
+                </PermissionGuard>
+                <PermissionGuard permission="inspections:forms:view">
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenAssignForms(asset);
+                    }}
+                  >
+                    <ClipboardList className="h-4 w-4" />
+                    Assign Forms
+                  </DropdownMenuItem>
+                </PermissionGuard>
+                <PermissionGuard permission={Permissions.assets.assets.form.edit}>
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenDriverAccess(asset);
+                    }}
+                  >
+                    <KeyRound className="h-4 w-4" />
+                    Driver Access
+                  </DropdownMenuItem>
+                </PermissionGuard>
+                <PermissionGuard permission={Permissions.assets.assets.form.edit}>
+                  <DropdownMenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleStatus(asset.id, asset.status);
+                    }}
+                  >
+                    <Power className="h-4 w-4" />
+                    {normalizeStatus(asset.status) === 'in_service'
+                      ? 'Mark as Under Maintenance'
+                      : 'Mark as Active'}
+                  </DropdownMenuItem>
+                </PermissionGuard>
+                {/* Archive lives in Command for Command-sourced assets. */}
+                {asset.source !== 'command' && (
+                  <PermissionGuard permission={Permissions.assets.assets.form.archive}>
+                    <DropdownMenuItem
+                      className="text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenArchive(asset);
+                      }}
+                    >
+                      <Archive className="h-4 w-4" />
+                      Archive
+                    </DropdownMenuItem>
+                  </PermissionGuard>
                 )}
               </>
             )}
@@ -873,10 +893,12 @@ export function AssetTable() {
         className="px-0 pt-0 pb-4"
       >
         {!connected && (
-          <Button onClick={() => setVinDialogOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Add Asset
-          </Button>
+          <PermissionGuard permission={Permissions.assets.assets.form.create}>
+            <Button onClick={() => setVinDialogOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Add Asset
+            </Button>
+          </PermissionGuard>
         )}
       </PageHeader>
 
@@ -909,33 +931,22 @@ export function AssetTable() {
         onFiltersClear={clearFilters}
         actions={
           <div className="flex items-center gap-2">
-            <Select value={complianceFilter} onValueChange={setComplianceFilter}>
-              <SelectTrigger className="h-9 w-40">
-                <SelectValue placeholder="Compliance" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All compliance</SelectItem>
-                <SelectItem value="expired">Expired</SelectItem>
-                <SelectItem value="expiring_soon">Expiring soon</SelectItem>
-                <SelectItem value="valid">Valid</SelectItem>
-                <SelectItem value="none">No documents</SelectItem>
-              </SelectContent>
-            </Select>
             <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
-            {selectedKeys.size > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                onClick={() => setBarcodeDialogOpen(true)}
-              >
-                <Barcode className="h-4 w-4" />
-                Generate barcode
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              disabled={selectedKeys.size === 0}
+              onClick={() => setBarcodeDialogOpen(true)}
+            >
+              <Barcode className="h-4 w-4" />
+              Generate barcode
+              {selectedKeys.size > 0 && (
                 <Badge variant="default" className="ml-1 h-5 min-w-5 px-1.5 text-xs rounded-full">
                   {selectedKeys.size}
                 </Badge>
-              </Button>
-            )}
+              )}
+            </Button>
           </div>
         }
         searchNode={

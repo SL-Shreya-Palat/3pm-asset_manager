@@ -103,5 +103,6 @@ export function serializeDriver(doc: Record<string, unknown>): Record<string, un
     // Command linkage — 'command'-sourced drivers badge as read-only master data.
     source: doc.source || 'local',
     commandSyncedAt: doc.commandSyncedAt ? (doc.commandSyncedAt as Date).toISOString() : null,
+    createdBy: doc.createdBy ? (doc.createdBy as { toString(): string }).toString() : null,
   };
 }

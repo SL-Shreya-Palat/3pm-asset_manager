@@ -20,6 +20,11 @@ import {
 } from '@/components/ui/detail-page-header';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { cn, formatDate } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 import { PurchaseOrderForm } from './purchase-order-form';
 import type { PurchaseOrderRow } from './types';
 import {
@@ -27,9 +32,16 @@ import {
   STATUS_DISPLAY_NAME,
 } from './types';
 
+const PO_FORM_ID = 'maintenance.purchaseOrders.purchaseOrder';
+
 export function PurchaseOrderDetail() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+  const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(PO_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(PO_FORM_ID);
+
   const [order, setOrder] = useState<PurchaseOrderRow | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -90,6 +102,7 @@ export function PurchaseOrderDetail() {
 
   const canEdit = order.status === 'draft';
   const canArchive = order.status === 'draft';
+  const createdBy = order.createdBy ?? null;
 
   // Compute tax amount for display
   const taxAmount = order.taxType === 'percentage'
@@ -111,17 +124,21 @@ export function PurchaseOrderDetail() {
         subtitle={order.vendorName || undefined}
         actions={
           <>
-            {canEdit && (
-              <Button variant="outline" onClick={() => setEditPanelOpen(true)}>
-                <Edit className="h-4 w-4" />
-                Edit
-              </Button>
+            {canEdit && checkRecordOwnership(editLevel, createdBy, user?.id) && (
+              <PermissionGuard permission={Permissions.maintenance.purchaseOrders.form.edit}>
+                <Button variant="outline" onClick={() => setEditPanelOpen(true)}>
+                  <Edit className="h-4 w-4" />
+                  Edit
+                </Button>
+              </PermissionGuard>
             )}
-            {canArchive && (
-              <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
-                <Archive className="h-4 w-4" />
-                Archive
-              </Button>
+            {canArchive && checkRecordOwnership(archiveLevel, createdBy, user?.id) && (
+              <PermissionGuard permission={Permissions.maintenance.purchaseOrders.form.archive}>
+                <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
+                  <Archive className="h-4 w-4" />
+                  Archive
+                </Button>
+              </PermissionGuard>
             )}
           </>
         }
@@ -138,8 +155,8 @@ export function PurchaseOrderDetail() {
             </Badge>
           } />
           <DetailField label="Vendor" value={order.vendorName || undefined} />
-          <DetailField label="Delivery Location" value={order.deliveryLocationId} />
-          <DetailField label="Approver" value={order.approverId} />
+          <DetailField label="Delivery Location" value={order.deliveryLocationName || order.deliveryLocationId} />
+          <DetailField label="Approver" value={order.approverName || order.approverId} />
           <DetailField
             label="Created"
             value={order.createdAt ? formatDate(order.createdAt) : undefined}
@@ -167,7 +184,7 @@ export function PurchaseOrderDetail() {
               {/* Line items */}
               {order.lineItems.map((li, i) => (
                 <div key={i} className="grid grid-cols-[1fr_auto_auto_auto] gap-4 items-center rounded-md border border-border px-3 py-2">
-                  <span className="text-sm text-foreground truncate">{li.partId}</span>
+                  <span className="text-sm text-foreground truncate">{li.partName || li.partId}</span>
                   <span className="w-16 text-right text-sm text-muted-foreground tabular-nums">{li.quantity}</span>
                   <span className="w-24 text-right text-sm text-muted-foreground tabular-nums">${li.unitCost.toFixed(2)}</span>
                   <span className="w-24 text-right text-sm text-foreground font-medium tabular-nums">${li.total.toFixed(2)}</span>

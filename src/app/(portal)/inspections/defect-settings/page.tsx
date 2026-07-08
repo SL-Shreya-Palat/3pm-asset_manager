@@ -7,6 +7,7 @@ import { FileCheck2, Settings2, ArrowRight, CheckCircle2, FileX2, User, Truck } 
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/ui/page-header';
 import { cn } from '@/lib/utils';
+import { PermissionGuard } from '@/components/auth/permission-guard';
 
 interface FormItem {
   id: string;
@@ -69,6 +70,7 @@ export default function DefectSettingsListPage() {
   const configurable = forms.filter((f) => f.hasSchema).length;
 
   return (
+    <PermissionGuard permission="inspections:defectSettings:view">
     <div className="flex h-full flex-col">
       <PageHeader
         title="Inspection Settings"
@@ -100,6 +102,7 @@ export default function DefectSettingsListPage() {
         )}
       </div>
     </div>
+    </PermissionGuard>
   );
 }
 

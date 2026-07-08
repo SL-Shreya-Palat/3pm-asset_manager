@@ -20,6 +20,11 @@ import {
 } from '@/components/ui/detail-page-header';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 import { PartForm } from './part-form';
 import type { PartRow, LookupOption } from './types';
 
@@ -33,9 +38,15 @@ function getStockStatus(part: PartRow, total: number): { label: string; variant:
   return { label: 'In stock', variant: 'success' };
 }
 
+const INVENTORY_FORM_ID = 'maintenance.inventory.inventoryItem';
+
 export function InventoryDetail() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+  const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(INVENTORY_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(INVENTORY_FORM_ID);
   const [part, setPart] = useState<PartRow | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -126,6 +137,7 @@ export function InventoryDetail() {
   const unitName = part.measurementUnitId ? units.find((u) => u.id === part.measurementUnitId)?.name : undefined;
   const unitPrice = part.vendors.find((v) => v.unitCost > 0)?.unitCost;
   const stockValue = unitPrice != null ? totalStock * unitPrice : undefined;
+  const createdBy = part.createdBy ?? null;
 
   return (
     <div className="p-6 max-w-4xl">
@@ -140,23 +152,31 @@ export function InventoryDetail() {
         subtitle={`#${part.partNumber}`}
         actions={
           <>
-            <Button variant="outline" onClick={() => setEditPanelOpen(true)}>
-              <Edit className="h-4 w-4" />
-              Edit
-            </Button>
-            <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
-              <Archive className="h-4 w-4" />
-              Archive
-            </Button>
+            {checkRecordOwnership(editLevel, createdBy, user?.id) && (
+              <PermissionGuard permission={Permissions.maintenance.inventory.form.edit}>
+                <Button variant="outline" onClick={() => setEditPanelOpen(true)}>
+                  <Edit className="h-4 w-4" />
+                  Edit
+                </Button>
+              </PermissionGuard>
+            )}
+            {checkRecordOwnership(archiveLevel, createdBy, user?.id) && (
+              <PermissionGuard permission={Permissions.maintenance.inventory.form.archive}>
+                <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
+                  <Archive className="h-4 w-4" />
+                  Archive
+                </Button>
+              </PermissionGuard>
+            )}
           </>
         }
       />
 
       <div className="space-y-6">
-        {/* Part Details */}
-        <DetailCard icon={Package} title="Part Details" columns={3}>
+        {/* Stock Details */}
+        <DetailCard icon={Package} title="Stock Details" columns={3}>
           <DetailField label="Name" value={part.name} />
-          <DetailField label="Part Number" value={part.partNumber} />
+          <DetailField label="Stock Number" value={part.partNumber} />
           <DetailField label="UPC" value={part.upc} />
           <DetailField label="Category" value={categoryName} />
           <DetailField label="Description" value={part.description} className="col-span-full" />

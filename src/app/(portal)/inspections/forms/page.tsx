@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import axios from 'axios';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import apiClient, { unwrapResponse } from '@/lib/api-client';
 import type { BaseResponse } from '@/types/auth';
 import { FileText, LayoutDashboard, Inbox } from 'lucide-react';
+import { PermissionGuard } from '@/components/auth/permission-guard';
 
 const FORM_BUILDER_URL =
   process.env.NEXT_PUBLIC_FORM_BUILDER_URL || 'http://localhost:3002';
@@ -61,6 +63,9 @@ export default function InspectionFormsPage() {
     setSessionError(null);
 
     try {
+      // Seed pre-start forms and clean up any duplicates in the form-builder.
+      await axios.post('/api/forms/seed-prestart', {}, { withCredentials: true }).catch(() => {});
+
       const response = await apiClient.post<
         BaseResponse<{ sessionId: string; expiresAt: string }>
       >('/api/embed/form-builder-session');
@@ -196,6 +201,7 @@ export default function InspectionFormsPage() {
 
   // ─── Render ─────────────────────────────────────────────────────────
   return (
+    <PermissionGuard permission="inspections:forms:view">
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="px-6 pt-6 pb-4">
@@ -250,5 +256,6 @@ export default function InspectionFormsPage() {
         )}
       </div>
     </div>
+    </PermissionGuard>
   );
 }

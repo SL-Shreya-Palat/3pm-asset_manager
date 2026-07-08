@@ -4,6 +4,8 @@ import {
   getCountersCollection,
   getVendorsCollection,
   getTenantMembersCollection,
+  getPartLocationsCollection,
+  getPartsCollection,
 } from '@/lib/mongodb';
 import type { CreatePurchaseOrderInput, UpdatePurchaseOrderInput, TaxType, POStatus } from './types';
 import {
@@ -67,7 +69,7 @@ async function generatePONumber(tenantId: ObjectId): Promise<string> {
 
 export async function getAllPurchaseOrders(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; status?: string; showArchived?: boolean },
+  options: { page?: number; limit?: number; search?: string; status?: string; showArchived?: boolean; createdBy?: string },
 ) {
   const col = await getPurchaseOrdersCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
@@ -75,6 +77,11 @@ export async function getAllPurchaseOrders(
   const filter: Record<string, unknown> = {
     tenantId: tenantOid,
   };
+
+  // "OWN" view scope — only show records created by this user
+  if (options.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+  }
 
   if (options.showArchived) {
     filter.isArchived = true;
@@ -119,7 +126,48 @@ export async function getPurchaseOrderById(tenantId: string, poId: string) {
     tenantId: ObjectId.createFromHexString(tenantId),
     isArchived: { $ne: true },
   });
-  return doc ? serializePurchaseOrder(doc as Record<string, unknown>) : null;
+  if (!doc) return null;
+
+  const serialized = serializePurchaseOrder(doc as Record<string, unknown>);
+
+  // Populate delivery location name
+  if (doc.deliveryLocationId) {
+    const locCol = await getPartLocationsCollection();
+    const location = await locCol.findOne(
+      { _id: doc.deliveryLocationId as ObjectId },
+      { projection: { name: 1 } },
+    );
+    (serialized as Record<string, unknown>).deliveryLocationName = (location?.name as string) || '';
+  }
+
+  // Populate approver name
+  if (doc.approverId) {
+    const membersCol = await getTenantMembersCollection();
+    const member = await membersCol.findOne(
+      { _id: doc.approverId as ObjectId },
+      { projection: { firstName: 1, lastName: 1 } },
+    );
+    (serialized as Record<string, unknown>).approverName = member
+      ? `${(member.firstName as string) || ''} ${(member.lastName as string) || ''}`.trim()
+      : '';
+  }
+
+  // Populate stock names for line items
+  const lineItems = (doc.lineItems as Array<{ partId: ObjectId }>) || [];
+  const partIds = lineItems.map((li) => li.partId).filter(Boolean);
+  if (partIds.length > 0) {
+    const partsCol = await getPartsCollection();
+    const parts = await partsCol
+      .find({ _id: { $in: partIds } }, { projection: { name: 1 } })
+      .toArray();
+    const partNameMap = new Map(parts.map((p) => [p._id.toString(), (p.name as string) || '']));
+    const sLineItems = (serialized as Record<string, unknown>).lineItems as Array<Record<string, unknown>>;
+    sLineItems.forEach((li) => {
+      li.partName = partNameMap.get(li.partId as string) || '';
+    });
+  }
+
+  return serialized;
 }
 
 // ---------------------------------------------------------------------------

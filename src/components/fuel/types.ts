@@ -18,6 +18,8 @@ export interface FuelTransactionRow {
   notes?: string;
   source: string;
   importBatchId?: string;
+  isArchived?: boolean;
+  createdBy: string | null;
   createdAt: string;
   updatedAt: string;
 }

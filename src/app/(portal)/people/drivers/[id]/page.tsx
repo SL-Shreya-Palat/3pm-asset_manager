@@ -38,6 +38,11 @@ import {
 import { cn } from '@/lib/utils';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DriverInspectionTab } from '@/components/drivers/driver-inspection-tab';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 
 const DRIVER_TABS = [
   { id: 'details', label: 'Details', icon: Info },
@@ -46,9 +51,16 @@ const DRIVER_TABS = [
 
 type DriverTabId = (typeof DRIVER_TABS)[number]['id'];
 
+const DRIVER_FORM_ID = 'people.drivers.driver';
+
 export default function DriverDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+  const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(DRIVER_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(DRIVER_FORM_ID);
+
   const [driver, setDriver] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<DriverTabId>('details');
@@ -204,6 +216,7 @@ export default function DriverDetailPage() {
   const licenseNumber = String(driver.licenseNumber || '');
   const healthCertificate = String(driver.healthCertificate || '');
   const createdAt = driver.createdAt ? new Date(String(driver.createdAt)).toLocaleDateString() : '';
+  const createdBy = driver.createdBy ? String(driver.createdBy) : null;
 
   const isUnfit = driver.fitnessStatus === 'unfit';
   const fitnessFlag = (driver.fitnessFlag as {
@@ -264,12 +277,20 @@ export default function DriverDetailPage() {
             <Button variant="ghost" size="icon" onClick={handleOpenInspect} title="Inspect">
               <ClipboardCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={() => router.push(`/people/drivers/${params.id}/edit`)} title="Edit">
-              <SquarePen className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            </Button>
-            <Button variant="ghost" size="icon" onClick={() => setArchiveDialogOpen(true)} title="Archive">
-              <Archive className="h-5 w-5 text-muted-foreground" />
-            </Button>
+            {checkRecordOwnership(editLevel, createdBy, user?.id) && (
+              <PermissionGuard permission={Permissions.people.drivers.form.edit}>
+                <Button variant="ghost" size="icon" onClick={() => router.push(`/people/drivers/${params.id}/edit`)} title="Edit">
+                  <SquarePen className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                </Button>
+              </PermissionGuard>
+            )}
+            {checkRecordOwnership(archiveLevel, createdBy, user?.id) && (
+              <PermissionGuard permission={Permissions.people.drivers.form.archive}>
+                <Button variant="ghost" size="icon" onClick={() => setArchiveDialogOpen(true)} title="Archive">
+                  <Archive className="h-5 w-5 text-muted-foreground" />
+                </Button>
+              </PermissionGuard>
+            )}
           </div>
         </div>
       </div>

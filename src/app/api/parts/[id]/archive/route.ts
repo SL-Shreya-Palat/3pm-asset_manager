@@ -5,6 +5,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { getAuthenticatedUser } from '@/lib/auth-helper';
 import { getPartsCollection } from '@/lib/mongodb';
+import { getFormPermissionLevels } from '@/lib/server-permissions';
+
+const FORM_ID = 'maintenance.inventory.inventoryItem';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -27,6 +30,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const userOid = ObjectId.createFromHexString(user.id);
     const tenantOid = ObjectId.createFromHexString(user.currentTenantId);
     const docOid = ObjectId.createFromHexString(id);
+
+    // "OWN" archive: verify the user created this part
+    const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
+    if (perms.archive === 'OWN') {
+      const existing = await collection.findOne({ _id: docOid, tenantId: tenantOid });
+      if (!existing) {
+        return NextResponse.json({ data: null, error: 'Not found' }, { status: 404 });
+      }
+      if (existing.createdBy?.toString() !== user.id) {
+        return NextResponse.json({ data: null, error: 'You can only archive parts you created' }, { status: 403 });
+      }
+    }
 
     const result = await collection.updateOne(
       { _id: docOid, tenantId: tenantOid },

@@ -17,12 +17,24 @@ import {
 } from '@/components/ui/detail-page-header';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 import { ServiceTaskForm } from './service-task-form';
 import type { ServiceTaskRow } from './types';
+
+const SERVICE_TASK_FORM_ID = 'maintenance.serviceTasks.serviceTask';
 
 export function ServiceTaskDetail() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+  const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(SERVICE_TASK_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(SERVICE_TASK_FORM_ID);
+
   const [task, setTask] = useState<ServiceTaskRow | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -103,14 +115,22 @@ export function ServiceTaskDetail() {
         title={task.title}
         actions={
           <>
-            <Button variant="outline" onClick={handleOpenEdit}>
-              <Edit className="h-4 w-4" />
-              Edit
-            </Button>
-            <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
-              <Archive className="h-4 w-4" />
-              Archive
-            </Button>
+            {checkRecordOwnership(editLevel, task.createdBy, user?.id) && (
+              <PermissionGuard permission={Permissions.maintenance.serviceTasks.form.edit}>
+                <Button variant="outline" onClick={handleOpenEdit}>
+                  <Edit className="h-4 w-4" />
+                  Edit
+                </Button>
+              </PermissionGuard>
+            )}
+            {checkRecordOwnership(archiveLevel, task.createdBy, user?.id) && (
+              <PermissionGuard permission={Permissions.maintenance.serviceTasks.form.archive}>
+                <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
+                  <Archive className="h-4 w-4" />
+                  Archive
+                </Button>
+              </PermissionGuard>
+            )}
           </>
         }
       />

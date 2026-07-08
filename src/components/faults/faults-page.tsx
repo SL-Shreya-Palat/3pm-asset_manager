@@ -35,6 +35,11 @@ import { Separator } from '@/components/ui/separator';
 import { cn, formatDate } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
 import { FaultForm } from './fault-form';
 import { WorkOrderForm } from '@/components/work-orders/work-order-form';
 import type { FaultRow, Pagination } from './types';
@@ -47,8 +52,17 @@ import {
   CATEGORY_DISPLAY_NAME,
 } from './types';
 
+const FAULT_FORM_ID = 'maintenance.faults.fault';
+
 export function FaultsPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+
+  // Permission levels for row-level "OWN" checks
+  const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(FAULT_FORM_ID);
+  const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(FAULT_FORM_ID);
+  const deleteLevel = hasFullAccess ? 'ALL' : permissionIndex.getDeleteLevel(FAULT_FORM_ID);
   const [faults, setFaults] = useState<FaultRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1, limit: 25, total: 0, hasMore: false,
@@ -354,8 +368,16 @@ export function FaultsPage() {
         <RowActions>
           {showArchived ? (
             <>
-              <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(fault)} />
-              <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(fault)} />
+              {checkRecordOwnership(archiveLevel, fault.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.faults.form.archive}>
+                  <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(fault)} />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(deleteLevel, fault.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.faults.form.delete}>
+                  <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(fault)} />
+                </PermissionGuard>
+              )}
             </>
           ) : (
             <>
@@ -364,15 +386,25 @@ export function FaultsPage() {
                   <Wrench className="h-3 w-3" />{fault.workOrderNumber}
                 </Badge>
               ) : (
-                <RowActionButton
-                  label="Create work order"
-                  icon={<Wrench />}
-                  onClick={() => handleOpenCreateWO(fault)}
-                />
+                <PermissionGuard permission={Permissions.maintenance.workOrders.form.create}>
+                  <RowActionButton
+                    label="Create work order"
+                    icon={<Wrench />}
+                    onClick={() => handleOpenCreateWO(fault)}
+                  />
+                </PermissionGuard>
               )}
               <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/maintenance/faults/${fault.id}`)} />
-              <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(fault)} />
-              <RowActionButton label="Archive" tone="destructive" icon={<Archive />} onClick={() => handleOpenArchive(fault)} />
+              {checkRecordOwnership(editLevel, fault.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.faults.form.edit}>
+                  <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(fault)} />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(archiveLevel, fault.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.faults.form.archive}>
+                  <RowActionButton label="Archive" tone="destructive" icon={<Archive />} onClick={() => handleOpenArchive(fault)} />
+                </PermissionGuard>
+              )}
             </>
           )}
         </RowActions>
@@ -385,10 +417,12 @@ export function FaultsPage() {
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0">
         <PageHeader title="Faults" description="Log, prioritize, and resolve asset faults and breakdowns" count={pagination.total}>
-          <Button onClick={handleOpenCreate}>
-            <Plus className="h-4 w-4" />
-            Create Fault
-          </Button>
+          <PermissionGuard permission={Permissions.maintenance.faults.form.create}>
+            <Button onClick={handleOpenCreate}>
+              <Plus className="h-4 w-4" />
+              Create Fault
+            </Button>
+          </PermissionGuard>
         </PageHeader>
 
         {/* Status Tabs */}

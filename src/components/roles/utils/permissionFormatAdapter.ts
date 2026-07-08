@@ -13,6 +13,7 @@ import type {
   EditLevel,
   ArchiveLevel,
   DeleteLevel,
+  InspectLevel,
 } from '@/lib/rbac';
 import { isWildcardPermissions } from '@/lib/rbac';
 import { allModules } from '@/consts/modules';
@@ -74,6 +75,9 @@ export function expandPermissionsForUI(
             accessibility: fd.accessibility,
             viewLevel: 'all' as PermissionLevel,
             create: fd.accessibility.includes('create'),
+            inspectLevel: fd.accessibility.includes('inspect')
+              ? ('all' as PermissionLevel)
+              : ('none' as PermissionLevel),
             editLevel: fd.accessibility.includes('edit')
               ? ('all' as PermissionLevel)
               : ('none' as PermissionLevel),
@@ -111,6 +115,7 @@ function applyGrant(
     accessibility: fd.accessibility,
     viewLevel: levelToUI(grant.v),
     create: grant.c,
+    inspectLevel: inspectLevelToUI(grant.ins),
     editLevel: editLevelToUI(grant.e),
     archiveLevel: archiveLevelToUI(grant.ar),
     deleteLevel: deleteLevelToUI(grant.d),
@@ -129,6 +134,7 @@ function resetForm(fd: {
     accessibility: fd.accessibility,
     viewLevel: 'none',
     create: false,
+    inspectLevel: 'none',
     editLevel: 'none',
     archiveLevel: 'none',
     deleteLevel: 'none',
@@ -152,16 +158,28 @@ export function compressPermissionsForStorage(
 
   for (const mod of modules) {
     if (!mod.view) continue;
-    enabledModules.add(mod.key);
+
+    let moduleHasGrants = false;
 
     for (const sm of mod.subModules) {
-      if (!sm.view) continue;
-      enabledSubModules.add(`${mod.key}.${sm.key}`);
+      let smHasGrants = false;
 
       for (const form of sm.forms) {
         const grant = compressForm(mod.key, sm.key, form);
-        if (grant) forms.push(grant);
+        if (grant) {
+          forms.push(grant);
+          smHasGrants = true;
+        }
       }
+
+      if (smHasGrants) {
+        enabledSubModules.add(`${mod.key}.${sm.key}`);
+        moduleHasGrants = true;
+      }
+    }
+
+    if (moduleHasGrants) {
+      enabledModules.add(mod.key);
     }
   }
 
@@ -184,9 +202,10 @@ function compressForm(
   const e = uiToEditLevel(form.editLevel);
   const ar = uiToArchiveLevel(form.archiveLevel);
   const d = uiToDeleteLevel(form.deleteLevel);
+  const ins = uiToInspectLevel(form.inspectLevel);
 
   // Skip if the form has no meaningful permissions
-  if (v === 'NONE' && !c && e === false && (ar === false || ar === undefined) && (d === false || d === undefined)) {
+  if (v === 'NONE' && !c && e === false && (ar === false || ar === undefined) && (d === false || d === undefined) && (ins === false || ins === undefined)) {
     return null;
   }
 
@@ -203,6 +222,10 @@ function compressForm(
 
   if (d !== false && d !== undefined) {
     grant.d = d;
+  }
+
+  if (ins !== false && ins !== undefined) {
+    grant.ins = ins;
   }
 
   return grant;
@@ -266,6 +289,12 @@ function deleteLevelToUI(level: DeleteLevel | undefined): PermissionLevel {
   return 'none';
 }
 
+function inspectLevelToUI(level: InspectLevel | undefined): PermissionLevel {
+  if (level === 'ALL') return 'all';
+  if (level === 'OWN') return 'own';
+  return 'none';
+}
+
 function uiToViewLevel(level: PermissionLevel): ViewLevel {
   switch (level) {
     case 'all':
@@ -300,6 +329,17 @@ function uiToArchiveLevel(level: PermissionLevel): ArchiveLevel {
 }
 
 function uiToDeleteLevel(level: PermissionLevel): DeleteLevel {
+  switch (level) {
+    case 'all':
+      return 'ALL';
+    case 'own':
+      return 'OWN';
+    default:
+      return false;
+  }
+}
+
+function uiToInspectLevel(level: PermissionLevel): InspectLevel {
   switch (level) {
     case 'all':
       return 'ALL';

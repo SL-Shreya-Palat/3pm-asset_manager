@@ -139,6 +139,7 @@ export async function getAllAssets(
     showArchived?: boolean;
     /** Acting user — attributed to any anchors refreshed by the auto-sync. */
     userId?: string;
+    createdBy?: string;
   },
 ) {
   // Fresh on every call: pull the latest Command assets BEFORE reading local, so
@@ -168,6 +169,11 @@ export async function getAllAssets(
 
   if (options.teamId) {
     filter.teamIds = ObjectId.createFromHexString(options.teamId);
+  }
+
+  // "OWN" view scope — only show records created by this user
+  if (options.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
   }
 
   if (options.search) {
