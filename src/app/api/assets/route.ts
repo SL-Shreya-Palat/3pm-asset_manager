@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helper';
 import { getAllAssets, createAsset } from '@/controller/assets';
+import { getFormPermissionLevels } from '@/lib/server-permissions';
 
 export async function GET(request: NextRequest) {
   const user = await getAuthenticatedUser(request);
@@ -21,7 +22,11 @@ export async function GET(request: NextRequest) {
   const complianceStatus = searchParams.get('complianceStatus') || undefined;
   const showArchived = searchParams.get('showArchived') === 'true';
 
-  const result = await getAllAssets(user.currentTenantId, { page, limit, search, status, teamId, complianceStatus, showArchived });
+  // Check if user has "OWN" view level — scope results to their records only
+  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, 'assets.assets.asset');
+  const createdBy = perms.view === 'OWN' ? user.id : undefined;
+
+  const result = await getAllAssets(user.currentTenantId, { page, limit, search, status, teamId, complianceStatus, showArchived, createdBy });
   return NextResponse.json({ data: result, error: null });
 }
 

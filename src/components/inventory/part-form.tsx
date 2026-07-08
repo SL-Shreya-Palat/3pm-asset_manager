@@ -173,8 +173,8 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
     setFieldErrors({});
 
     const errors: Record<string, string> = {};
-    if (!name.trim()) errors.name = 'Part name is required';
-    if (!partNumber.trim()) errors.partNumber = 'Part number is required';
+    if (!name.trim()) errors.name = 'Stock name is required';
+    if (!partNumber.trim()) errors.partNumber = 'Stock number is required';
     if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
 
     // Handle photo upload
@@ -242,7 +242,7 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-border">
         <h2 className="text-lg font-semibold text-foreground">
-          {mode === 'edit' ? 'Edit Part' : 'Add Part'}
+          {mode === 'edit' ? 'Edit Stock' : 'Add Stock'}
         </h2>
         <Button variant="ghost" size="icon-sm" onClick={onClose}>
           <X className="h-4 w-4" />
@@ -274,7 +274,7 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
                 <SquarePen className="h-3.5 w-3.5" />
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">Click to upload part photo</p>
+            <p className="text-xs text-muted-foreground">Click to upload stock photo</p>
             <input
               ref={fileInputRef}
               type="file"
@@ -284,35 +284,35 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
             />
           </div>
 
-          {/* ── Part Details ── */}
+          {/* ── Stock Details ── */}
           <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Part Details</h3>
+            <h3 className="text-sm font-semibold text-foreground mb-3">Stock Details</h3>
             <Separator className="mb-4" />
             <div className="space-y-4">
-              {/* Part Name */}
+              {/* Stock Name */}
               <div>
-                <Label htmlFor="partName">Part name <span className="text-destructive">*</span></Label>
+                <Label htmlFor="partName">Stock name <span className="text-destructive">*</span></Label>
                 <Input
                   id="partName"
                   value={name}
                   onChange={(e) => { setName(e.target.value); clearFieldError('name'); }}
-                  placeholder="Enter part name"
+                  placeholder="Enter stock name"
                   className={`mt-1.5 ${fieldErrors.name ? 'border-destructive' : ''}`}
                 />
                 {fieldErrors.name && <p className="text-sm text-destructive mt-1">{fieldErrors.name}</p>}
               </div>
 
-              {/* Part Number */}
+              {/* Stock Number */}
               <div>
-                <Label htmlFor="partNumber">Part number <span className="text-destructive">*</span></Label>
+                <Label htmlFor="partNumber">Stock number <span className="text-destructive">*</span></Label>
                 <Input
                   id="partNumber"
                   value={partNumber}
                   onChange={(e) => { setPartNumber(e.target.value); clearFieldError('partNumber'); }}
-                  placeholder="Enter part number"
+                  placeholder="Enter stock number"
                   className={`mt-1.5 ${fieldErrors.partNumber ? 'border-destructive' : ''}`}
                 />
-                <p className="text-xs text-muted-foreground mt-1">Must be unique per part</p>
+                <p className="text-xs text-muted-foreground mt-1">Must be unique per stock item</p>
                 {fieldErrors.partNumber && <p className="text-sm text-destructive mt-1">{fieldErrors.partNumber}</p>}
               </div>
 
@@ -325,7 +325,7 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
                   id="partDescription"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe the part..."
+                  placeholder="Describe the stock item..."
                   rows={3}
                   className="mt-1.5"
                 />
@@ -556,7 +556,7 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
       <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
         <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
         <Button onClick={handleSubmit} disabled={saving}>
-          {saving ? 'Saving...' : mode === 'edit' ? 'Update Part' : 'Create Part'}
+          {saving ? 'Saving...' : mode === 'edit' ? 'Update Stock' : 'Create Stock'}
         </Button>
       </div>
     </div>

@@ -53,10 +53,10 @@ export function PermissionGuard({
   else if (parts.length === 4) {
     const [mod, sub, form, action] = parts;
     const formId = `${mod}.${sub}.${form}`;
-    if (['view', 'create', 'edit', 'archive', 'delete'].includes(action)) {
+    if (['view', 'create', 'inspect', 'edit', 'archive', 'delete'].includes(action)) {
       const result = permissionIndex.hasFormPermission(
         formId,
-        action as 'view' | 'create' | 'edit' | 'archive' | 'delete',
+        action as 'view' | 'create' | 'inspect' | 'edit' | 'archive' | 'delete',
       );
       hasPermission = action === 'view' ? result !== 'NONE' : Boolean(result);
     }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import axios from 'axios';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import apiClient, { unwrapResponse } from '@/lib/api-client';
@@ -62,6 +63,9 @@ export default function InspectionFormsPage() {
     setSessionError(null);
 
     try {
+      // Seed pre-start forms and clean up any duplicates in the form-builder.
+      await axios.post('/api/forms/seed-prestart', {}, { withCredentials: true }).catch(() => {});
+
       const response = await apiClient.post<
         BaseResponse<{ sessionId: string; expiresAt: string }>
       >('/api/embed/form-builder-session');

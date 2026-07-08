@@ -225,8 +225,8 @@ export function InventoryPage() {
   const partColumns: DataTableColumn<PartRow>[] = [
     {
       key: 'name',
-      header: 'Part Name',
-      label: 'Part name',
+      header: 'Stock Name',
+      label: 'Stock name',
       pinned: true,
       sortable: true,
       render: (part) => (
@@ -243,8 +243,8 @@ export function InventoryPage() {
     },
     {
       key: 'partNumber',
-      header: 'Part #',
-      label: 'Part number',
+      header: 'Stock #',
+      label: 'Stock number',
       pinned: true,
       sortable: true,
       render: (part) => (
@@ -360,7 +360,7 @@ export function InventoryPage() {
           <PermissionGuard permission={Permissions.maintenance.inventory.form.create}>
             <Button onClick={handleOpenCreate}>
               <Plus className="h-4 w-4" />
-              Add Part
+              Add Stock
             </Button>
           </PermissionGuard>
         </PageHeader>
@@ -377,20 +377,21 @@ export function InventoryPage() {
             density={density}
             onDensityChange={setDensity}
             actions={
-              selectedKeys.size > 0 ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={() => setBarcodeDialogOpen(true)}
-                >
-                  <Barcode className="h-4 w-4" />
-                  Generate barcode
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                disabled={selectedKeys.size === 0}
+                onClick={() => setBarcodeDialogOpen(true)}
+              >
+                <Barcode className="h-4 w-4" />
+                Generate barcode
+                {selectedKeys.size > 0 && (
                   <Badge variant="default" className="ml-1 h-5 min-w-5 px-1.5 text-xs rounded-full">
                     {selectedKeys.size}
                   </Badge>
-                </Button>
-              ) : null
+                )}
+              </Button>
             }
             searchNode={
               <SearchInput value={search} onChange={setSearch} placeholder="Search parts..." />
@@ -413,8 +414,8 @@ export function InventoryPage() {
             onSelectedKeysChange={setSelectedKeys}
             emptyMessage={
               debouncedSearch
-                ? 'No parts match your search.'
-                : 'No parts yet. Click "Add Part" to create one.'
+                ? 'No stock items match your search.'
+                : 'No stock items yet. Click "Add Stock" to create one.'
             }
           />
         </div>

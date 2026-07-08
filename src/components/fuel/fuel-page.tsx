@@ -14,6 +14,7 @@ import {
   Droplets,
   Archive,
   ArchiveRestore,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
@@ -120,6 +121,11 @@ export function FuelPage() {
   const [archivingTransaction, setArchivingTransaction] = useState<FuelTransactionRow | null>(null);
   const [archiving, setArchiving] = useState(false);
 
+  // Delete dialog
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingTransaction, setDeletingTransaction] = useState<FuelTransactionRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   // Show archived toggle
   const [showArchived, setShowArchived] = useState(false);
 
@@ -222,6 +228,28 @@ export function FuelPage() {
       console.error('Failed to archive fuel transaction:', err);
     } finally {
       setArchiving(false);
+    }
+  };
+
+  // ── Delete handlers ──
+  const handleOpenDelete = (txn: FuelTransactionRow) => {
+    setDeletingTransaction(txn);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!deletingTransaction) return;
+    setDeleting(true);
+    try {
+      await axios.delete(`/api/fuel/${deletingTransaction.id}`, { withCredentials: true });
+      setDeleteDialogOpen(false);
+      setDeletingTransaction(null);
+      fetchTransactions(pagination.page);
+      fetchAnalytics();
+    } catch (err) {
+      console.error('Failed to delete fuel transaction:', err);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -343,22 +371,46 @@ export function FuelPage() {
       align: 'right',
       render: (txn) => (
         <RowActions>
-          <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(txn)} />
-          {checkRecordOwnership(editLevel, txn.createdBy, user?.id) && (
-            <PermissionGuard permission={Permissions.fuel.fuel.form.edit}>
-              {!txn.isArchived && (
-                <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(txn)} />
+          {showArchived ? (
+            <>
+              {checkRecordOwnership(archiveLevel, txn.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.fuel.fuel.form.archive}>
+                  <RowActionButton
+                    label="Unarchive"
+                    icon={<ArchiveRestore />}
+                    onClick={() => handleOpenArchive(txn)}
+                  />
+                </PermissionGuard>
               )}
-            </PermissionGuard>
-          )}
-          {checkRecordOwnership(archiveLevel, txn.createdBy, user?.id) && (
-            <PermissionGuard permission={Permissions.fuel.fuel.form.archive}>
-              <RowActionButton
-                label={txn.isArchived ? 'Unarchive' : 'Archive'}
-                icon={txn.isArchived ? <ArchiveRestore /> : <Archive />}
-                onClick={() => handleOpenArchive(txn)}
-              />
-            </PermissionGuard>
+              {checkRecordOwnership(deleteLevel, txn.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.fuel.fuel.form.delete}>
+                  <RowActionButton
+                    label="Delete"
+                    tone="destructive"
+                    icon={<Trash2 />}
+                    onClick={() => handleOpenDelete(txn)}
+                  />
+                </PermissionGuard>
+              )}
+            </>
+          ) : (
+            <>
+              <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleOpenView(txn)} />
+              {checkRecordOwnership(editLevel, txn.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.fuel.fuel.form.edit}>
+                  <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(txn)} />
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(archiveLevel, txn.createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.fuel.fuel.form.archive}>
+                  <RowActionButton
+                    label="Archive"
+                    icon={<Archive />}
+                    onClick={() => handleOpenArchive(txn)}
+                  />
+                </PermissionGuard>
+              )}
+            </>
           )}
         </RowActions>
       ),
@@ -371,10 +423,12 @@ export function FuelPage() {
       <div className="flex flex-col flex-1 min-w-0">
         {/* Header */}
         <PageHeader title="Fuel" description="Record and monitor fuel transactions across your fleet" count={pagination.total}>
-          <FuelImportExport
-            onImported={() => { fetchTransactions(1); fetchAnalytics(); }}
-            onImportResult={(r) => { setImportResult(r); setImportResultOpen(true); }}
-          />
+          <PermissionGuard permission={Permissions.fuel.fuel.form.create}>
+            <FuelImportExport
+              onImported={() => { fetchTransactions(1); fetchAnalytics(); }}
+              onImportResult={(r) => { setImportResult(r); setImportResultOpen(true); }}
+            />
+          </PermissionGuard>
           <PermissionGuard permission={Permissions.fuel.fuel.form.create}>
             <Button onClick={handleOpenCreate}>
               <Plus className="h-4 w-4" />
@@ -491,6 +545,16 @@ export function FuelPage() {
         action={archivingTransaction?.isArchived ? 'unarchive' : 'archive'}
         onConfirm={handleArchive}
         loading={archiving}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <ArchiveConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={deletingTransaction?.assetName || 'Fuel Transaction'}
+        action="delete"
+        onConfirm={handleDelete}
+        loading={deleting}
       />
 
       {/* Import Result Dialog */}

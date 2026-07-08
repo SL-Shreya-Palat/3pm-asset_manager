@@ -82,6 +82,94 @@ export interface FormSeedResult {
 }
 
 /**
+ * Remove duplicate forms from the form-builder service.
+ * Groups all forms by title, checks which form IDs the local DB references,
+ * keeps referenced forms (falling back to the newest), and deletes the rest.
+ * Also updates local DB records if their referenced form was deleted.
+ * Returns the number of duplicates removed.
+ */
+export async function cleanupDuplicateFormBuilderForms(params: {
+  userEmail: string;
+  userName: string;
+}): Promise<number> {
+  const { sessionId } = await getOrCreateFbSession(params.userEmail, params.userName);
+  let removed = 0;
+  try {
+    const fbForms = await fbFetch('/forms', sessionId, 'GET');
+    const list = Array.isArray(fbForms) ? fbForms : (fbForms?.items ?? []);
+
+    // Group all form-builder forms by title.
+    const formsByTitle = new Map<string, Array<{ id: string; createdAt?: string }>>();
+    for (const f of list) {
+      const title: string = f.title || f.formTitle || '';
+      const id: string = f.id || f._id || '';
+      if (!title || !id) continue;
+      if (!formsByTitle.has(title)) formsByTitle.set(title, []);
+      formsByTitle.get(title)!.push({ id: String(id), createdAt: f.createdAt });
+    }
+
+    // Only process titles that actually have duplicates.
+    const titlesWithDupes = [...formsByTitle.entries()].filter(([, forms]) => forms.length > 1);
+    if (titlesWithDupes.length === 0) return 0;
+
+    // Fetch local DB form records to know which form-builder IDs are referenced.
+    const formsCol = await getFormsCollection();
+    const localForms = await formsCol
+      .find(
+        { formTitle: { $in: titlesWithDupes.map(([title]) => title) } },
+        { projection: { formTitle: 1, formId: 1, tenantId: 1 } },
+      )
+      .toArray();
+
+    // Build a set of referenced form-builder IDs (as strings).
+    const referencedIds = new Set<string>();
+    for (const lf of localForms) {
+      const id = lf.formId instanceof ObjectId ? lf.formId.toHexString() : String(lf.formId);
+      referencedIds.add(id);
+    }
+
+    // For each title with duplicates, keep the referenced form and delete the rest.
+    for (const [title, forms] of titlesWithDupes) {
+      // Sort newest first so we prefer keeping the newest if none are referenced.
+      forms.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+      // Prefer keeping a form that the local DB references.
+      const referencedForm = forms.find((f) => referencedIds.has(f.id));
+      const keepId = referencedForm ? referencedForm.id : forms[0].id;
+
+      for (const form of forms) {
+        if (form.id === keepId) continue;
+        try {
+          await fbFetch(`/forms/${form.id}`, sessionId, 'DELETE');
+          removed++;
+        } catch {
+          // Best-effort: form may already be deleted.
+        }
+      }
+
+      // If local DB records point to a form that was deleted, update them
+      // to reference the surviving form.
+      if (keepId) {
+        const keepOid = ObjectId.isValid(keepId) ? ObjectId.createFromHexString(keepId) : new ObjectId(keepId);
+        const deletedIds = forms.filter((f) => f.id !== keepId).map((f) => f.id);
+        for (const lf of localForms) {
+          const lfFormId = lf.formId instanceof ObjectId ? lf.formId.toHexString() : String(lf.formId);
+          if (String(lf.formTitle) === title && deletedIds.includes(lfFormId)) {
+            await formsCol.updateOne(
+              { _id: lf._id },
+              { $set: { formId: keepOid, 'schema.formId': keepId, updatedAt: new Date() } },
+            );
+          }
+        }
+      }
+    }
+  } catch {
+    // Best-effort cleanup.
+  }
+  return removed;
+}
+
+/**
  * Seed the pre-start inspection forms for a tenant:
  *   create + publish in form-builder → store locally → write defect settings.
  * Idempotent: templates already present for the tenant are skipped.
@@ -112,11 +200,6 @@ export async function seedInspectionForms(params: {
     (d) => (d.templateSchemaVersion ?? 1) < PRESTART_TEMPLATE_SCHEMA_VERSION,
   );
 
-  // Nothing to do — avoid minting a form-builder session needlessly.
-  if (templates.every((t) => seededTitles.has(t.title)) && !hasStale) {
-    return templates.map((t) => ({ title: t.title, status: 'already_seeded' as const }));
-  }
-
   // Auto-update stale forms before seeding new ones.
   if (hasStale) {
     await updateInspectionForms({ tenantId, userId, userEmail, userName });
@@ -142,6 +225,7 @@ export async function seedInspectionForms(params: {
   // token), so forms created by one tenant appear for everyone in the
   // iframe. Fetch existing FB forms to avoid creating duplicates when a
   // new tenant (or a concurrent seed call) triggers seeding.
+  // Note: duplicate cleanup is handled by cleanupDuplicateFormBuilderForms().
   const fbFormsByTitle = new Map<string, string>();
   try {
     const fbForms = await fbFetch('/forms', sessionId, 'GET');
@@ -153,6 +237,18 @@ export async function seedInspectionForms(params: {
     }
   } catch {
     // If the check fails, fall through to creation (worst case: a duplicate).
+  }
+
+  // Check for orphaned local references — forms that exist locally but whose
+  // form-builder counterpart was deleted (e.g. by a previous cleanup).
+  // Remove these from seededTitles so the seeding loop re-processes them
+  // (reusing an existing FB form with the same title, or creating a new one).
+  const fbIdSet = new Set(fbFormsByTitle.values());
+  for (const doc of existing) {
+    const localFbId = doc.formId instanceof ObjectId ? doc.formId.toHexString() : String(doc.formId);
+    if (!fbIdSet.has(localFbId)) {
+      seededTitles.delete(String(doc.formTitle));
+    }
   }
 
   const results: FormSeedResult[] = [];

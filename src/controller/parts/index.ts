@@ -85,14 +85,14 @@ export async function createPart(tenantId: string, userId: string, input: Create
   const collection = await getPartsCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
 
-  // Check unique part number within tenant
+  // Check unique stock number within tenant
   const existing = await collection.findOne({
     tenantId: tenantOid,
     partNumber: input.partNumber.trim(),
     isArchived: { $ne: true },
   });
   if (existing) {
-    return { data: null, error: { partNumber: 'Part number already exists' } };
+    return { data: null, error: { partNumber: 'Stock number already exists' } };
   }
 
   const now = new Date();
@@ -167,18 +167,18 @@ export async function updatePart(
 
   if (input.name !== undefined) {
     const trimmed = input.name.trim();
-    if (!trimmed) return { data: null, error: { name: 'Part name is required' } };
+    if (!trimmed) return { data: null, error: { name: 'Stock name is required' } };
     $set.name = trimmed;
   }
 
   if (input.partNumber !== undefined) {
     const trimmed = input.partNumber.trim();
-    if (!trimmed) return { data: null, error: { partNumber: 'Part number is required' } };
+    if (!trimmed) return { data: null, error: { partNumber: 'Stock number is required' } };
     // Check uniqueness
     const dup = await collection.findOne({
       tenantId: tenantOid, partNumber: trimmed, _id: { $ne: partOid }, isArchived: { $ne: true },
     });
-    if (dup) return { data: null, error: { partNumber: 'Part number already exists' } };
+    if (dup) return { data: null, error: { partNumber: 'Stock number already exists' } };
     $set.partNumber = trimmed;
   }
 

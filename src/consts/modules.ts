@@ -87,6 +87,12 @@ export const allModules: Modules = [
         accessibility: ["view"],
       },
       {
+        name: "Asset Service Schedule",
+        key: "serviceSchedule",
+        description: "View service schedules assigned to assets",
+        accessibility: ["view"],
+      },
+      {
         name: "Work Orders",
         key: "workOrders",
         description: "Manage work orders for maintenance and repair activities",

@@ -52,7 +52,7 @@ export const navItems: NavItem[] = [
     children: [
       { label: 'Service Tasks', href: '/maintenance/service-tasks', requiredModule: 'maintenance', requiredSubModule: 'serviceTasks' },
       { label: 'Service Plans', href: '/maintenance/service-plans', requiredModule: 'maintenance', requiredSubModule: 'servicePlans' },
-      { label: 'Asset Service Schedule', href: '/maintenance/service-schedule', requiredModule: 'maintenance' },
+      { label: 'Asset Service Schedule', href: '/maintenance/service-schedule', requiredModule: 'maintenance', requiredSubModule: 'serviceSchedule' },
       { label: 'Work Orders', href: '/maintenance/work-orders', requiredModule: 'maintenance', requiredSubModule: 'workOrders' },
       { label: 'Defects', href: '/maintenance/defects', requiredModule: 'maintenance', requiredSubModule: 'defects' },
       { label: 'Faults', href: '/maintenance/faults', requiredModule: 'maintenance', requiredSubModule: 'faults' },
@@ -69,8 +69,8 @@ export const navItems: NavItem[] = [
     icon: Users,
     children: [
       { label: 'Users', href: '/people/users', adminOnly: true },
-      { label: 'Teams', href: '/people/teams', requiredModule: 'people' },
-      { label: 'Drivers', href: '/people/drivers', requiredModule: 'people' },
+      { label: 'Teams', href: '/people/teams', requiredModule: 'people', requiredSubModule: 'teams' },
+      { label: 'Drivers', href: '/people/drivers', requiredModule: 'people', requiredSubModule: 'drivers' },
       { label: 'Roles', href: '/people/roles', adminOnly: true },
     ],
   },

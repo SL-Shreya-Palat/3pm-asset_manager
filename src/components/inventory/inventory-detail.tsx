@@ -173,10 +173,10 @@ export function InventoryDetail() {
       />
 
       <div className="space-y-6">
-        {/* Part Details */}
-        <DetailCard icon={Package} title="Part Details" columns={3}>
+        {/* Stock Details */}
+        <DetailCard icon={Package} title="Stock Details" columns={3}>
           <DetailField label="Name" value={part.name} />
-          <DetailField label="Part Number" value={part.partNumber} />
+          <DetailField label="Stock Number" value={part.partNumber} />
           <DetailField label="UPC" value={part.upc} />
           <DetailField label="Category" value={categoryName} />
           <DetailField label="Description" value={part.description} className="col-span-full" />

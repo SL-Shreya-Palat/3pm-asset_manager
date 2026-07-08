@@ -155,8 +155,8 @@ export function PurchaseOrderDetail() {
             </Badge>
           } />
           <DetailField label="Vendor" value={order.vendorName || undefined} />
-          <DetailField label="Delivery Location" value={order.deliveryLocationId} />
-          <DetailField label="Approver" value={order.approverId} />
+          <DetailField label="Delivery Location" value={order.deliveryLocationName || order.deliveryLocationId} />
+          <DetailField label="Approver" value={order.approverName || order.approverId} />
           <DetailField
             label="Created"
             value={order.createdAt ? formatDate(order.createdAt) : undefined}
@@ -184,7 +184,7 @@ export function PurchaseOrderDetail() {
               {/* Line items */}
               {order.lineItems.map((li, i) => (
                 <div key={i} className="grid grid-cols-[1fr_auto_auto_auto] gap-4 items-center rounded-md border border-border px-3 py-2">
-                  <span className="text-sm text-foreground truncate">{li.partId}</span>
+                  <span className="text-sm text-foreground truncate">{li.partName || li.partId}</span>
                   <span className="w-16 text-right text-sm text-muted-foreground tabular-nums">{li.quantity}</span>
                   <span className="w-24 text-right text-sm text-muted-foreground tabular-nums">${li.unitCost.toFixed(2)}</span>
                   <span className="w-24 text-right text-sm text-foreground font-medium tabular-nums">${li.total.toFixed(2)}</span>

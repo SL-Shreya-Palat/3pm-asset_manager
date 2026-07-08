@@ -133,6 +133,7 @@ export async function getAllAssets(
     teamId?: string;
     complianceStatus?: string;
     showArchived?: boolean;
+    createdBy?: string;
   },
 ) {
   const collection = await getAssetsCollection();
@@ -157,6 +158,11 @@ export async function getAllAssets(
 
   if (options.teamId) {
     filter.teamIds = ObjectId.createFromHexString(options.teamId);
+  }
+
+  // "OWN" view scope — only show records created by this user
+  if (options.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
   }
 
   if (options.search) {

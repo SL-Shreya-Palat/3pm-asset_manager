@@ -1,6 +1,6 @@
 'use client';
 
-import { Archive, ArchiveRestore, Loader2 } from 'lucide-react';
+import { Archive, ArchiveRestore, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -16,8 +16,8 @@ interface ArchiveConfirmDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Entity name used to generate default title/description. */
   itemName?: string;
-  /** Whether archiving or unarchiving. */
-  action: 'archive' | 'unarchive';
+  /** Whether archiving, unarchiving, or deleting. */
+  action: 'archive' | 'unarchive' | 'delete';
   /** Called when the user confirms. */
   onConfirm: () => void;
   /** Shows spinner and disables buttons. */
@@ -33,14 +33,19 @@ export function ArchiveConfirmDialog({
   loading = false,
 }: ArchiveConfirmDialogProps) {
   const isArchive = action === 'archive';
+  const isDelete = action === 'delete';
 
-  const title = isArchive
-    ? `Archive ${itemName || 'Item'}`
-    : `Unarchive ${itemName || 'Item'}`;
+  const title = isDelete
+    ? `Delete ${itemName || 'Item'}`
+    : isArchive
+      ? `Archive ${itemName || 'Item'}`
+      : `Unarchive ${itemName || 'Item'}`;
 
-  const description = isArchive
-    ? `Are you sure you want to archive "${itemName || 'this item'}"? This item will be moved to the archive.`
-    : `Are you sure you want to unarchive "${itemName || 'this item'}"? This item will be restored to the active list.`;
+  const description = isDelete
+    ? `Are you sure you want to permanently delete "${itemName || 'this item'}"? This action cannot be undone.`
+    : isArchive
+      ? `Are you sure you want to archive "${itemName || 'this item'}"? This item will be moved to the archive.`
+      : `Are you sure you want to unarchive "${itemName || 'this item'}"? This item will be restored to the active list.`;
 
   const handleCancel = () => {
     if (!loading) onOpenChange(false);
@@ -57,10 +62,12 @@ export function ArchiveConfirmDialog({
           <div className="flex items-start gap-4">
             <div
               className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-                isArchive ? 'bg-muted' : 'bg-primary/10'
+                isDelete ? 'bg-destructive/10' : isArchive ? 'bg-muted' : 'bg-primary/10'
               }`}
             >
-              {isArchive ? (
+              {isDelete ? (
+                <Trash2 className="h-5 w-5 text-destructive" />
+              ) : isArchive ? (
                 <Archive className="h-5 w-5 text-muted-foreground" />
               ) : (
                 <ArchiveRestore className="h-5 w-5 text-primary" />
@@ -87,12 +94,12 @@ export function ArchiveConfirmDialog({
           </Button>
           <Button
             type="button"
-            variant={isArchive ? 'secondary' : 'default'}
+            variant={isDelete ? 'destructive' : isArchive ? 'secondary' : 'default'}
             onClick={handleConfirm}
             disabled={loading}
           >
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isArchive ? 'Archive' : 'Unarchive'}
+            {isDelete ? 'Delete' : isArchive ? 'Archive' : 'Unarchive'}
           </Button>
         </DialogFooter>
       </DialogContent>

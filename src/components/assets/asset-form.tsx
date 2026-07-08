@@ -63,7 +63,7 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
   const [currencyCode, setCurrencyCode] = useState('USD');
   const [engineHours, setEngineHours] = useState('');
   const [assetTypeId, setAssetTypeId] = useState('');
-  const [lastServiceDate, setLastServiceDate] = useState('');
+  const [lastServiceDate, setLastServiceDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [lastServiceMileage, setLastServiceMileage] = useState('');
   const [assetSubtype, setAssetSubtype] = useState('');
   const [lastServiceEngineHours, setLastServiceEngineHours] = useState('');

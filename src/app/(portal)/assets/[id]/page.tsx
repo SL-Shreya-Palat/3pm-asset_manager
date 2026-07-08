@@ -40,6 +40,7 @@ import {
   type ServiceScheduleStatus,
 } from '@/constants/service-status';
 import { InspectButton } from '@/components/inspections/inspect-button';
+import { useRoleAccess } from '@/hooks/use-role-access';
 import { AssetFuelTab } from '@/components/fuel/asset-fuel-tab';
 import { AssetServiceTab } from '@/components/assets/asset-service-tab';
 import { AssetMeterTab } from '@/components/assets/asset-meter-tab';
@@ -69,6 +70,14 @@ type AssetTabId = (typeof ASSET_TABS)[number]['id'];
 export default function AssetDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+
+  // Permission checks for asset actions
+  const assetFormId = 'assets.assets.asset';
+  const canInspect = hasFullAccess || (permissionIndex.getInspectLevel(assetFormId) === 'ALL' || permissionIndex.getInspectLevel(assetFormId) === 'OWN');
+  const canEdit = hasFullAccess || (permissionIndex.getEditLevel(assetFormId) === 'ALL' || permissionIndex.getEditLevel(assetFormId) === 'OWN');
+  const canAccessForms = hasFullAccess || permissionIndex.hasSubModuleView('inspections', 'forms');
+
   const [asset, setAsset] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState(false);
@@ -383,23 +392,28 @@ export default function AssetDetailPage() {
             )}
           </div>
           <div className="flex items-center gap-2 shrink-0 flex-wrap">
-            <InspectButton assetId={String(params.id)} />
-            <Button
-              variant={normalizedStatus === 'in_service' ? 'destructive' : 'default'}
-              onClick={handleToggleStatus}
-              disabled={toggling}
-            >
-              <Power className="h-4 w-4" />
-              {toggling
-                ? 'Updating...'
-                : normalizedStatus === 'in_service'
-                  ? 'Mark as Under Maintenance'
-                  : 'Mark as Active'}
-            </Button>
-            <Button onClick={() => router.push(`/assets/${params.id}/edit`)}>
-              <Pencil className="h-4 w-4" />
-              Edit
-            </Button>
+            {canInspect && <InspectButton assetId={String(params.id)} />}
+            {canEdit && (
+              <Button
+                variant={normalizedStatus === 'in_service' ? 'destructive' : 'default'}
+                onClick={handleToggleStatus}
+                disabled={toggling}
+              >
+                <Power className="h-4 w-4" />
+                {toggling
+                  ? 'Updating...'
+                  : normalizedStatus === 'in_service'
+                    ? 'Mark as Under Maintenance'
+                    : 'Mark as Active'}
+              </Button>
+            )}
+            {canEdit && (
+              <Button onClick={() => router.push(`/assets/${params.id}/edit`)}>
+                <Pencil className="h-4 w-4" />
+                Edit
+              </Button>
+            )}
+            {(canEdit || canAccessForms) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="icon">
@@ -407,20 +421,27 @@ export default function AssetDetailPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handleOpenChangeTeam}>
-                  <Users className="h-4 w-4" />
-                  Change Team
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleOpenAssignForms}>
-                  <ClipboardList className="h-4 w-4" />
-                  Assign Forms
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleOpenDriverAccess}>
-                  <KeyRound className="h-4 w-4" />
-                  Driver Access
-                </DropdownMenuItem>
+                {canEdit && (
+                  <DropdownMenuItem onClick={handleOpenChangeTeam}>
+                    <Users className="h-4 w-4" />
+                    Change Team
+                  </DropdownMenuItem>
+                )}
+                {canAccessForms && (
+                  <DropdownMenuItem onClick={handleOpenAssignForms}>
+                    <ClipboardList className="h-4 w-4" />
+                    Assign Forms
+                  </DropdownMenuItem>
+                )}
+                {canEdit && (
+                  <DropdownMenuItem onClick={handleOpenDriverAccess}>
+                    <KeyRound className="h-4 w-4" />
+                    Driver Access
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
+            )}
           </div>
         </div>
 

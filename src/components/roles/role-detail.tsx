@@ -193,6 +193,7 @@ export function RoleDetail() {
                           <th className="text-left px-3 py-2 font-medium text-muted-foreground">Form</th>
                           <th className="text-center px-2 py-2 font-medium text-muted-foreground">View</th>
                           <th className="text-center px-2 py-2 font-medium text-muted-foreground">Create</th>
+                          <th className="text-center px-2 py-2 font-medium text-muted-foreground">Inspect</th>
                           <th className="text-center px-2 py-2 font-medium text-muted-foreground">Update</th>
                           <th className="text-center px-2 py-2 font-medium text-muted-foreground">Archive/Unarchive</th>
                           <th className="text-center px-2 py-2 font-medium text-muted-foreground">Delete</th>
@@ -214,6 +215,13 @@ export function RoleDetail() {
                                   ) : (
                                     <span className="text-muted-foreground text-xs">No</span>
                                   )
+                                ) : (
+                                  <span className="text-muted-foreground text-xs">—</span>
+                                )}
+                              </td>
+                              <td className="text-center px-2 py-2">
+                                {form.accessibility.includes('inspect') ? (
+                                  <LevelBadge level={form.inspectLevel} />
                                 ) : (
                                   <span className="text-muted-foreground text-xs">—</span>
                                 )}

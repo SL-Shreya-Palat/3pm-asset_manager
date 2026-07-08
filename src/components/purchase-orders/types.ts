@@ -1,5 +1,6 @@
 export interface POLineItemRow {
   partId: string;
+  partName?: string;
   quantity: number;
   unitCost: number;
   total: number;
@@ -31,7 +32,9 @@ export interface PurchaseOrderRow {
   vendorId: string;
   vendorName: string;
   deliveryLocationId: string;
+  deliveryLocationName?: string;
   approverId: string;
+  approverName?: string;
   lineItems: POLineItemRow[];
   subTotal: number;
   shipping: number;

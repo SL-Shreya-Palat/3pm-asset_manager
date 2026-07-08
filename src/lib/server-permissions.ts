@@ -9,12 +9,13 @@ import {
   isSparsePermissions,
   isWildcardPermissions,
 } from '@/lib/rbac';
-import type { SparsePermissions, ViewLevel, EditLevel, ArchiveLevel, DeleteLevel } from '@/lib/rbac';
+import type { SparsePermissions, ViewLevel, EditLevel, ArchiveLevel, DeleteLevel, InspectLevel } from '@/lib/rbac';
 
 export interface FormPermissionLevels {
   fullAccess: boolean;
   view: ViewLevel;
   create: boolean;
+  inspect: InspectLevel;
   edit: EditLevel;
   archive: ArchiveLevel;
   delete: DeleteLevel;
@@ -103,6 +104,7 @@ export async function getFormPermissionLevels(
       fullAccess: true,
       view: 'ALL',
       create: true,
+      inspect: 'ALL',
       edit: 'ALL',
       archive: 'ALL',
       delete: 'ALL',
@@ -113,6 +115,7 @@ export async function getFormPermissionLevels(
     fullAccess: false,
     view: index.getViewLevel(formId),
     create: index.getCreatePermission(formId),
+    inspect: index.getInspectLevel(formId),
     edit: index.getEditLevel(formId),
     archive: index.getArchiveLevel(formId),
     delete: index.getDeleteLevel(formId),

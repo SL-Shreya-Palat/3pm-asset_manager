@@ -251,16 +251,6 @@ export function VendorsPage() {
       ),
     },
     {
-      key: 'publicEditAccess',
-      header: 'Public Access',
-      label: 'Public edit access',
-      render: (vendor) => (
-        <Badge variant={vendor.publicEditAccess ? 'success' : 'secondary'} className="text-xs">
-          {vendor.publicEditAccess ? 'Enabled' : 'Disabled'}
-        </Badge>
-      ),
-    },
-    {
       key: 'laborRatePerHour',
       header: 'Labor Rate',
       label: 'Rate per hour ($)',

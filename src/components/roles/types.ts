@@ -47,6 +47,7 @@ export interface PermissionForm {
   accessibility: string[];
   viewLevel: PermissionLevel;
   create: boolean;
+  inspectLevel: PermissionLevel;
   editLevel: PermissionLevel;
   archiveLevel: PermissionLevel;
   deleteLevel: PermissionLevel;

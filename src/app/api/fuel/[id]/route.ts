@@ -1,7 +1,7 @@
 /**
  * GET    /api/fuel/:id -- Get a single fuel transaction
  * PUT    /api/fuel/:id -- Update a fuel transaction
- * DELETE /api/fuel/:id -- Archive a fuel transaction
+ * DELETE /api/fuel/:id -- Permanently delete a fuel transaction
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helper';

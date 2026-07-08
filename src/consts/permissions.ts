@@ -40,6 +40,7 @@ function generatePermissions() {
 
     if (form.accessibility.includes('view')) formPerms.view = `${basePath}:view`;
     if (form.accessibility.includes('create')) formPerms.create = `${basePath}:create`;
+    if (form.accessibility.includes('inspect')) formPerms.inspect = `${basePath}:inspect`;
     if (form.accessibility.includes('edit')) formPerms.edit = `${basePath}:edit`;
     if (form.accessibility.includes('archive')) formPerms.archive = `${basePath}:archive`;
     if (form.accessibility.includes('delete')) formPerms.delete = `${basePath}:delete`;
