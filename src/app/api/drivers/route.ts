@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
   const createdBy = perms.view === 'OWN' ? user.id : undefined;
 
-  const result = await getAllDrivers(user.currentTenantId, { page, limit, search, teamId, showArchived, createdBy });
+  const result = await getAllDrivers(user.currentTenantId, { page, limit, search, teamId, showArchived, createdBy, userId: user.id });
   return NextResponse.json({ data: result, error: null });
 }
 

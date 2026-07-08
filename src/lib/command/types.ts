@@ -9,7 +9,8 @@ export type CommandEntity =
   | 'staff'
   | 'suppliers'
   | 'locations'
-  | 'stock';
+  | 'stock'
+  | 'units';
 
 /** A normalized picker option (Command shape → Asset Manager shape). */
 export interface CommandOption {

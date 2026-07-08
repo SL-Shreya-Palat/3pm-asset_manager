@@ -188,6 +188,63 @@ export async function getAuthenticatedUser(req?: NextRequest) {
       }
     }
 
+    // ── Command service auth (X-Client-Id/X-Client-Secret) ───────────
+    // Construction-portal (Command) reads Asset Manager maintenance data
+    // server-to-server for a tenant it manages. It presents the SAME shared
+    // service credential the two apps already use (Command's
+    // ASSET_MANAGER_CLIENT_ID/SECRET == AM's COMMAND_SERVICE_CLIENT_ID/SECRET),
+    // and the shared 3PM tenant id in X-Tenant-Id. We map it to the local tenant
+    // and act as its owner. Read-only endpoints only (see app/api/command-read/*).
+    if (req) {
+      const clientId = req.headers.get('x-client-id');
+      const clientSecret = req.headers.get('x-client-secret');
+      const expectedId = process.env.COMMAND_SERVICE_CLIENT_ID;
+      const expectedSecret = process.env.COMMAND_SERVICE_CLIENT_SECRET;
+
+      // Fail CLOSED: both the id AND the secret must be configured and match.
+      // A client-id is an identifier, not a credential — never authenticate on it
+      // alone (this branch grants tenant-owner access to every route).
+      if (
+        clientId &&
+        clientSecret &&
+        expectedId &&
+        expectedSecret &&
+        clientId === expectedId &&
+        clientSecret === expectedSecret
+      ) {
+        const authTenantId = req.headers.get('x-tenant-id');
+        if (!authTenantId) {
+          console.error('[auth-helper] Command service call missing X-Tenant-Id');
+          return null;
+        }
+
+        const tenantsCollection = await getTenantsCollection();
+        const usersCollection = await getUsersCollection();
+
+        const or: Record<string, unknown>[] = [{ authTenantId }];
+        if (ObjectId.isValid(authTenantId)) {
+          or.push({ authTenantId: ObjectId.createFromHexString(authTenantId) });
+        }
+        const tenant = await tenantsCollection.findOne({ $or: or, isActive: { $ne: false } });
+        if (!tenant) {
+          console.error('[auth-helper] Command service call: no tenant for authTenantId', authTenantId);
+          return null;
+        }
+
+        const owner = tenant.ownerId ? await usersCollection.findOne({ _id: tenant.ownerId }) : null;
+        const tAuth = (tenant as { authTenantId?: ObjectId | string }).authTenantId;
+        return {
+          id: owner?._id?.toString() || 'command-service-system',
+          email: owner?.email || 'system@command',
+          name: owner?.name || 'Command',
+          image: null,
+          sessionToken: null,
+          currentTenantId: tenant._id.toString(),
+          authTenantId: tAuth != null ? (typeof tAuth === 'string' ? tAuth : tAuth.toString()) : authTenantId,
+        };
+      }
+    }
+
     // ── Session token auth (mobile app) ──────────────────────────────
     if (req) {
       const authHeader = req.headers.get('authorization');

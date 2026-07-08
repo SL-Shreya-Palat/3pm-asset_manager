@@ -7,7 +7,7 @@ import {
   ArrowLeft, Pencil, Power, Fuel, Info, Wrench,
   Truck, Gauge, Clock, DollarSign, Fingerprint, StickyNote, CalendarClock,
   Users, ClipboardList, KeyRound, MoreHorizontal, ShieldCheck,
-  Camera, ClipboardCheck, AlertCircle,
+  Camera, ClipboardCheck, AlertCircle, Cable,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -337,6 +337,9 @@ export default function AssetDetailPage() {
   };
 
   // Extract values for type safety in JSX
+  // Command-mastered assets: identity fields are read-only here (edited in
+  // Command, kept fresh by the auto-sync). Operational actions stay available.
+  const isCommandAsset = asset.source === 'command';
   const assetName = String(asset.name || '');
   const assetNum = String(asset.assetNumber || '');
   const assetNotes = String(asset.notes || '');
@@ -380,6 +383,12 @@ export default function AssetDetailPage() {
             <h1 className="text-xl font-semibold tracking-tight text-foreground">{assetName}</h1>
             {assetTypeName && <Badge variant="secondary">{assetTypeName}</Badge>}
             <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
+            {isCommandAsset && (
+              <Badge variant="outline" className="gap-1 border-blue-200 bg-blue-50 text-blue-700" title="Mastered in Command — refreshes automatically, read-only here">
+                <Cable className="h-3.5 w-3.5" />
+                Command
+              </Badge>
+            )}
             {prestartPassed != null && (
               <Badge
                 className={prestartPassed
@@ -407,40 +416,40 @@ export default function AssetDetailPage() {
                     : 'Mark as Active'}
               </Button>
             )}
-            {canEdit && (
+            {canEdit && !isCommandAsset && (
               <Button onClick={() => router.push(`/assets/${params.id}/edit`)}>
                 <Pencil className="h-4 w-4" />
                 Edit
               </Button>
             )}
             {(canEdit || canAccessForms) && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {canEdit && (
-                  <DropdownMenuItem onClick={handleOpenChangeTeam}>
-                    <Users className="h-4 w-4" />
-                    Change Team
-                  </DropdownMenuItem>
-                )}
-                {canAccessForms && (
-                  <DropdownMenuItem onClick={handleOpenAssignForms}>
-                    <ClipboardList className="h-4 w-4" />
-                    Assign Forms
-                  </DropdownMenuItem>
-                )}
-                {canEdit && (
-                  <DropdownMenuItem onClick={handleOpenDriverAccess}>
-                    <KeyRound className="h-4 w-4" />
-                    Driver Access
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon">
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {canEdit && (
+                    <DropdownMenuItem onClick={handleOpenChangeTeam}>
+                      <Users className="h-4 w-4" />
+                      Change Team
+                    </DropdownMenuItem>
+                  )}
+                  {canAccessForms && (
+                    <DropdownMenuItem onClick={handleOpenAssignForms}>
+                      <ClipboardList className="h-4 w-4" />
+                      Assign Forms
+                    </DropdownMenuItem>
+                  )}
+                  {canEdit && (
+                    <DropdownMenuItem onClick={handleOpenDriverAccess}>
+                      <KeyRound className="h-4 w-4" />
+                      Driver Access
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
           </div>
         </div>

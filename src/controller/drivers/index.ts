@@ -18,13 +18,18 @@ import {
   stripCommandOwnedFields,
   MASTER_DATA_MANAGED_MESSAGE,
 } from '@/controller/command-connection/guard';
+import { ensureFreshFromCommand } from '@/controller/command-connection/auto-sync';
 import type { CreateDriverInput, UpdateDriverInput } from './types';
 
 /** List drivers with pagination and search. */
 export async function getAllDrivers(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; teamId?: string; showArchived?: boolean; createdBy?: string },
+  options: { page?: number; limit?: number; search?: string; teamId?: string; showArchived?: boolean; userId?: string; createdBy?: string },
 ) {
+  // Fresh on every call: pull the latest Command drivers before reading local,
+  // so new/changed records show on this load (no-op when standalone).
+  await ensureFreshFromCommand(tenantId, options.userId, 'drivers');
+
   const collection = await getDriversCollection();
   const page = Math.max(1, options.page || 1);
   const limit = Math.min(100, Math.max(1, options.limit || 25));

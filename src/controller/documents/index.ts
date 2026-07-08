@@ -14,7 +14,37 @@ import {
 import { DEFAULT_REMINDER_DAYS, DOCUMENT_TYPE_LABELS, type DocumentStatus } from '@/constants/documents';
 import { validateCreateDocumentInput, serializeDocument, computeDocumentStatus, daysUntil } from './utils';
 import { notifyEventOnce } from '@/controller/notifications';
+import { writebackComplianceIfLinked } from '@/controller/command-connection/hooks';
 import type { CreateDocumentInput, UpdateDocumentInput, DocumentResponse } from './types';
+
+/**
+ * Map an AM asset compliance docType → the Command asset compliance field.
+ * Only rego / WOF / COF are tracked on the Command asset; other document types
+ * (RUC, insurance, permits, …) have no Command compliance field and are skipped.
+ */
+const COMPLIANCE_FIELD_BY_DOCTYPE: Record<string, 'regoExpiry' | 'wofDate' | 'cofDate'> = {
+  registration: 'regoExpiry',
+  wof: 'wofDate',
+  cof: 'cofDate',
+};
+
+/**
+ * Reflect an asset compliance document's expiry back to Command (rego/WOF/COF).
+ * Fire-and-forget safe: no-ops for local assets / standalone / non-mapped types.
+ */
+async function writebackDocumentCompliance(
+  tenantId: string,
+  doc: Record<string, unknown>,
+): Promise<void> {
+  if (doc.scope !== 'asset' || !doc.assetId) return;
+  const expiry = doc.expiryDate as Date | null;
+  if (!expiry) return;
+  const field = COMPLIANCE_FIELD_BY_DOCTYPE[doc.docType as string];
+  if (!field) return;
+  await writebackComplianceIfLinked(tenantId, (doc.assetId as ObjectId).toString(), {
+    [field]: expiry.toISOString(),
+  });
+}
 
 /** Owner-scope filter (asset/driver/team) → the id field on the doc. */
 function ownerFilter(options: {
@@ -222,6 +252,8 @@ export async function createDocument(
   const created = { ...doc, _id: result.insertedId };
   // Immediate bell alert if it's added already expired/expiring (else wait for scan).
   await notifyDocumentCompliance(tenantId, created);
+  // Reflect rego/WOF/COF expiry back to the Command asset (no-op if not linked).
+  await writebackDocumentCompliance(tenantId, created);
   return { data: serializeDocument(created), error: null };
 }
 
@@ -276,6 +308,10 @@ export async function updateDocument(
   // A renewal / expiry change that lands expired or expiring gets an immediate alert.
   if (updated && input.expiryDate !== undefined) {
     await notifyDocumentCompliance(tenantId, updated as Record<string, unknown>);
+  }
+  // Reflect a rego/WOF/COF expiry or type change back to the Command asset.
+  if (updated && (input.expiryDate !== undefined || input.docType !== undefined)) {
+    await writebackDocumentCompliance(tenantId, updated as Record<string, unknown>);
   }
   return { data: updated ? serializeDocument(updated as Record<string, unknown>) : null, error: null };
 }

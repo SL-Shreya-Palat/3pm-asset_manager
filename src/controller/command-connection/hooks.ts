@@ -120,3 +120,19 @@ export function writebackActivityIfLinked(
 ): Promise<void> {
   return push(tenantId, assetId, 'activity', activity, actorEmail);
 }
+
+/**
+ * Compliance expiry dates (rego / WOF / COF) → Command asset compliance. Called
+ * when an asset compliance document is added/renewed so Command's rego/WOF/COF
+ * expiry stays current. Only the provided date fields are updated; a payload
+ * with no mapped date is a no-op.
+ */
+export function writebackComplianceIfLinked(
+  tenantId: string | ObjectId,
+  assetId: string | ObjectId | null | undefined,
+  dates: { regoExpiry?: string; wofDate?: string; cofDate?: string },
+  actorEmail?: string,
+): Promise<void> {
+  if (!dates.regoExpiry && !dates.wofDate && !dates.cofDate) return Promise.resolve();
+  return push(tenantId, assetId, 'compliance', dates, actorEmail);
+}

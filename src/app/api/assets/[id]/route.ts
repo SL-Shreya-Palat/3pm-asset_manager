@@ -16,7 +16,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  const asset = await getAssetById(user.currentTenantId, id);
+  const asset = await getAssetById(user.currentTenantId, id, user.id);
 
   if (!asset) {
     return NextResponse.json({ data: null, error: 'Asset not found' }, { status: 404 });

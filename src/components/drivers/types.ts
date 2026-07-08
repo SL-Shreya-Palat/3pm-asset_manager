@@ -23,6 +23,8 @@ export interface DriverRow {
   tenantMemberId?: string;
   createdBy: string | null;
   createdAt: string;
+  /** 'command' when mastered in Command (read-only, auto-synced), else 'local'. */
+  source?: string;
 }
 
 export interface TeamOption {

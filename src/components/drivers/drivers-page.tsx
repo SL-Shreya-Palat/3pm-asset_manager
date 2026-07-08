@@ -32,6 +32,8 @@ import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
+import { useConnection } from '@/hooks/use-connection';
+import { SourceBadge, CommandManagedBanner } from '@/components/command/source-badge';
 import { Spinner } from '@/components/ui/spinner';
 import { useAuth } from '@/hooks/useAuth';
 import { useRoleAccess } from '@/hooks/use-role-access';
@@ -58,6 +60,9 @@ export function DriversPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch, debouncedSearch] = useDebouncedSearch(300);
   const [rowsPerPage, setRowsPerPage] = useState(25);
+
+  // Connected to Command → drivers are mastered there (read-only, auto-synced).
+  const { connected } = useConnection();
 
   // Table features
   const {
@@ -267,66 +272,86 @@ export function DriversPage() {
       ),
     },
     {
+      key: 'source',
+      header: 'Source',
+      label: 'Source',
+      render: (driver) => <SourceBadge source={driver.source} />,
+    },
+    {
       key: 'actions',
       header: 'Actions',
       align: 'right',
-      render: (driver) => (
-        <RowActions>
-          {!showArchived && (
-            <>
-              <RowActionButton label="Inspect" icon={<ClipboardCheck />} onClick={() => handleOpenInspect(driver)} />
-              <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleViewDriver(driver)} />
-              {checkRecordOwnership(editLevel, driver.createdBy, user?.id) && (
-                <PermissionGuard permission={Permissions.people.drivers.form.edit}>
-                  <RowActionButton label="Edit" icon={<Edit />} onClick={() => router.push(`/people/drivers/${driver.id}/edit`)} />
-                </PermissionGuard>
-              )}
-              {checkRecordOwnership(archiveLevel, driver.createdBy, user?.id) && (
-                <PermissionGuard permission={Permissions.people.drivers.form.archive}>
-                  <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(driver)} />
-                </PermissionGuard>
-              )}
-            </>
-          )}
-          {showArchived && (
-            <>
-              {checkRecordOwnership(archiveLevel, driver.createdBy, user?.id) && (
-                <PermissionGuard permission={Permissions.people.drivers.form.archive}>
-                  <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(driver)} />
-                </PermissionGuard>
-              )}
-              {checkRecordOwnership(deleteLevel, driver.createdBy, user?.id) && (
-                <PermissionGuard permission={Permissions.people.drivers.form.delete}>
-                  <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(driver)} />
-                </PermissionGuard>
-              )}
-            </>
-          )}
-        </RowActions>
-      ),
+      render: (driver) => {
+        // Command-mastered drivers are read-only here — no Edit/Archive.
+        const isCommandRow = connected && driver.source === 'command';
+        return (
+          <RowActions>
+            {!showArchived && (
+              <>
+                <RowActionButton label="Inspect" icon={<ClipboardCheck />} onClick={() => handleOpenInspect(driver)} />
+                <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => handleViewDriver(driver)} />
+                {!isCommandRow && (
+                  <>
+                    {checkRecordOwnership(editLevel, driver.createdBy, user?.id) && (
+                      <PermissionGuard permission={Permissions.people.drivers.form.edit}>
+                        <RowActionButton label="Edit" icon={<Edit />} onClick={() => router.push(`/people/drivers/${driver.id}/edit`)} />
+                      </PermissionGuard>
+                    )}
+                    {checkRecordOwnership(archiveLevel, driver.createdBy, user?.id) && (
+                      <PermissionGuard permission={Permissions.people.drivers.form.archive}>
+                        <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(driver)} />
+                      </PermissionGuard>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+            {showArchived && (
+              <>
+                {checkRecordOwnership(archiveLevel, driver.createdBy, user?.id) && (
+                  <PermissionGuard permission={Permissions.people.drivers.form.archive}>
+                    <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(driver)} />
+                  </PermissionGuard>
+                )}
+                {checkRecordOwnership(deleteLevel, driver.createdBy, user?.id) && (
+                  <PermissionGuard permission={Permissions.people.drivers.form.delete}>
+                    <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(driver)} />
+                  </PermissionGuard>
+                )}
+              </>
+            )}
+          </RowActions>
+        );
+      },
     },
   ];
+
+  // Hide the Source column when standalone (every row would just read "Local").
+  const columns = connected ? driverColumns : driverColumns.filter((c) => c.key !== 'source');
 
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
       <PageHeader title="Drivers" description="Manage driver profiles, licences, and asset assignments" count={pagination.total}>
-        <PermissionGuard permission={Permissions.people.drivers.form.create}>
-          <Button onClick={() => router.push('/people/drivers/new')}>
-            <Plus className="h-4 w-4" />
-            Add Driver
-          </Button>
-        </PermissionGuard>
+        {!connected && (
+          <PermissionGuard permission={Permissions.people.drivers.form.create}>
+            <Button onClick={() => router.push('/people/drivers/new')}>
+              <Plus className="h-4 w-4" />
+              Add Driver
+            </Button>
+          </PermissionGuard>
+        )}
       </PageHeader>
 
-      <div className="px-6 pb-3">
+      <div className="space-y-3 px-6 pb-3">
+        {connected && <CommandManagedBanner />}
         <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
       </div>
 
       {/* Toolbar + Table */}
       <div className="flex-1 overflow-auto px-6 pb-6">
         <DataTableToolbar
-          columns={driverColumns}
+          columns={columns}
           hiddenColumnKeys={hiddenColumnKeys}
           onHiddenColumnKeysChange={setHiddenColumnKeys}
           density={density}
@@ -336,7 +361,7 @@ export function DriversPage() {
           }
         />
         <DataTable<DriverRow>
-          columns={driverColumns}
+          columns={columns}
           data={drivers}
           pagination={pagination}
           loading={loading}

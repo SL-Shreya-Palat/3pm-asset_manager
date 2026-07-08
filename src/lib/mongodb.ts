@@ -115,6 +115,12 @@ export async function getMeterReadingsCollection(): Promise<Collection> {
   return db.collection('meterReadings');
 }
 
+/** Per-tenant meter policy (singleton per tenant) — e.g. whether a work-order/service meter advances the asset's current meter. */
+export async function getMeterSettingsCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('meterSettings');
+}
+
 export async function getAssetTypesCollection(): Promise<Collection> {
   const db = await getDb();
   return db.collection('assetTypes');

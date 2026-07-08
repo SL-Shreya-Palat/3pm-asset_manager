@@ -63,6 +63,8 @@ import { PermissionGuard } from '@/components/auth/permission-guard';
 import { Permissions } from '@/consts/permissions';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable, applyTableFilters } from '@/hooks/use-data-table';
+import { useConnection } from '@/hooks/use-connection';
+import { SourceBadge, CommandManagedBanner } from '@/components/command/source-badge';
 import { ASSET_STATUS_CONFIG, type AssetStatus } from '@/constants/assets';
 import type { AssetRow, TeamOption, Pagination } from './types';
 
@@ -105,6 +107,8 @@ interface AssetSummary {
 
 export function AssetTable() {
   const router = useRouter();
+  // Connected to Command → assets are mastered there (read-only, auto-synced).
+  const { connected } = useConnection();
   const [assets, setAssets] = useState<AssetRow[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1,
@@ -700,6 +704,12 @@ export function AssetTable() {
         ),
     },
     {
+      key: 'source',
+      header: 'Source',
+      label: 'Source',
+      render: (asset) => <SourceBadge source={asset.source} />,
+    },
+    {
       key: 'actions',
       header: 'Actions',
       align: 'right',
@@ -856,6 +866,9 @@ export function AssetTable() {
     },
   ];
 
+  // Hide the Source column when standalone (every row would just read "Local").
+  const columns = connected ? assetColumns : assetColumns.filter((c) => c.key !== 'source');
+
   return (
     <div className="p-6">
       <InspectFormPickerDialog
@@ -879,13 +892,21 @@ export function AssetTable() {
         description="Manage your fleet vehicles and equipment"
         className="px-0 pt-0 pb-4"
       >
-        <PermissionGuard permission={Permissions.assets.assets.form.create}>
-          <Button onClick={() => setVinDialogOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Add Asset
-          </Button>
-        </PermissionGuard>
+        {!connected && (
+          <PermissionGuard permission={Permissions.assets.assets.form.create}>
+            <Button onClick={() => setVinDialogOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Add Asset
+            </Button>
+          </PermissionGuard>
+        )}
       </PageHeader>
+
+      {connected && (
+        <div className="pb-3">
+          <CommandManagedBanner />
+        </div>
+      )}
 
       {/* Summary ribbon */}
       <div className="px-6 pb-1">
@@ -899,7 +920,7 @@ export function AssetTable() {
 
       {/* Toolbar + Search */}
       <DataTableToolbar
-        columns={assetColumns}
+        columns={columns}
         hiddenColumnKeys={hiddenColumnKeys}
         onHiddenColumnKeysChange={setHiddenColumnKeys}
         density={density}
@@ -939,7 +960,7 @@ export function AssetTable() {
 
       {/* Table */}
       <DataTable<AssetRow>
-        columns={assetColumns}
+        columns={columns}
         data={filteredAssets}
         pagination={pagination}
         loading={loading}

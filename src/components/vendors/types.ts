@@ -10,6 +10,8 @@ export interface VendorRow {
   publicEditAccess: boolean;
   laborRatePerHour?: number;
   createdAt: string;
+  /** 'command' when mastered in Command (read-only, auto-synced), else 'local'. */
+  source?: string;
 }
 
 export interface Pagination {

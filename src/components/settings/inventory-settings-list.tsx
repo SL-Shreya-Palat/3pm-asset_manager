@@ -27,6 +27,7 @@ import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
+import { SourceBadge, CommandManagedBanner } from '@/components/command/source-badge';
 import { PermissionGuard } from '@/components/auth/permission-guard';
 import { useAuth } from '@/hooks/useAuth';
 import { useRoleAccess } from '@/hooks/use-role-access';
@@ -40,6 +41,8 @@ export interface SettingsItem {
   description?: string;
   isDefault?: boolean;
   createdBy?: string | null;
+  /** 'command' when mastered in Command (read-only, auto-synced), else 'local'. */
+  source?: string;
 }
 
 /** Field configuration for the create/edit dialog. */
@@ -61,6 +64,11 @@ interface InventorySettingsListProps {
   extraColumns?: Array<{ key: string; header: string }>;
   /** Optional callback fired after a create, update, or delete succeeds. */
   onDataChange?: () => void;
+  /**
+   * When true, this lookup is mastered in Command: hide create, mark
+   * Command-sourced rows read-only + badge them, and show the managed banner.
+   */
+  commandManaged?: boolean;
   /** Optional permission strings for guarding actions. If omitted, buttons render normally. */
   permissions?: {
     create?: string;
@@ -78,6 +86,7 @@ export function InventorySettingsList({
   nameField = 'name',
   extraColumns = [],
   onDataChange,
+  commandManaged = false,
   permissions,
 }: InventorySettingsListProps) {
   const { user } = useAuth();
@@ -207,6 +216,10 @@ export function InventorySettingsList({
         align: 'right' as const,
         pinned: true,
         render: (item) => {
+          // Command-mastered rows are read-only here — no Edit/Archive.
+          const isCommandRow = commandManaged && item.source === 'command';
+          if (isCommandRow) return null;
+
           const unarchiveButton = (
             <RowActionButton
               label="Unarchive"
@@ -267,8 +280,16 @@ export function InventorySettingsList({
         },
       },
     ];
+    // Source column (Command / Local) only when this lookup is Command-managed.
+    if (commandManaged) {
+      cols.splice(cols.length - 1, 0, {
+        key: 'source',
+        header: 'Source',
+        render: (item) => <SourceBadge source={item.source} />,
+      });
+    }
     return cols;
-  }, [nameField, extraColumns, showArchived, user?.id, editLevel, archiveLevel, deleteLevel, permissions]);
+  }, [nameField, extraColumns, showArchived, commandManaged, user?.id, editLevel, archiveLevel, deleteLevel, permissions]);
 
   // Dialog helpers
   const openCreateDialog = () => {
@@ -386,7 +407,7 @@ export function InventorySettingsList({
           <h2 className="text-lg font-semibold text-foreground">{title}</h2>
           <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
         </div>
-        {!showArchived && (
+        {!showArchived && !commandManaged && (
           permissions?.create ? (
             <PermissionGuard permission={permissions.create}>
               <Button size="sm" onClick={openCreateDialog}>
@@ -402,6 +423,8 @@ export function InventorySettingsList({
           )
         )}
       </div>
+
+      {commandManaged && <CommandManagedBanner className="mb-4" />}
 
       {/* API error alert */}
       {apiError && (

@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
   const createdBy = perms.view === 'OWN' ? user.id : undefined;
 
-  const items = await getAllPartLocations(user.currentTenantId, search, { showArchived, createdBy });
+  const items = await getAllPartLocations(user.currentTenantId, search, { showArchived, createdBy, userId: user.id });
   return NextResponse.json({ data: items, error: null });
 }
 

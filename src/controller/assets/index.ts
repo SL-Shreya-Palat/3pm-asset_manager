@@ -18,6 +18,10 @@ import {
   stripCommandOwnedFields,
   MASTER_DATA_MANAGED_MESSAGE,
 } from "@/controller/command-connection/guard";
+import {
+  ensureFreshFromCommand,
+  ensureFreshAsset,
+} from "@/controller/command-connection/auto-sync";
 import type { CreateAssetInput, UpdateAssetInput } from "./types";
 
 /** Worst-case compliance rank: expired (3) > expiring soon (2) > valid (1). */
@@ -133,9 +137,16 @@ export async function getAllAssets(
     teamId?: string;
     complianceStatus?: string;
     showArchived?: boolean;
+    /** Acting user — attributed to any anchors refreshed by the auto-sync. */
+    userId?: string;
     createdBy?: string;
   },
 ) {
+  // Fresh on every call: pull the latest Command assets BEFORE reading local, so
+  // a just-added / changed Command asset shows on this load (no-op when
+  // standalone; fails fast when Command is unreachable).
+  await ensureFreshFromCommand(tenantId, options.userId, "assets");
+
   const collection = await getAssetsCollection();
   const page = Math.max(1, options.page || 1);
   const limit = Math.min(100, Math.max(1, options.limit || 25));
@@ -294,15 +305,28 @@ export async function getAssetSummary(tenantId: string) {
 }
 
 /** Get a single asset by ID. */
-export async function getAssetById(tenantId: string, assetId: string) {
+export async function getAssetById(
+  tenantId: string,
+  assetId: string,
+  userId?: string,
+) {
   const collection = await getAssetsCollection();
-  const doc = await collection.findOne({
+  const query = {
     _id: ObjectId.createFromHexString(assetId),
     tenantId: ObjectId.createFromHexString(tenantId),
     isArchived: { $ne: true },
-  });
+  };
+  let doc = await collection.findOne(query);
 
   if (!doc) return null;
+
+  // Fresh-always: refresh this Command-sourced asset from Command before
+  // rendering (single-record, cheap). Awaited so the detail is always current;
+  // no-ops when standalone/unreachable. Re-read to pick up the refreshed fields.
+  if (doc.source === "command" && doc.commandAssetId) {
+    await ensureFreshAsset(tenantId, userId, String(doc.commandAssetId));
+    doc = (await collection.findOne(query)) ?? doc;
+  }
 
   // Populate asset type name
   let assetTypeName: string | undefined;

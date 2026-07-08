@@ -9,6 +9,11 @@ import {
   getPartLocationsCollection,
 } from '@/lib/mongodb';
 import { isNonEmptyString } from '@/lib/validation/commonValidators';
+import {
+  isCommandConnectionEnabled,
+  MASTER_DATA_MANAGED_MESSAGE,
+} from '@/controller/command-connection/guard';
+import { ensureFreshFromCommand } from '@/controller/command-connection/auto-sync';
 import type {
   CreateMeasurementUnitInput,
   CreatePartCategoryInput,
@@ -26,6 +31,9 @@ function serialize(doc: Record<string, unknown>): Record<string, unknown> {
     createdBy: doc.createdBy?.toString() ?? null,
     createdAt: doc.createdAt ? (doc.createdAt as Date).toISOString() : null,
     updatedAt: doc.updatedAt ? (doc.updatedAt as Date).toISOString() : null,
+    // Command linkage — 'command'-sourced lookups badge as read-only master data.
+    source: doc.source || 'local',
+    commandSyncedAt: doc.commandSyncedAt ? (doc.commandSyncedAt as Date).toISOString() : null,
   };
 }
 
@@ -33,7 +41,11 @@ function serialize(doc: Record<string, unknown>): Record<string, unknown> {
 // Measurement Units
 // ═══════════════════════════════════════════════════════════════════════════
 
-export async function getAllMeasurementUnits(tenantId: string, search?: string, options?: { showArchived?: boolean; createdBy?: string }) {
+export async function getAllMeasurementUnits(tenantId: string, search?: string, options?: { showArchived?: boolean; createdBy?: string; userId?: string }) {
+  // Fresh on every call: pull the latest Command units before reading local, so
+  // new/changed records show on this load (no-op when standalone).
+  await ensureFreshFromCommand(tenantId, options?.userId, 'units');
+
   const col = await getMeasurementUnitsCollection();
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
@@ -57,6 +69,10 @@ export async function getAllMeasurementUnits(tenantId: string, search?: string, 
 }
 
 export async function createMeasurementUnit(tenantId: string, userId: string, input: CreateMeasurementUnitInput) {
+  // Connected tenants add units in Command, then they sync here automatically.
+  if (await isCommandConnectionEnabled(tenantId)) {
+    return { data: null, error: MASTER_DATA_MANAGED_MESSAGE };
+  }
   const errors: Record<string, string> = {};
   if (!isNonEmptyString(input.name)) errors.name = 'Name is required';
   if (!isNonEmptyString(input.symbol)) errors.symbol = 'Symbol is required';
@@ -86,6 +102,10 @@ export async function updateMeasurementUnit(tenantId: string, userId: string, id
   const itemOid = ObjectId.createFromHexString(id);
   const existing = await col.findOne({ _id: itemOid, tenantId: tenantOid, isArchived: { $ne: true } });
   if (!existing) return { data: null, error: 'Not found' };
+  // Command-mastered units are read-only here while connected.
+  if (existing.source === 'command' && (await isCommandConnectionEnabled(tenantId))) {
+    return { data: null, error: MASTER_DATA_MANAGED_MESSAGE };
+  }
 
   const $set: Record<string, unknown> = { updatedBy: ObjectId.createFromHexString(userId), updatedAt: new Date() };
   if (input.name !== undefined) $set.name = input.name.trim();
@@ -213,7 +233,11 @@ export async function archivePartCategory(tenantId: string, userId: string, id: 
 // Part Locations
 // ═══════════════════════════════════════════════════════════════════════════
 
-export async function getAllPartLocations(tenantId: string, search?: string, options?: { showArchived?: boolean; createdBy?: string }) {
+export async function getAllPartLocations(tenantId: string, search?: string, options?: { showArchived?: boolean; createdBy?: string; userId?: string }) {
+  // Fresh on every call: pull the latest Command company locations before
+  // reading local, so new/changed records show on this load (no-op standalone).
+  await ensureFreshFromCommand(tenantId, options?.userId, 'partLocations');
+
   const col = await getPartLocationsCollection();
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
@@ -234,6 +258,10 @@ export async function getAllPartLocations(tenantId: string, search?: string, opt
 }
 
 export async function createPartLocation(tenantId: string, userId: string, input: CreatePartLocationInput) {
+  // Connected tenants add locations in Command, then they sync here automatically.
+  if (await isCommandConnectionEnabled(tenantId)) {
+    return { data: null, error: MASTER_DATA_MANAGED_MESSAGE };
+  }
   const errors: Record<string, string> = {};
   if (!isNonEmptyString(input.name)) errors.name = 'Part location is required';
   if (Object.keys(errors).length > 0) return { data: null, error: errors };
@@ -270,6 +298,10 @@ export async function updatePartLocation(tenantId: string, userId: string, id: s
   const itemOid = ObjectId.createFromHexString(id);
   const existing = await col.findOne({ _id: itemOid, tenantId: tenantOid, isArchived: { $ne: true } });
   if (!existing) return { data: null, error: 'Not found' };
+  // Command-mastered locations are read-only here while connected.
+  if (existing.source === 'command' && (await isCommandConnectionEnabled(tenantId))) {
+    return { data: null, error: MASTER_DATA_MANAGED_MESSAGE };
+  }
 
   const now = new Date();
   // If setting as default, unset current default

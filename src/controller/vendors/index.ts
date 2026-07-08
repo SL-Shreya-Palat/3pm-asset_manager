@@ -10,13 +10,18 @@ import {
   stripCommandOwnedFields,
   MASTER_DATA_MANAGED_MESSAGE,
 } from '@/controller/command-connection/guard';
+import { ensureFreshFromCommand } from '@/controller/command-connection/auto-sync';
 import type { CreateVendorInput, UpdateVendorInput } from './types';
 
 /** List vendors with pagination, search, and optional type filter. */
 export async function getAllVendors(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; vendorType?: string; showArchived?: boolean },
+  options: { page?: number; limit?: number; search?: string; vendorType?: string; showArchived?: boolean; userId?: string },
 ) {
+  // Fresh on every call: pull the latest Command vendors before reading local,
+  // so new/changed records show on this load (no-op when standalone).
+  await ensureFreshFromCommand(tenantId, options.userId, 'vendors');
+
   const collection = await getVendorsCollection();
   const page = Math.max(1, options.page || 1);
   const limit = Math.min(100, Math.max(1, options.limit || 25));

@@ -31,6 +31,8 @@ import { checkRecordOwnership } from '@/lib/rbac';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
+import { useConnection } from '@/hooks/use-connection';
+import { SourceBadge, CommandManagedBanner } from '@/components/command/source-badge';
 import { GenerateBarcodeDialog } from '@/components/assets/generate-barcode-dialog';
 import { PartForm } from './part-form';
 import type { PartRow, LookupOption, Pagination } from './types';
@@ -82,6 +84,9 @@ export function InventoryPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch, debouncedSearch] = useDebouncedSearch(300);
   const [rowsPerPage, setRowsPerPage] = useState(25);
+
+  // Connected to Command → stock is mastered there (read-only, auto-synced).
+  const { connected } = useConnection();
 
   // Lookup maps
   const [categoryMap, setCategoryMap] = useState<Record<string, string>>({});
@@ -314,64 +319,84 @@ export function InventoryPage() {
       ),
     },
     {
+      key: 'source',
+      header: 'Source',
+      label: 'Source',
+      render: (part) => <SourceBadge source={part.source} />,
+    },
+    {
       key: 'actions',
       header: 'Actions',
       align: 'right',
-      render: (part) => (
-        <RowActions>
-          {showArchived ? (
-            <>
-              {checkRecordOwnership(archiveLevel, part.createdBy, user?.id) && (
-                <PermissionGuard permission={Permissions.maintenance.inventory.form.archive}>
-                  <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(part)} />
-                </PermissionGuard>
-              )}
-              {checkRecordOwnership(deleteLevel, part.createdBy, user?.id) && (
-                <PermissionGuard permission={Permissions.maintenance.inventory.form.delete}>
-                  <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(part)} />
-                </PermissionGuard>
-              )}
-            </>
-          ) : (
-            <>
-              <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/maintenance/inventory/${part.id}`)} />
-              {checkRecordOwnership(editLevel, part.createdBy, user?.id) && (
-                <PermissionGuard permission={Permissions.maintenance.inventory.form.edit}>
-                  <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(part)} />
-                </PermissionGuard>
-              )}
-              {checkRecordOwnership(archiveLevel, part.createdBy, user?.id) && (
-                <PermissionGuard permission={Permissions.maintenance.inventory.form.archive}>
-                  <RowActionButton label="Archive" tone="destructive" icon={<Archive />} onClick={() => handleOpenArchive(part)} />
-                </PermissionGuard>
-              )}
-            </>
-          )}
-        </RowActions>
-      ),
+      render: (part) => {
+        // Command-mastered stock is read-only here — no Edit/Archive.
+        const isCommandRow = connected && part.source === 'command';
+        return (
+          <RowActions>
+            {showArchived ? (
+              <>
+                {checkRecordOwnership(archiveLevel, part.createdBy, user?.id) && (
+                  <PermissionGuard permission={Permissions.maintenance.inventory.form.archive}>
+                    <RowActionButton label="Unarchive" icon={<ArchiveRestore />} onClick={() => handleOpenArchive(part)} />
+                  </PermissionGuard>
+                )}
+                {checkRecordOwnership(deleteLevel, part.createdBy, user?.id) && (
+                  <PermissionGuard permission={Permissions.maintenance.inventory.form.delete}>
+                    <RowActionButton label="Delete" tone="destructive" icon={<Trash2 />} onClick={() => handleOpenDelete(part)} />
+                  </PermissionGuard>
+                )}
+              </>
+            ) : (
+              <>
+                <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/maintenance/inventory/${part.id}`)} />
+                {!isCommandRow && (
+                  <>
+                    {checkRecordOwnership(editLevel, part.createdBy, user?.id) && (
+                      <PermissionGuard permission={Permissions.maintenance.inventory.form.edit}>
+                        <RowActionButton label="Edit" icon={<Edit />} onClick={() => handleOpenEdit(part)} />
+                      </PermissionGuard>
+                    )}
+                    {checkRecordOwnership(archiveLevel, part.createdBy, user?.id) && (
+                      <PermissionGuard permission={Permissions.maintenance.inventory.form.archive}>
+                        <RowActionButton label="Archive" tone="destructive" icon={<Archive />} onClick={() => handleOpenArchive(part)} />
+                      </PermissionGuard>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </RowActions>
+        );
+      },
     },
   ];
+
+  // Hide the Source column when standalone (every row would just read "Local").
+  const columns = connected ? partColumns : partColumns.filter((c) => c.key !== 'source');
 
   return (
     <div className="relative flex h-full">
       {/* Main content */}
       <div className="flex flex-col flex-1 min-w-0">
         <PageHeader title="Stock" description="Track parts, stock levels, and warehouse locations" count={pagination.total}>
-          <PermissionGuard permission={Permissions.maintenance.inventory.form.create}>
-            <Button onClick={handleOpenCreate}>
-              <Plus className="h-4 w-4" />
-              Add Stock
-            </Button>
-          </PermissionGuard>
+          {!connected && (
+            <PermissionGuard permission={Permissions.maintenance.inventory.form.create}>
+              <Button onClick={handleOpenCreate}>
+                <Plus className="h-4 w-4" />
+                Add Stock
+              </Button>
+            </PermissionGuard>
+          )}
         </PageHeader>
 
-        <div className="px-6 pb-3">
+        <div className="space-y-3 px-6 pb-3">
+          {connected && <CommandManagedBanner />}
           <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
         </div>
 
         <div className="flex-1 overflow-auto px-6 pb-6">
           <DataTableToolbar
-            columns={partColumns}
+            columns={columns}
             hiddenColumnKeys={hiddenColumnKeys}
             onHiddenColumnKeysChange={setHiddenColumnKeys}
             density={density}
@@ -398,7 +423,7 @@ export function InventoryPage() {
             }
           />
           <DataTable<PartRow>
-            columns={partColumns}
+            columns={columns}
             data={parts}
             pagination={pagination}
             loading={loading}
