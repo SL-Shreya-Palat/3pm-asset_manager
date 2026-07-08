@@ -1,6 +1,6 @@
 /** Meter reading domain types. */
-export type MeterType = 'odometer' | 'engine_hours';
-export const METER_TYPES: MeterType[] = ['odometer', 'engine_hours'];
+export type MeterType = 'odometer' | 'engine_hours' | 'hubometer';
+export const METER_TYPES: MeterType[] = ['odometer', 'engine_hours', 'hubometer'];
 
 export interface AddMeterReadingInput {
   meterType: string;

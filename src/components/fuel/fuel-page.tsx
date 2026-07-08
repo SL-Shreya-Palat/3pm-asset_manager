@@ -341,7 +341,7 @@ export function FuelPage() {
     },
     {
       key: 'economy',
-      header: 'MPG',
+      header: 'km/L',
       label: 'Fuel Economy',
       align: 'right',
       render: (txn) => (
@@ -350,8 +350,8 @@ export function FuelPage() {
     },
     {
       key: 'costPerMile',
-      header: 'Cost/Mile',
-      label: 'Cost per Mile',
+      header: 'Cost/km',
+      label: 'Cost per km',
       align: 'right',
       render: (txn) => (
         <span className="text-muted-foreground">{formatCurrency(txn.costPerMile)}</span>
@@ -454,12 +454,12 @@ export function FuelPage() {
           <StatCard
             icon={<Gauge className="h-4 w-4" />}
             label="Avg Economy"
-            value={analytics?.avgEconomy ? `${formatNumber(analytics.avgEconomy)} MPG` : '—'}
+            value={analytics?.avgEconomy ? `${formatNumber(analytics.avgEconomy)} km/L` : '—'}
             loading={!analytics}
           />
           <StatCard
             icon={<TrendingUp className="h-4 w-4" />}
-            label="Avg Cost/Mile"
+            label="Avg Cost/km"
             value={analytics?.avgCostPerMile ? formatCurrency(analytics.avgCostPerMile) : '—'}
             loading={!analytics}
           />

@@ -146,7 +146,7 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
     if (!totalCost || parseFloat(totalCost) < 0) errors.totalCost = 'Total cost is required';
 
     if (startMileage && endMileage && parseFloat(endMileage) < parseFloat(startMileage)) {
-      errors.endMileage = 'End mileage must be greater than start mileage';
+      errors.endMileage = 'End odometer must be greater than start odometer';
     }
 
     if (Object.keys(errors).length > 0) {
@@ -358,14 +358,14 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
             </div>
           </div>
 
-          {/* Mileage Section */}
+          {/* Odometer Section */}
           <div>
-            <h3 className="text-sm font-semibold text-foreground mb-3">Mileage</h3>
+            <h3 className="text-sm font-semibold text-foreground mb-3">Odometer</h3>
             <Separator className="mb-4" />
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="startMileage">Start Mileage</Label>
+                  <Label htmlFor="startMileage">Start Odometer (km)</Label>
                   <Input
                     id="startMileage"
                     type="number"
@@ -381,7 +381,7 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
                   )}
                 </div>
                 <div>
-                  <Label htmlFor="endMileage">End Mileage</Label>
+                  <Label htmlFor="endMileage">End Odometer (km)</Label>
                   <Input
                     id="endMileage"
                     type="number"
@@ -398,7 +398,7 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Providing start and end mileage enables automatic calculation of distance, fuel economy (MPG), and cost per mile.
+                Providing start and end odometer readings enables automatic calculation of distance, fuel economy, and cost per km.
               </p>
             </div>
           </div>

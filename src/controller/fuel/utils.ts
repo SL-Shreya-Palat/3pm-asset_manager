@@ -53,13 +53,13 @@ export function validateCreateFuelTransactionInput(input: CreateFuelTransactionI
 
   if (input.startMileage !== undefined && input.startMileage !== null) {
     if (typeof input.startMileage !== 'number' || isNaN(input.startMileage) || input.startMileage < 0) {
-      errors.startMileage = 'Start mileage must be a non-negative number';
+      errors.startMileage = 'Start odometer must be a non-negative number';
     }
   }
 
   if (input.endMileage !== undefined && input.endMileage !== null) {
     if (typeof input.endMileage !== 'number' || isNaN(input.endMileage) || input.endMileage < 0) {
-      errors.endMileage = 'End mileage must be a non-negative number';
+      errors.endMileage = 'End odometer must be a non-negative number';
     }
   }
 
@@ -70,7 +70,7 @@ export function validateCreateFuelTransactionInput(input: CreateFuelTransactionI
     typeof input.endMileage === 'number' &&
     input.endMileage < input.startMileage
   ) {
-    errors.endMileage = 'End mileage must be greater than start mileage';
+    errors.endMileage = 'End odometer must be greater than start odometer';
   }
 
   if (input.fuelType && !(FUEL_TYPES as readonly string[]).includes(input.fuelType)) {

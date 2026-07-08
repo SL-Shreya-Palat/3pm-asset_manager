@@ -14,8 +14,9 @@ export function MeterTypeSelect({ value, onChange }: { value: string; onChange: 
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
       <SelectContent>
-        <SelectItem value="odometer">Odometer (mi/km)</SelectItem>
+        <SelectItem value="odometer">Odometer (km)</SelectItem>
         <SelectItem value="engine_hours">Engine hours</SelectItem>
+        <SelectItem value="hubometer">Hubometer</SelectItem>
       </SelectContent>
     </Select>
   );

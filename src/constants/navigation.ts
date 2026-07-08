@@ -6,6 +6,7 @@ import {
   Store,
   Fuel,
   Users,
+  Settings,
 } from 'lucide-react';
 
 export interface NavChild {
@@ -74,6 +75,7 @@ export const navItems: NavItem[] = [
       { label: 'Roles', href: '/people/roles', adminOnly: true },
     ],
   },
+  { label: 'Settings', href: '/settings', icon: Settings, requiredModule: 'settings' },
 ];
 
 /** Flatten all nav items + children into a searchable list. */

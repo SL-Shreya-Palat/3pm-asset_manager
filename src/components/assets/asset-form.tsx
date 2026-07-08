@@ -564,17 +564,43 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
                   </SelectContent>
                 </Select>
               </div>
-              <div>
-                <Label htmlFor="mileage">Mileage</Label>
-                <Input
-                  id="mileage"
-                  type="number"
-                  value={mileage}
-                  onChange={(e) => setMileage(e.target.value)}
-                  placeholder="Current odometer"
-                  min={0}
-                  className="mt-1.5"
-                />
+              <div className="col-span-2 grid grid-cols-3 gap-4">
+                <div>
+                  <Label htmlFor="mileage">Odometer (km)</Label>
+                  <Input
+                    id="mileage"
+                    type="number"
+                    value={mileage}
+                    onChange={(e) => setMileage(e.target.value)}
+                    placeholder="Current odometer"
+                    min={0}
+                    className="mt-1.5"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="hubometer">Hubometer</Label>
+                  <Input
+                    id="hubometer"
+                    type="number"
+                    value={hubometer}
+                    onChange={(e) => setHubometer(e.target.value)}
+                    placeholder="Current hubometer reading"
+                    min={0}
+                    className="mt-1.5"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="engineHours">Engine Hours</Label>
+                  <Input
+                    id="engineHours"
+                    type="number"
+                    value={engineHours}
+                    onChange={(e) => setEngineHours(e.target.value)}
+                    placeholder="Current engine hours"
+                    min={0}
+                    className="mt-1.5"
+                  />
+                </div>
               </div>
               <div>
                 <Label htmlFor="estimatedCost">Estimated Cost</Label>
@@ -602,18 +628,6 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
                     className="flex-1"
                   />
                 </div>
-              </div>
-              <div>
-                <Label htmlFor="engineHours">Engine Hours</Label>
-                <Input
-                  id="engineHours"
-                  type="number"
-                  value={engineHours}
-                  onChange={(e) => setEngineHours(e.target.value)}
-                  placeholder="Current engine hours"
-                  min={0}
-                  className="mt-1.5"
-                />
               </div>
               <div>
                 <div className="flex items-center justify-between">
@@ -655,7 +669,7 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
                 />
               </div>
               <div>
-                <Label htmlFor="lastServiceMileage">Last Service Mileage</Label>
+                <Label htmlFor="lastServiceMileage">Last Service Odometer (km)</Label>
                 <Input
                   id="lastServiceMileage"
                   type="number"
@@ -674,18 +688,6 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
                   value={lastServiceEngineHours}
                   onChange={(e) => setLastServiceEngineHours(e.target.value)}
                   placeholder="0"
-                  min={0}
-                  className="mt-1.5"
-                />
-              </div>
-              <div>
-                <Label htmlFor="hubometer">Hubometer</Label>
-                <Input
-                  id="hubometer"
-                  type="number"
-                  value={hubometer}
-                  onChange={(e) => setHubometer(e.target.value)}
-                  placeholder="Current hubometer reading"
                   min={0}
                   className="mt-1.5"
                 />

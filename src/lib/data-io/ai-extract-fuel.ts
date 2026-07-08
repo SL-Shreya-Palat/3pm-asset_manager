@@ -41,8 +41,8 @@ const FUEL_EXTRACT_COLUMNS: ExtractColumn[] = [
   { header: 'Unit Cost', required: false, hint: 'price per unit of fuel' },
   { header: 'Total Cost', required: true, hint: 'total cost of the fill-up' },
   { header: 'Fuel Type', required: false, hint: `one of: ${FUEL_TYPES.join(', ')}` },
-  { header: 'Start Mileage', required: false, hint: 'odometer reading before fill-up' },
-  { header: 'End Mileage', required: false, hint: 'odometer reading after fill-up' },
+  { header: 'Start Odometer (km)', required: false, hint: 'odometer reading before fill-up' },
+  { header: 'End Odometer (km)', required: false, hint: 'odometer reading after fill-up' },
   { header: 'Station', required: false, hint: 'name of the fuel station or vendor' },
   { header: 'Notes', required: false, hint: 'any notes or comments' },
 ];

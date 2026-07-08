@@ -9,7 +9,7 @@ export type AssetStatus = (typeof ASSET_STATUSES)[number];
 export const FUEL_TYPES = ['diesel', 'petrol', 'electric', 'lpg', 'cng', 'other'] as const;
 export type FuelType = (typeof FUEL_TYPES)[number];
 
-export const METER_TYPES = ['odometer', 'engine_hours'] as const;
+export const METER_TYPES = ['odometer', 'engine_hours', 'hubometer'] as const;
 export type MeterType = (typeof METER_TYPES)[number];
 
 export const SUBSCRIPTION_TYPES = ['owned', 'leased', 'rented', 'financed'] as const;

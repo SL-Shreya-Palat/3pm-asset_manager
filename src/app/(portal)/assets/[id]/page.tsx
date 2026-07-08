@@ -583,7 +583,7 @@ export default function AssetDetailPage() {
         <div className="space-y-6">
           {/* Key metrics */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard label="Mileage" value={odo != null ? odo.toLocaleString() : '—'} icon={<Gauge />} />
+            <StatCard label="Odometer (km)" value={odo != null ? odo.toLocaleString() : '—'} icon={<Gauge />} />
             <StatCard label="Engine Hours" value={engineHours != null ? engineHours.toLocaleString() : '—'} icon={<Clock />} />
             <StatCard label="Estimated Cost" value={estCost != null ? `${currency} ${estCost.toLocaleString()}` : '—'} icon={<DollarSign />} />
             <StatCard label="Last Service" value={lastServiceDate ? lastServiceDate.toLocaleDateString() : '—'} icon={<CalendarClock />} />
@@ -611,7 +611,7 @@ export default function AssetDetailPage() {
           {/* Service History */}
           <DetailCard icon={Wrench} title="Service History">
             <DetailField label="Last Service Date" value={lastServiceDate ? lastServiceDate.toLocaleDateString() : ''} />
-            <DetailField label="Last Service Mileage" value={asset.lastServiceMileage != null ? Number(asset.lastServiceMileage).toLocaleString() : ''} />
+            <DetailField label="Last Service Odometer (km)" value={asset.lastServiceMileage != null ? Number(asset.lastServiceMileage).toLocaleString() : ''} />
             <DetailField label="Last Service Engine Hours" value={asset.lastServiceEngineHours != null ? String(asset.lastServiceEngineHours) : ''} />
           </DetailCard>
 

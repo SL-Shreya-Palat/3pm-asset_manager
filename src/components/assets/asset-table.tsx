@@ -574,8 +574,8 @@ export function AssetTable() {
     },
     {
       key: 'currentOdometer',
-      header: 'Mileage',
-      label: 'Mileage',
+      header: 'Odometer (km)',
+      label: 'Odometer (km)',
       sortable: true,
       render: (asset) => (
         <span className="text-muted-foreground">
@@ -663,8 +663,8 @@ export function AssetTable() {
     },
     {
       key: 'lastServiceMileage',
-      header: 'Last Svc Mileage',
-      label: 'Last Service Mileage',
+      header: 'Last Svc Odometer (km)',
+      label: 'Last Service Odometer (km)',
       render: (asset) => (
         <span className="text-muted-foreground">
           {asset.lastServiceMileage != null ? asset.lastServiceMileage.toLocaleString() : '—'}
