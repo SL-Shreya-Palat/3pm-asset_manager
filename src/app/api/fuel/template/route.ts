@@ -20,8 +20,8 @@ const FUEL_TEMPLATE_COLUMNS: FuelColumn[] = [
   { header: 'Unit Cost', field: 'unitCost', example: '3.50' },
   { header: 'Total Cost', field: 'totalCost', required: true, example: '159.25' },
   { header: 'Fuel Type', field: 'fuelType', enum: FUEL_TYPES, example: 'diesel' },
-  { header: 'Start Mileage', field: 'startMileage', example: '50000' },
-  { header: 'End Mileage', field: 'endMileage', example: '50350' },
+  { header: 'Start Odometer (km)', field: 'startMileage', example: '50000' },
+  { header: 'End Odometer (km)', field: 'endMileage', example: '50350' },
   { header: 'Station', field: 'station', example: 'Shell Main St' },
   { header: 'Notes', field: 'notes', example: 'Regular fill-up' },
 ];

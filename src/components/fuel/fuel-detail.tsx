@@ -184,26 +184,26 @@ export function FuelDetail() {
           <DetailField label="Total Cost" value={formatCurrency(transaction.totalCost)} />
         </DetailCard>
 
-        {/* Mileage & Efficiency */}
+        {/* Odometer & Efficiency */}
         {(transaction.startMileage != null || transaction.endMileage != null || transaction.economy != null) && (
-          <DetailCard icon={Gauge} title="Mileage & Efficiency" columns={3}>
+          <DetailCard icon={Gauge} title="Odometer & Efficiency" columns={3}>
             <DetailField
-              label="Start Mileage"
+              label="Start Odometer (km)"
               value={transaction.startMileage != null ? formatNumber(transaction.startMileage, 0) : undefined}
             />
             <DetailField
-              label="End Mileage"
+              label="End Odometer (km)"
               value={transaction.endMileage != null ? formatNumber(transaction.endMileage, 0) : undefined}
             />
             <DetailField
               label="Distance"
-              value={transaction.distance != null ? `${formatNumber(transaction.distance, 1)} mi` : undefined}
+              value={transaction.distance != null ? `${formatNumber(transaction.distance, 1)} km` : undefined}
             />
             <DetailField
               label="Fuel Economy"
-              value={transaction.economy != null ? `${formatNumber(transaction.economy)} MPG` : undefined}
+              value={transaction.economy != null ? `${formatNumber(transaction.economy)} km/L` : undefined}
             />
-            <DetailField label="Cost per Mile" value={formatCurrency(transaction.costPerMile)} />
+            <DetailField label="Cost per km" value={formatCurrency(transaction.costPerMile)} />
           </DetailCard>
         )}
 

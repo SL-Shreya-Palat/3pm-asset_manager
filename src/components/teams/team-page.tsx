@@ -1100,7 +1100,7 @@ export function TeamPage() {
     },
     {
       key: 'currentOdometer',
-      header: 'Mileage',
+      header: 'Odometer (km)',
       render: (asset) => (
         <span className="text-muted-foreground">
           {asset.currentOdometer != null ? asset.currentOdometer.toLocaleString() : '—'}
@@ -1182,7 +1182,7 @@ export function TeamPage() {
     },
     {
       key: 'lastServiceMileage',
-      header: 'Last Svc Mileage',
+      header: 'Last Svc Odometer (km)',
       render: (asset) => (
         <span className="text-muted-foreground">
           {asset.lastServiceMileage != null ? asset.lastServiceMileage.toLocaleString() : '—'}

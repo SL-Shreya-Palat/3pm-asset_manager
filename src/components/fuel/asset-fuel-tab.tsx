@@ -192,7 +192,7 @@ export function AssetFuelTab({ assetId }: AssetFuelTabProps) {
     },
     {
       key: 'economy',
-      header: 'MPG',
+      header: 'km/L',
       align: 'right',
       render: (txn) => <span className="text-muted-foreground">{formatNumber(txn.economy)}</span>,
     },
@@ -226,8 +226,8 @@ export function AssetFuelTab({ assetId }: AssetFuelTabProps) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <StatCard icon={<DollarSign className="h-4 w-4" />} label="Total Cost" value={formatCurrency(analytics.totalCost)} />
           <StatCard icon={<Droplets className="h-4 w-4" />} label="Total Volume" value={`${formatNumber(analytics.totalVolume)} gal`} />
-          <StatCard icon={<Gauge className="h-4 w-4" />} label="Avg Economy" value={analytics.avgEconomy ? `${formatNumber(analytics.avgEconomy)} MPG` : '—'} />
-          <StatCard icon={<TrendingUp className="h-4 w-4" />} label="Avg Cost/Mile" value={analytics.avgCostPerMile ? formatCurrency(analytics.avgCostPerMile) : '—'} />
+          <StatCard icon={<Gauge className="h-4 w-4" />} label="Avg Economy" value={analytics.avgEconomy ? `${formatNumber(analytics.avgEconomy)} km/L` : '—'} />
+          <StatCard icon={<TrendingUp className="h-4 w-4" />} label="Avg Cost/km" value={analytics.avgCostPerMile ? formatCurrency(analytics.avgCostPerMile) : '—'} />
         </div>
       )}
 
@@ -291,8 +291,8 @@ export function AssetFuelTab({ assetId }: AssetFuelTabProps) {
                   <ViewField label="Fuel Type" value={viewTransaction.fuelType} />
                   <ViewField label="Volume" value={`${formatNumber(viewTransaction.volume)} gal`} />
                   <ViewField label="Total Cost" value={formatCurrency(viewTransaction.totalCost)} />
-                  <ViewField label="Economy" value={viewTransaction.economy != null ? `${formatNumber(viewTransaction.economy)} MPG` : undefined} />
-                  <ViewField label="Cost/Mile" value={formatCurrency(viewTransaction.costPerMile)} />
+                  <ViewField label="Economy" value={viewTransaction.economy != null ? `${formatNumber(viewTransaction.economy)} km/L` : undefined} />
+                  <ViewField label="Cost/km" value={formatCurrency(viewTransaction.costPerMile)} />
                   <ViewField label="Station" value={viewTransaction.station} />
                   <ViewField label="Driver" value={viewTransaction.driverName} />
                 </div>

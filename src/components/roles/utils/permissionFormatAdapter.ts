@@ -159,27 +159,20 @@ export function compressPermissionsForStorage(
   for (const mod of modules) {
     if (!mod.view) continue;
 
-    let moduleHasGrants = false;
+    // Module is visible in navigation if view is enabled
+    enabledModules.add(mod.key);
 
     for (const sm of mod.subModules) {
-      let smHasGrants = false;
+      if (sm.view) {
+        enabledSubModules.add(`${mod.key}.${sm.key}`);
+      }
 
       for (const form of sm.forms) {
         const grant = compressForm(mod.key, sm.key, form);
         if (grant) {
           forms.push(grant);
-          smHasGrants = true;
         }
       }
-
-      if (smHasGrants) {
-        enabledSubModules.add(`${mod.key}.${sm.key}`);
-        moduleHasGrants = true;
-      }
-    }
-
-    if (moduleHasGrants) {
-      enabledModules.add(mod.key);
     }
   }
 

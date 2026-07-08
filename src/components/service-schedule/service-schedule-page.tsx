@@ -260,7 +260,7 @@ export function ServiceSchedulePage() {
                     return (
                       <li key={i} className={isOD ? 'text-destructive' : ''}>
                         {dim.type === 'mileage'
-                          ? 'Mileage'
+                          ? 'Odometer (km)'
                           : dim.type === 'engineHours'
                             ? 'Engine Hours'
                             : 'Calendar'}

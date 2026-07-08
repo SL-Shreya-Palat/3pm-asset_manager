@@ -248,7 +248,7 @@ export function AssetServiceTab({ assetId }: { assetId: string }) {
                     {h.meterAtService != null && (
                       <span className="inline-flex items-center gap-1">
                         <Gauge className="h-3 w-3" />
-                        {h.meterAtService.toLocaleString()} {h.meterType === 'engine_hours' ? 'hrs' : 'mi/km'}
+                        {h.meterAtService.toLocaleString()} {h.meterType === 'engine_hours' ? 'hrs' : 'km'}
                       </span>
                     )}
                     <span className="inline-flex items-center gap-1">

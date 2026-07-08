@@ -7,7 +7,7 @@
  */
 import { useEffect, useState, useCallback } from 'react';
 import axios from 'axios';
-import { Gauge, Clock, Plus } from 'lucide-react';
+import { Gauge, Clock, Plus, CircleDot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -33,7 +33,7 @@ function formatDate(iso: string | null) {
   return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-const UNIT: Record<string, string> = { odometer: 'mi/km', engine_hours: 'hrs' };
+const UNIT: Record<string, string> = { odometer: 'km', engine_hours: 'hrs', hubometer: 'km' };
 
 export function AssetMeterTab({ assetId }: { assetId: string }) {
   const [readings, setReadings] = useState<Reading[]>([]);
@@ -61,6 +61,7 @@ export function AssetMeterTab({ assetId }: { assetId: string }) {
   const latest = (type: string) => readings.find((r) => r.meterType === type) ?? null;
   const latestOdo = latest('odometer');
   const latestHrs = latest('engine_hours');
+  const latestHub = latest('hubometer');
 
   const handleAdded = () => { setAddOpen(false); fetchReadings(); };
 
@@ -76,12 +77,18 @@ export function AssetMeterTab({ assetId }: { assetId: string }) {
   return (
     <div>
       {/* Current meters (latest reading per type) */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-4 mb-6">
         <StatCard
           icon={<Gauge className="h-4 w-4" />}
           label="Current Odometer"
-          value={latestOdo ? `${latestOdo.value.toLocaleString()} mi/km` : '—'}
+          value={latestOdo ? `${latestOdo.value.toLocaleString()} km` : '—'}
           hint={latestOdo ? `as of ${formatDate(latestOdo.readingAt)}` : undefined}
+        />
+        <StatCard
+          icon={<CircleDot className="h-4 w-4" />}
+          label="Current Hubometer"
+          value={latestHub ? `${latestHub.value.toLocaleString()} km` : '—'}
+          hint={latestHub ? `as of ${formatDate(latestHub.readingAt)}` : undefined}
         />
         <StatCard
           icon={<Clock className="h-4 w-4" />}
