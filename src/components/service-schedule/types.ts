@@ -13,8 +13,8 @@ export interface DueDimensionRow {
 
 export interface ServiceScheduleRow {
   id: string;
-  programId: string;
-  programTitle: string;
+  planId: string;
+  planTitle: string;
   assetId: string;
   assetName: string;
   assetNumber?: string;

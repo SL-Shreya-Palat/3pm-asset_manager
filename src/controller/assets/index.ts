@@ -399,6 +399,10 @@ export async function createAsset(
     formIds: (input.formIds || []).map((id) =>
       ObjectId.createFromHexString(id),
     ),
+    servicePlanId:
+      input.servicePlanId && ObjectId.isValid(input.servicePlanId)
+        ? ObjectId.createFromHexString(input.servicePlanId)
+        : null,
     assetGroupIds: [],
     driverAccessIds: (input.driverAccessIds || []).map((id) =>
       ObjectId.createFromHexString(id),

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helper';
 import { getAllPartCategories, createPartCategory, updatePartCategory, deletePartCategory, archivePartCategory } from '@/controller/inventory-settings';
+import { getFormPermissionLevels } from '@/lib/server-permissions';
+
+const FORM_ID = 'settings.partCategories.partCategory';
 
 export async function GET(request: NextRequest) {
   const user = await getAuthenticatedUser(request);
@@ -8,7 +11,11 @@ export async function GET(request: NextRequest) {
 
   const search = request.nextUrl.searchParams.get('search') || undefined;
   const showArchived = request.nextUrl.searchParams.get('showArchived') === 'true';
-  const items = await getAllPartCategories(user.currentTenantId, search, { showArchived });
+
+  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
+  const createdBy = perms.view === 'OWN' ? user.id : undefined;
+
+  const items = await getAllPartCategories(user.currentTenantId, search, { showArchived, createdBy });
   return NextResponse.json({ data: items, error: null });
 }
 

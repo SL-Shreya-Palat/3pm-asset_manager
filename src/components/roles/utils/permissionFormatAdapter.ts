@@ -163,8 +163,14 @@ export function compressPermissionsForStorage(
     enabledModules.add(mod.key);
 
     for (const sm of mod.subModules) {
+      // Only include submodule if view is enabled AND at least one form has a
+      // non-NONE view level.  This prevents stale sm.view=true entries from
+      // being persisted when all forms have been set to view=NONE.
       if (sm.view) {
-        enabledSubModules.add(`${mod.key}.${sm.key}`);
+        const hasAnyFormView = sm.forms.some((f) => f.viewLevel !== 'none');
+        if (hasAnyFormView) {
+          enabledSubModules.add(`${mod.key}.${sm.key}`);
+        }
       }
 
       for (const form of sm.forms) {

@@ -23,6 +23,7 @@ function serialize(doc: Record<string, unknown>): Record<string, unknown> {
     symbol: doc.symbol || undefined,
     description: doc.description || undefined,
     isDefault: doc.isDefault ?? false,
+    createdBy: doc.createdBy?.toString() ?? null,
     createdAt: doc.createdAt ? (doc.createdAt as Date).toISOString() : null,
     updatedAt: doc.updatedAt ? (doc.updatedAt as Date).toISOString() : null,
   };
@@ -32,7 +33,7 @@ function serialize(doc: Record<string, unknown>): Record<string, unknown> {
 // Measurement Units
 // ═══════════════════════════════════════════════════════════════════════════
 
-export async function getAllMeasurementUnits(tenantId: string, search?: string, options?: { showArchived?: boolean }) {
+export async function getAllMeasurementUnits(tenantId: string, search?: string, options?: { showArchived?: boolean; createdBy?: string }) {
   const col = await getMeasurementUnitsCollection();
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
@@ -47,6 +48,9 @@ export async function getAllMeasurementUnits(tenantId: string, search?: string, 
       { name: { $regex: search, $options: 'i' } },
       { symbol: { $regex: search, $options: 'i' } },
     ];
+  }
+  if (options?.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
   }
   const items = await col.find(filter).sort({ name: 1 }).toArray();
   return items.map(serialize);
@@ -122,7 +126,7 @@ export async function archiveMeasurementUnit(tenantId: string, userId: string, i
 // Part Categories
 // ═══════════════════════════════════════════════════════════════════════════
 
-export async function getAllPartCategories(tenantId: string, search?: string, options?: { showArchived?: boolean }) {
+export async function getAllPartCategories(tenantId: string, search?: string, options?: { showArchived?: boolean; createdBy?: string }) {
   const col = await getPartCategoriesCollection();
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
@@ -134,6 +138,9 @@ export async function getAllPartCategories(tenantId: string, search?: string, op
   }
   if (search) {
     filter.name = { $regex: search, $options: 'i' };
+  }
+  if (options?.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
   }
   const items = await col.find(filter).sort({ name: 1 }).toArray();
   return items.map(serialize);
@@ -206,7 +213,7 @@ export async function archivePartCategory(tenantId: string, userId: string, id: 
 // Part Locations
 // ═══════════════════════════════════════════════════════════════════════════
 
-export async function getAllPartLocations(tenantId: string, search?: string, options?: { showArchived?: boolean }) {
+export async function getAllPartLocations(tenantId: string, search?: string, options?: { showArchived?: boolean; createdBy?: string }) {
   const col = await getPartLocationsCollection();
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
@@ -218,6 +225,9 @@ export async function getAllPartLocations(tenantId: string, search?: string, opt
   }
   if (search) {
     filter.name = { $regex: search, $options: 'i' };
+  }
+  if (options?.createdBy) {
+    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
   }
   const items = await col.find(filter).sort({ name: 1 }).toArray();
   return items.map(serialize);

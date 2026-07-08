@@ -81,9 +81,9 @@ function getThreshold(
 }
 
 /**
- * Compute a single schedule item for a (program, asset) pair.
+ * Compute a single schedule item for a (plan, asset) pair.
  *
- * @param program  - The service program document (from DB)
+ * @param program  - The service plan document (from DB)
  * @param asset    - The asset document (from DB)
  * @param taskTitleMap - Map of serviceTaskId → title for display
  * @returns The schedule item, or null if no enabled conditions exist
@@ -96,7 +96,7 @@ export function computeScheduleItem(
   const interval = program.interval as Record<string, unknown> | undefined;
   if (!interval) return null;
 
-  const programId = (program._id as { toString(): string }).toString();
+  const planId = (program._id as { toString(): string }).toString();
   const assetId = (asset._id as { toString(): string }).toString();
   const serviceTaskIds = ((program.serviceTaskIds || []) as Array<{ toString(): string }>).map(
     (id) => id.toString(),
@@ -264,9 +264,9 @@ export function computeScheduleItem(
   const urgencyValue = Math.min(...dueDimensions.map((d) => d.remaining));
 
   return {
-    id: `${programId}_${assetId}`,
-    programId,
-    programTitle: program.title as string,
+    id: `${planId}_${assetId}`,
+    planId,
+    planTitle: program.title as string,
     assetId,
     assetName: asset.name as string,
     assetNumber: (asset.assetNumber as string) || undefined,

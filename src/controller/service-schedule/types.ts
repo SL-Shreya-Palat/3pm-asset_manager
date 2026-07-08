@@ -22,12 +22,12 @@ export interface DueDimension {
   status: ScheduleStatus;
 }
 
-/** A single schedule row (one program-asset pair). */
+/** A single schedule row (one plan-asset pair). */
 export interface ServiceScheduleItem {
-  /** Composite key: `${programId}_${assetId}` */
+  /** Composite key: `${planId}_${assetId}` */
   id: string;
-  programId: string;
-  programTitle: string;
+  planId: string;
+  planTitle: string;
   assetId: string;
   assetName: string;
   assetNumber?: string;

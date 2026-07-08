@@ -28,6 +28,9 @@ import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { PermissionGuard } from '@/components/auth/permission-guard';
+import { useAuth } from '@/hooks/useAuth';
+import { useRoleAccess } from '@/hooks/use-role-access';
+import { checkRecordOwnership } from '@/lib/rbac';
 
 /** Generic settings item shape. */
 export interface SettingsItem {
@@ -36,6 +39,7 @@ export interface SettingsItem {
   symbol?: string;
   description?: string;
   isDefault?: boolean;
+  createdBy?: string | null;
 }
 
 /** Field configuration for the create/edit dialog. */
@@ -76,6 +80,22 @@ export function InventorySettingsList({
   onDataChange,
   permissions,
 }: InventorySettingsListProps) {
+  const { user } = useAuth();
+  const { hasFullAccess, permissionIndex } = useRoleAccess();
+
+  // Derive the form ID from permission strings (e.g. "settings:assetTypes:assetType:edit" → "settings.assetTypes.assetType")
+  const formId = useMemo(() => {
+    const perm = permissions?.edit || permissions?.archive || permissions?.delete;
+    if (!perm) return null;
+    const parts = perm.split(':');
+    return parts.length === 4 ? `${parts[0]}.${parts[1]}.${parts[2]}` : null;
+  }, [permissions]);
+
+  // Permission levels for row-level "OWN" checks
+  const editLevel = hasFullAccess ? 'ALL' as const : formId ? permissionIndex.getEditLevel(formId) : ('ALL' as const);
+  const archiveLevel = hasFullAccess ? 'ALL' as const : formId ? permissionIndex.getArchiveLevel(formId) : ('ALL' as const);
+  const deleteLevel = hasFullAccess ? 'ALL' as const : formId ? permissionIndex.getDeleteLevel(formId) : ('ALL' as const);
+
   const [items, setItems] = useState<SettingsItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch, debouncedSearch] = useDebouncedSearch(300);
@@ -103,6 +123,14 @@ export function InventorySettingsList({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingItem, setDeletingItem] = useState<SettingsItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // General API error (shown as inline alert, auto-dismissed)
+  const [apiError, setApiError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!apiError) return;
+    const t = setTimeout(() => setApiError(null), 5000);
+    return () => clearTimeout(t);
+  }, [apiError]);
 
   const fetchItems = useCallback(async () => {
     try {
@@ -209,21 +237,29 @@ export function InventorySettingsList({
             <RowActions>
               {showArchived ? (
                 <>
-                  {permissions?.archive ? (
-                    <PermissionGuard permission={permissions.archive}>{unarchiveButton}</PermissionGuard>
-                  ) : unarchiveButton}
-                  {permissions?.delete ? (
-                    <PermissionGuard permission={permissions.delete}>{deleteButton}</PermissionGuard>
-                  ) : deleteButton}
+                  {checkRecordOwnership(archiveLevel, item.createdBy, user?.id) && (
+                    permissions?.archive ? (
+                      <PermissionGuard permission={permissions.archive}>{unarchiveButton}</PermissionGuard>
+                    ) : unarchiveButton
+                  )}
+                  {checkRecordOwnership(deleteLevel, item.createdBy, user?.id) && (
+                    permissions?.delete ? (
+                      <PermissionGuard permission={permissions.delete}>{deleteButton}</PermissionGuard>
+                    ) : deleteButton
+                  )}
                 </>
               ) : (
                 <>
-                  {permissions?.edit ? (
-                    <PermissionGuard permission={permissions.edit}>{editButton}</PermissionGuard>
-                  ) : editButton}
-                  {permissions?.archive ? (
-                    <PermissionGuard permission={permissions.archive}>{archiveButton}</PermissionGuard>
-                  ) : archiveButton}
+                  {checkRecordOwnership(editLevel, item.createdBy, user?.id) && (
+                    permissions?.edit ? (
+                      <PermissionGuard permission={permissions.edit}>{editButton}</PermissionGuard>
+                    ) : editButton
+                  )}
+                  {checkRecordOwnership(archiveLevel, item.createdBy, user?.id) && (
+                    permissions?.archive ? (
+                      <PermissionGuard permission={permissions.archive}>{archiveButton}</PermissionGuard>
+                    ) : archiveButton
+                  )}
                 </>
               )}
             </RowActions>
@@ -232,7 +268,7 @@ export function InventorySettingsList({
       },
     ];
     return cols;
-  }, [nameField, extraColumns, showArchived]);
+  }, [nameField, extraColumns, showArchived, user?.id, editLevel, archiveLevel, deleteLevel, permissions]);
 
   // Dialog helpers
   const openCreateDialog = () => {
@@ -290,7 +326,10 @@ export function InventorySettingsList({
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {
         const errData = err.response.data.error;
-        if (typeof errData === 'object') {
+        if (typeof errData === 'string') {
+          setApiError(errData);
+          setDialogOpen(false);
+        } else if (typeof errData === 'object') {
           setFieldErrors(errData as Record<string, string>);
         }
       }
@@ -308,8 +347,12 @@ export function InventorySettingsList({
       setArchivingItem(null);
       fetchItems();
       onDataChange?.();
-    } catch {
-      // Silent fail
+    } catch (err) {
+      setArchiveDialogOpen(false);
+      setArchivingItem(null);
+      if (axios.isAxiosError(err) && typeof err.response?.data?.error === 'string') {
+        setApiError(err.response.data.error);
+      }
     } finally {
       setArchiving(false);
     }
@@ -324,8 +367,12 @@ export function InventorySettingsList({
       setDeletingItem(null);
       fetchItems();
       onDataChange?.();
-    } catch {
-      // Silent fail
+    } catch (err) {
+      setDeleteDialogOpen(false);
+      setDeletingItem(null);
+      if (axios.isAxiosError(err) && typeof err.response?.data?.error === 'string') {
+        setApiError(err.response.data.error);
+      }
     } finally {
       setDeleting(false);
     }
@@ -355,6 +402,16 @@ export function InventorySettingsList({
           )
         )}
       </div>
+
+      {/* API error alert */}
+      {apiError && (
+        <div className="mb-4 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive flex items-center justify-between">
+          <span>{apiError}</span>
+          <button onClick={() => setApiError(null)} className="ml-4 text-destructive/70 hover:text-destructive">
+            &times;
+          </button>
+        </div>
+      )}
 
       {/* Toolbar */}
       <DataTableToolbar

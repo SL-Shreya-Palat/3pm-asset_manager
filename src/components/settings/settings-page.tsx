@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ChevronDown, ChevronRight, Ruler, Tag, MapPin, Wrench, CircleDot, Box, Layers, Bell, Cable, Radio } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,7 @@ import { Permissions } from '@/consts/permissions';
 import { NotificationSettingsPage } from './notification-settings-page';
 import { CommandConnectionPanel } from './command-connection-panel';
 import { IoTSettingsPanel } from './iot-settings-panel';
+import { useRoleAccess } from '@/hooks/use-role-access';
 
 /** Settings tabs. */
 const TABS = [
@@ -109,11 +110,64 @@ const ASSET_TYPE_FIELDS: SettingsFieldConfig[] = [
 
 const VALID_SIDEBAR_KEYS = new Set(['asset-types', 'measurement-units', 'part-categories', 'part-locations', 'work-order-statuses', 'notification-routing', 'command-connection', 'iot-hub']);
 
+/**
+ * Maps sidebar child keys to their [module, subModule, formId] tuple for
+ * permission checks.  Items not in this map are always visible.
+ *
+ * The formId is used as a secondary check: even if the submodule is present
+ * in the sm set, the item is hidden when its form-level view is NONE.
+ */
+const SIDEBAR_PERMISSION_MAP: Record<string, [string, string, string]> = {
+  'asset-types':          ['settings', 'assetTypes',        'settings.assetTypes.assetType'],
+  'measurement-units':    ['settings', 'measurementUnits',  'settings.measurementUnits.measurementUnit'],
+  'part-categories':      ['settings', 'partCategories',    'settings.partCategories.partCategory'],
+  'part-locations':       ['settings', 'partLocations',     'settings.partLocations.partLocation'],
+  'work-order-statuses':  ['settings', 'workOrderStatuses', 'settings.workOrderStatuses.workOrderStatus'],
+  'notification-routing': ['settings', 'notifications',     'settings.notifications.notification'],
+  'command-connection':    ['settings', 'connections',       'settings.connections.connection'],
+  'iot-hub':              ['settings', 'integrations',      'settings.integrations.integration'],
+};
+
 export function SettingsPage() {
   const searchParams = useSearchParams();
+  const { hasFullAccess, canAccessSubModule, permissionIndex } = useRoleAccess();
   const [activeTab, setActiveTab] = useState<TabKey>('admin');
-  const [activeSidebarKey, setActiveSidebarKey] = useState('measurement-units');
+  const [activeSidebarKey, setActiveSidebarKey] = useState('');
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set(['inventory']));
+
+  // Filter sidebar items based on submodule-level AND form-level view permissions.
+  const visibleSidebar = useMemo(() => {
+    if (hasFullAccess) return ADMIN_SIDEBAR;
+
+    return ADMIN_SIDEBAR
+      .map((group) => {
+        if (!group.children) return group;
+        const visibleChildren = group.children.filter((child) => {
+          const perm = SIDEBAR_PERMISSION_MAP[child.key];
+          // No mapping → always visible
+          if (!perm) return true;
+          // Check submodule-level access
+          if (!canAccessSubModule(perm[0], perm[1])) return false;
+          // Also verify the form-level view is not NONE (handles stale sm data)
+          return permissionIndex.getViewLevel(perm[2]) !== 'NONE';
+        });
+        if (visibleChildren.length === 0) return null;
+        return { ...group, children: visibleChildren };
+      })
+      .filter(Boolean) as SidebarItem[];
+  }, [hasFullAccess, canAccessSubModule, permissionIndex]);
+
+  // Auto-select the first visible sidebar item when the list changes or on
+  // initial render.
+  useEffect(() => {
+    const firstChild = visibleSidebar.flatMap((g) => g.children ?? []);
+    if (firstChild.length > 0 && !firstChild.some((c) => c.key === activeSidebarKey)) {
+      setActiveSidebarKey(firstChild[0].key);
+      // expand the parent group
+      const parentGroup = visibleSidebar.find((g) => g.children?.some((c) => c.key === firstChild[0].key));
+      if (parentGroup) setExpandedKeys((prev) => new Set([...prev, parentGroup.key]));
+    }
+  }, [visibleSidebar]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Support deep-linking via ?section= query param.
   // Deferred so setState isn't called synchronously inside the effect body.
@@ -271,7 +325,7 @@ export function SettingsPage() {
         {/* Left sidebar */}
         <div className="w-[240px] border-r border-border bg-muted/30 overflow-y-auto py-4">
           <nav className="px-3 space-y-1">
-            {ADMIN_SIDEBAR.map((item) => {
+            {visibleSidebar.map((item) => {
               const isExpanded = expandedKeys.has(item.key);
               const Icon = item.icon;
 
