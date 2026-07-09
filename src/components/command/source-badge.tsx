@@ -49,3 +49,27 @@ export function CommandManagedBanner({ className }: { className?: string }) {
     </div>
   );
 }
+
+/**
+ * Full-page notice for a feature that is NOT available in Asset Manager while
+ * connected to Command because Command owns it entirely (e.g. Purchase Orders).
+ * Unlike master-data lists (read-only + auto-synced), the feature is hidden.
+ */
+export function CommandManagedFeatureNotice({ feature }: { feature: string }) {
+  return (
+    <div className="flex h-full flex-1 items-center justify-center p-6">
+      <div className="max-w-md rounded-lg border border-blue-200 bg-blue-50 p-6 text-center">
+        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+          <Cable className="h-5 w-5" />
+        </div>
+        <h2 className="mb-1 text-base font-semibold text-blue-900">
+          {feature} are managed in Command
+        </h2>
+        <p className="text-sm text-blue-800">
+          While this Asset Manager is connected to Command, {feature.toLowerCase()} are handled in
+          Command only. Create and manage them there.
+        </p>
+      </div>
+    </div>
+  );
+}

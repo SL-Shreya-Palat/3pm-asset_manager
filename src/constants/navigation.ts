@@ -16,6 +16,11 @@ export interface NavChild {
   requiredModule?: string;
   /** SubModule key required to see this item (checked via submodule view permission). */
   requiredSubModule?: string;
+  /**
+   * Hidden while the tenant is connected to Command — the feature is owned by
+   * Command in that mode (e.g. Purchase Orders / procurement).
+   */
+  hiddenWhenCommandConnected?: boolean;
 }
 
 export interface NavItem {
@@ -27,6 +32,11 @@ export interface NavItem {
   requiredModule?: string;
   /** SubModule key required to see this item (checked via submodule view permission). */
   requiredSubModule?: string;
+  /**
+   * Hidden while the tenant is connected to Command — the feature is owned by
+   * Command in that mode (e.g. Purchase Orders / procurement).
+   */
+  hiddenWhenCommandConnected?: boolean;
 }
 
 export const navItems: NavItem[] = [
@@ -53,7 +63,7 @@ export const navItems: NavItem[] = [
       { label: 'Work Orders', href: '/maintenance/work-orders', requiredModule: 'maintenance', requiredSubModule: 'workOrders' },
       { label: 'Defects', href: '/maintenance/defects', requiredModule: 'maintenance', requiredSubModule: 'defects' },
       { label: 'Faults', href: '/maintenance/faults', requiredModule: 'maintenance', requiredSubModule: 'faults' },
-      { label: 'Purchase Orders', href: '/maintenance/purchase-orders', requiredModule: 'maintenance', requiredSubModule: 'purchaseOrders' },
+      { label: 'Purchase Orders', href: '/maintenance/purchase-orders', requiredModule: 'maintenance', requiredSubModule: 'purchaseOrders', hiddenWhenCommandConnected: true },
       { label: 'Stock', href: '/maintenance/inventory', requiredModule: 'maintenance', requiredSubModule: 'inventory' },
     ],
   },

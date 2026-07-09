@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 
-const MIN_VIN_LENGTH = 5;
+const MIN_VIN_LENGTH = 2;
 
 interface VinLookupDialogProps {
   open: boolean;
@@ -59,6 +59,8 @@ export function VinLookupDialog({ open, onOpenChange }: VinLookupDialogProps) {
       if (data.vehicleType) params.set('vehicleType', data.vehicleType);
       if (data.bodyClass) params.set('bodyClass', data.bodyClass);
       if (data.fuelType) params.set('fuelType', data.fuelType);
+      if (data.color) params.set('color', data.color);
+      if (data.licensePlate) params.set('licensePlate', data.licensePlate);
 
       onOpenChange(false);
       resetState();
@@ -92,8 +94,6 @@ export function VinLookupDialog({ open, onOpenChange }: VinLookupDialogProps) {
     }
   };
 
-  const isStandardVin = vin.trim().length === 17;
-
   return (
     <Dialog
       open={open}
@@ -104,15 +104,15 @@ export function VinLookupDialog({ open, onOpenChange }: VinLookupDialogProps) {
     >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Enter VIN / Chassis Number</DialogTitle>
+          <DialogTitle>Look up vehicle</DialogTitle>
           <DialogDescription>
-            Enter a 17-character VIN to auto-fill details, or a shorter chassis/frame number for NZ vehicles
+            Enter a registration plate, VIN or chassis number to auto-fill the vehicle&apos;s details
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           <div>
-            <Label htmlFor="vin-lookup">VIN / Chassis Number</Label>
+            <Label htmlFor="vin-lookup">Plate / VIN / Chassis</Label>
             <div className="relative mt-1.5">
               <Input
                 id="vin-lookup"
@@ -122,7 +122,7 @@ export function VinLookupDialog({ open, onOpenChange }: VinLookupDialogProps) {
                   if (error) setError('');
                 }}
                 onKeyDown={handleKeyDown}
-                placeholder="e.g. 1HGCM82633A004352 or GX110-0012345"
+                placeholder="e.g. ABC123 or JM0KF4WLA00115724"
                 className={`pr-10 font-mono tracking-wider ${error ? 'border-destructive' : ''}`}
                 disabled={loading}
                 autoFocus
@@ -133,11 +133,7 @@ export function VinLookupDialog({ open, onOpenChange }: VinLookupDialogProps) {
               {error ? (
                 <p className="text-sm text-destructive">{error}</p>
               ) : (
-                <p className="text-xs text-muted-foreground">
-                  {vin.trim().length} characters
-                  {isStandardVin && ' — standard VIN, will auto-decode'}
-                  {vin.trim().length > 0 && !isStandardVin && vin.trim().length >= MIN_VIN_LENGTH && ' — chassis number'}
-                </p>
+                <p className="text-xs text-muted-foreground">{vin.trim().length} characters</p>
               )}
             </div>
           </div>
@@ -150,12 +146,10 @@ export function VinLookupDialog({ open, onOpenChange }: VinLookupDialogProps) {
             {loading ? (
               <>
                 <Spinner size="sm" className="mr-2" />
-                {isStandardVin ? 'Decoding...' : 'Looking up...'}
+                Looking up...
               </>
-            ) : isStandardVin ? (
-              'Decode VIN'
             ) : (
-              'Continue with Chassis Number'
+              'Look up vehicle'
             )}
           </Button>
 

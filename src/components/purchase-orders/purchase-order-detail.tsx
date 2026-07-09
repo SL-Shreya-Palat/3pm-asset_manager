@@ -22,6 +22,8 @@ import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { cn, formatDate } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
 import { useRoleAccess } from '@/hooks/use-role-access';
+import { useConnection } from '@/hooks/use-connection';
+import { CommandManagedFeatureNotice } from '@/components/command/source-badge';
 import { checkRecordOwnership } from '@/lib/rbac';
 import { PermissionGuard } from '@/components/auth/permission-guard';
 import { Permissions } from '@/consts/permissions';
@@ -39,6 +41,8 @@ export function PurchaseOrderDetail() {
   const router = useRouter();
   const { user } = useAuth();
   const { hasFullAccess, permissionIndex } = useRoleAccess();
+  // Connected to Command → procurement is owned by Command; hide PO detail too.
+  const { connected } = useConnection();
   const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(PO_FORM_ID);
   const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(PO_FORM_ID);
 
@@ -78,6 +82,11 @@ export function PurchaseOrderDetail() {
       setArchiving(false);
     }
   };
+
+  // Connected to Command → purchase orders are managed in Command only.
+  if (connected) {
+    return <CommandManagedFeatureNotice feature="Purchase Orders" />;
+  }
 
   // Loading
   if (loading) {

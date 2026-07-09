@@ -1,38 +1,41 @@
 /**
  * POST /api/drivers/extract-licence
- * Accepts a driver licence photo and uses the configured AI provider
- * (OpenRouter / OpenAI / Google) to extract structured fields from the image.
+ *
+ * Accepts a driver licence photo and extracts structured fields with a single
+ * vision call. Uses the SHARED AI provider (`getExtractModel`) + `generateObject`
+ * — the same path as fuel extraction — so it runs on whatever model is
+ * configured (currently `openai/gpt-4o-mini` via OpenRouter) and stays
+ * consistent with the rest of the app's AI. No provider-specific SDK here.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { authorize } from '@/lib/authz';
-import { generateObject } from 'ai';
 import { z } from 'zod';
+import { generateObject } from 'ai';
+import { authorize } from '@/lib/authz';
 import { getExtractModel, isAiConfigured } from '@/lib/buddy-ai/provider';
 
+// Buffer + AI SDK file parts → Node runtime, not edge.
+export const runtime = 'nodejs';
+
 const licenceSchema = z.object({
-  isLicence: z.boolean().describe('true only if the image is a driver licence / driving license card'),
-  firstName: z.string().describe('Given/first name(s) of the licence holder — empty string if not visible'),
-  lastName: z.string().describe('Surname/family name of the licence holder — empty string if not visible'),
-  dateOfBirth: z.string().describe('Date of birth in YYYY-MM-DD format — empty string if not visible'),
-  licenseNumber: z.string().describe('Primary licence/document number — empty string if not visible'),
-  licenseClass: z.string().describe('Licence class(es) or category(ies) shown (e.g. "C", "B, BE") — empty string if not visible'),
-  cardVersion: z.string().describe('Card/document version number — empty string if not visible'),
+  isLicence: z
+    .boolean()
+    .describe('true only if the image is a driver licence / driving licence card from any country'),
+  firstName: z.string().describe('given/first name(s) of the licence holder; empty string if not readable'),
+  lastName: z.string().describe('surname/family name of the licence holder; empty string if not readable'),
+  dateOfBirth: z.string().describe('date of birth in YYYY-MM-DD format; empty string if not found'),
+  licenseNumber: z.string().describe('the primary licence/document number; empty string if not readable'),
+  licenseClass: z
+    .string()
+    .describe('the licence class(es)/category(ies) shown, e.g. "C", "B, BE", "1, 2"; empty string if not shown'),
+  cardVersion: z.string().describe('the card/document version number if visible; empty string otherwise'),
 });
 
-const PROMPT = `Analyse this image. Determine if it is a driver licence / driving license card from any country.
-
-If the image is NOT a driver licence, set isLicence to false and leave all other fields as empty strings.
-
-If the image IS a driver licence, set isLicence to true and extract the fields.
-
-Rules:
-- "firstName" is the given/first name(s) of the licence holder.
-- "lastName" is the surname/family name of the licence holder.
-- "dateOfBirth" must be in YYYY-MM-DD format if found.
-- "licenseNumber" is the primary licence/document number.
-- "licenseClass" should contain the licence class(es) or category(ies) shown (e.g. "C", "B, BE", "1, 2").
-- "cardVersion" is the card version or document version number if visible.
-- If a field is not visible or not readable, leave it as an empty string.`;
+const PROMPT = [
+  'Analyse the attached image. First determine whether it is a driver licence / driving licence card from any country.',
+  '- If it is NOT a driver licence, set isLicence=false and leave every other field as an empty string.',
+  '- If it IS a driver licence, set isLicence=true and extract the fields.',
+  'Copy values exactly as written; fix only casing/spacing. NEVER invent a value — leave a field as an empty string if it is not visible or not readable.',
+].join('\n');
 
 export async function POST(request: NextRequest) {
   const auth = await authorize(request, 'people.drivers.driver', 'create');
@@ -40,7 +43,10 @@ export async function POST(request: NextRequest) {
 
   if (!isAiConfigured()) {
     return NextResponse.json(
-      { data: null, error: 'No AI provider is configured. Set OPENAI_API_KEY, OPENROUTER_API_KEY, or GOOGLE_GENAI_API_KEY.' },
+      {
+        data: null,
+        error: 'AI is not configured — set OPENAI_API_KEY, OPENROUTER_API_KEY, or GOOGLE_GENAI_API_KEY.',
+      },
       { status: 500 },
     );
   }
@@ -53,9 +59,9 @@ export async function POST(request: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const mimeType = file.type || 'image/jpeg';
+    const mediaType = file.type || 'image/jpeg';
 
-    const { object: extracted } = await generateObject({
+    const { object } = await generateObject({
       model: getExtractModel(),
       schema: licenceSchema,
       maxRetries: 2,
@@ -64,25 +70,38 @@ export async function POST(request: NextRequest) {
           role: 'user',
           content: [
             { type: 'text', text: PROMPT },
-            { type: 'file', data: buffer, mediaType: mimeType },
+            { type: 'file', data: buffer, mediaType, filename: file.name || 'licence' },
           ],
         },
       ],
     });
 
-    if (!extracted.isLicence) {
+    if (!object.isLicence) {
       return NextResponse.json(
-        { data: null, error: 'The uploaded image does not appear to be a driver licence. Please upload a valid driver licence photo.' },
+        {
+          data: null,
+          error:
+            'The uploaded image does not appear to be a driver licence. Please upload a valid driver licence photo.',
+        },
         { status: 400 },
       );
     }
 
-    const { isLicence: _, ...fields } = extracted;
-    return NextResponse.json({ data: fields, error: null });
-  } catch (err: any) {
-    console.error('[extract-licence] extraction failed:', err);
+    // Same response contract as before (driver-form reads these keys directly).
+    const data = {
+      firstName: object.firstName.trim(),
+      lastName: object.lastName.trim(),
+      dateOfBirth: object.dateOfBirth.trim(),
+      licenseNumber: object.licenseNumber.trim(),
+      licenseClass: object.licenseClass.trim(),
+      cardVersion: object.cardVersion.trim(),
+    };
+    return NextResponse.json({ data, error: null });
+  } catch (err) {
+    console.error('[extract-licence] AI extraction failed:', err);
+    const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json(
-      { data: null, error: `Failed to extract licence details from image: ${err?.message ?? 'Unknown error'}` },
+      { data: null, error: `Failed to extract licence details from image: ${message}` },
       { status: 500 },
     );
   }

@@ -42,6 +42,8 @@ import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
 import { useAuth } from '@/hooks/useAuth';
 import { useRoleAccess } from '@/hooks/use-role-access';
+import { useConnection } from '@/hooks/use-connection';
+import { CommandManagedFeatureNotice } from '@/components/command/source-badge';
 import { checkRecordOwnership } from '@/lib/rbac';
 import { PurchaseOrderForm } from './purchase-order-form';
 import type {
@@ -70,6 +72,9 @@ export function PurchaseOrdersPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { hasFullAccess, permissionIndex } = useRoleAccess();
+  // Connected to Command → procurement is owned by Command; the PO feature is
+  // hidden here (see also the sidebar nav guard).
+  const { connected } = useConnection();
 
   // Permission levels for row-level "OWN" checks
   const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(PO_FORM_ID);
@@ -417,6 +422,17 @@ export function PurchaseOrdersPage() {
       ),
     },
   ];
+
+  // While connected to Command, purchase orders are managed in Command only —
+  // render a notice instead of the PO management UI (handles direct URL access).
+  if (connected) {
+    return (
+      <div className="flex h-full flex-col">
+        <PageHeader title="Purchase Orders" description="Managed in Command while connected" />
+        <CommandManagedFeatureNotice feature="Purchase Orders" />
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex h-full">

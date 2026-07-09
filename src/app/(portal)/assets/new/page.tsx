@@ -6,16 +6,20 @@ import { AssetForm } from '@/components/assets/asset-form';
 export default function NewAssetPage() {
   const searchParams = useSearchParams();
 
-  // Build initialData from VIN-decoded query params if present
-  const vin = searchParams.get('vin');
-  const initialData = vin
+  // Build initialData from the CarJam lookup query params if present. A plate
+  // lookup may not return a VIN, so key off any identifying field.
+  const hasPrefill =
+    !!searchParams.get('vin') || !!searchParams.get('make') || !!searchParams.get('licensePlate');
+  const initialData = hasPrefill
     ? {
         vin: searchParams.get('vin') || '',
+        licensePlate: searchParams.get('licensePlate') || '',
         make: searchParams.get('make') || '',
         model: searchParams.get('model') || '',
         year: searchParams.get('year') ? Number(searchParams.get('year')) : undefined,
         vehicleType: searchParams.get('vehicleType') || '',
         assetSubtype: searchParams.get('bodyClass') || '',
+        color: searchParams.get('color') || '',
       }
     : undefined;
 
