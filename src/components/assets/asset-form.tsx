@@ -299,6 +299,8 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
       if (data.model) setModel(data.model);
       if (data.year) setYear(data.year);
       if (data.bodyClass) setAssetSubtype(data.bodyClass);
+      if (data.color) setColor(data.color);
+      if (data.licensePlate) setLicensePlate(data.licensePlate);
       setVinDecoded(true);
 
       // Auto-generate name if empty
