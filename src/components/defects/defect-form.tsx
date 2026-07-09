@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, LoadingButton } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { DateField } from '@/components/ui/date-field';
@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { getTodayDateString } from '@/lib/utils';
+import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 import type { DefectRow, LookupOption } from './types';
 
 interface DefectFormProps {
@@ -139,14 +140,21 @@ export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) 
       } else {
         await axios.post('/api/defects', payload, { withCredentials: true });
       }
+      showSuccessToast(mode === 'edit' ? 'Defect updated successfully' : 'Defect created successfully');
       onSaved();
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {
         const errData = err.response.data.error;
-        if (typeof errData === 'object') setFieldErrors(errData as Record<string, string>);
-        else setError(String(errData));
+        if (typeof errData === 'object') {
+          setFieldErrors(errData as Record<string, string>);
+          showErrorToast('Please fix the highlighted errors');
+        } else {
+          setError(String(errData));
+          showErrorToast(String(errData));
+        }
       } else {
         setError('Failed to save defect');
+        showErrorToast('Failed to save defect');
       }
     } finally {
       setSaving(false);
@@ -298,9 +306,9 @@ export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) 
         <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
           Cancel
         </Button>
-        <Button type="button" onClick={handleSubmit} disabled={saving}>
-          {saving ? 'Saving...' : mode === 'edit' ? 'Update' : 'Save'}
-        </Button>
+        <LoadingButton type="button" onClick={handleSubmit} loading={saving}>
+          {mode === 'edit' ? 'Update' : 'Save'}
+        </LoadingButton>
       </div>
     </div>
   );

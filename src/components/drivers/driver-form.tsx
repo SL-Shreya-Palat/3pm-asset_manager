@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select';
 import { BaseForm } from '@/components/ui/base-form';
 import type { TeamOption } from './types';
+import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 
 /** Country codes for the mobile number dropdown. */
 const COUNTRY_CODES = [
@@ -281,6 +282,7 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
       } else {
         await axios.post('/api/drivers', payload, { withCredentials: true });
       }
+      showSuccessToast(mode === 'edit' ? 'Driver updated successfully' : 'Driver created successfully');
       router.push('/people/drivers');
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {
@@ -288,9 +290,11 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
         if (typeof errData === 'object') {
           setFieldErrors(errData as Record<string, string>);
         } else {
+          showErrorToast(String(errData));
           setError(String(errData));
         }
       } else {
+        showErrorToast('Failed to save driver');
         setError('Failed to save driver');
       }
     } finally {

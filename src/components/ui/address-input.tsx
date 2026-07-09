@@ -97,7 +97,7 @@ export function AddressInput({
     <Popover open={open} onOpenChange={setOpen} modal={false}>
       <PopoverAnchor asChild>
         <div ref={wrapRef} className={cn('relative', className)}>
-          <MapPin className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <MapPin className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
           <Input
             id={id}
             value={value}
@@ -136,7 +136,7 @@ export function AddressInput({
                   'hover:bg-muted',
                 )}
               >
-                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                 <span className="min-w-0 flex-1">{s.fullAddress}</span>
               </button>
             </li>

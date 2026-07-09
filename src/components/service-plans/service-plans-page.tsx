@@ -12,7 +12,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { Plus, Trash2, Pencil, Archive, ArchiveRestore, Loader2, Info, ChevronDown, ChevronRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, LoadingButton } from '@/components/ui/button';
 import { SearchableSelect, type SearchableSelectOption } from '@/components/ui/searchable-select';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
@@ -22,6 +22,7 @@ import { useRoleAccess } from '@/hooks/use-role-access';
 import { checkRecordOwnership } from '@/lib/rbac';
 import { PermissionGuard } from '@/components/auth/permission-guard';
 import { Permissions } from '@/consts/permissions';
+import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 
 const UNITS = ['Kilometers', 'Hours', 'Days', 'Months'] as const;
 
@@ -164,8 +165,15 @@ export function ServicePlansPage() {
       };
       if (editing?.id) await axios.patch(`/api/service-plans/${editing.id}`, payload);
       else await axios.post('/api/service-plans', payload);
+      showSuccessToast(editing?.id ? 'Service plan updated successfully' : 'Service plan created successfully');
       close();
       await load();
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.data?.error) {
+        showErrorToast(String(err.response.data.error));
+      } else {
+        showErrorToast('Failed to save service plan');
+      }
     } finally {
       setSaving(false);
     }
@@ -510,9 +518,9 @@ export function ServicePlansPage() {
               <Button variant="outline" onClick={close} disabled={saving}>
                 Cancel
               </Button>
-              <Button onClick={save} disabled={saving || !name.trim()}>
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Save plan
-              </Button>
+              <LoadingButton onClick={save} disabled={!name.trim()} loading={saving}>
+                Save plan
+              </LoadingButton>
             </div>
           </div>
         </div>

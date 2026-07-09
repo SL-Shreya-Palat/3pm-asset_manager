@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { Plus, Edit, Trash2, ArrowRight, Archive, ArchiveRestore } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, LoadingButton } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -30,6 +30,7 @@ import { Permissions } from '@/consts/permissions';
 import { useAuth } from '@/hooks/useAuth';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { checkRecordOwnership } from '@/lib/rbac';
+import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 
 const STATUS_TYPES = [
   { value: 'open', label: 'Open' },
@@ -298,12 +299,14 @@ export function WorkOrderStatusesList() {
       } else {
         await axios.post(apiEndpoint, payload, { withCredentials: true });
       }
+      showSuccessToast(dialogMode === 'edit' ? 'Work order status updated successfully' : 'Work order status created successfully');
       setDialogOpen(false);
       fetchItems();
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {
         const errData = err.response.data.error;
         if (typeof errData === 'string') {
+          showErrorToast(errData);
           setApiError(errData);
           setDialogOpen(false);
         } else if (typeof errData === 'object') {
@@ -510,9 +513,9 @@ export function WorkOrderStatusesList() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>Cancel</Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? 'Saving...' : dialogMode === 'edit' ? 'Update' : 'Add Status'}
-            </Button>
+            <LoadingButton onClick={handleSave} loading={saving}>
+              {dialogMode === 'edit' ? 'Update' : 'Add Status'}
+            </LoadingButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, LoadingButton } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
+import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 import type { ServiceTaskRow } from './types';
 
 interface ServiceTaskFormProps {
@@ -90,17 +91,21 @@ export function ServiceTaskForm({ mode, task, onClose, onSaved }: ServiceTaskFor
       } else {
         await axios.post('/api/service-tasks', payload, { withCredentials: true });
       }
+      showSuccessToast(mode === 'edit' ? 'Service task updated successfully' : 'Service task created successfully');
       onSaved();
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {
         const errData = err.response.data.error;
         if (typeof errData === 'object') {
           setFieldErrors(errData as Record<string, string>);
+          showErrorToast('Please fix the highlighted errors');
         } else {
           setError(String(errData));
+          showErrorToast(String(errData));
         }
       } else {
         setError('Failed to save service task');
+        showErrorToast('Failed to save service task');
       }
     } finally {
       setSaving(false);
@@ -232,9 +237,9 @@ export function ServiceTaskForm({ mode, task, onClose, onSaved }: ServiceTaskFor
         <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
           Cancel
         </Button>
-        <Button onClick={handleSubmit} disabled={saving}>
-          {saving ? 'Saving...' : mode === 'edit' ? 'Update Task' : 'Create Task'}
-        </Button>
+        <LoadingButton onClick={handleSubmit} loading={saving}>
+          {mode === 'edit' ? 'Update Task' : 'Create Task'}
+        </LoadingButton>
       </div>
     </div>
   );

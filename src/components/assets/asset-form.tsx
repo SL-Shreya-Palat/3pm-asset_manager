@@ -23,6 +23,7 @@ import { CURRENCIES } from '@/constants/assets';
 import { Skeleton } from '@/components/ui/skeleton';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import type { AssetTypeOption, TeamOption, FormItem } from './types';
+import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 
 interface AssetFormProps {
   mode: 'create' | 'edit';
@@ -398,6 +399,7 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
         await axios.post('/api/assets', payload, { withCredentials: true });
       }
 
+      showSuccessToast(mode === 'edit' ? 'Asset updated successfully' : 'Asset created successfully');
       router.push('/assets');
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {
@@ -405,9 +407,11 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
         if (typeof errData === 'object') {
           setFieldErrors(errData as Record<string, string>);
         } else {
+          showErrorToast(String(errData));
           setError(String(errData));
         }
       } else {
+        showErrorToast('Failed to save asset');
         setError('Failed to save asset');
       }
     } finally {

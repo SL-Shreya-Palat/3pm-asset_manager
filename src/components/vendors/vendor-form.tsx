@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, LoadingButton } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AddressInput } from '@/components/ui/address-input';
 import { Separator } from '@/components/ui/separator';
+import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 import type { VendorRow } from './types';
 
 interface VendorFormProps {
@@ -103,17 +104,21 @@ export function VendorForm({ mode, vendor, onClose, onSaved }: VendorFormProps) 
       } else {
         await axios.post('/api/vendors', payload, { withCredentials: true });
       }
+      showSuccessToast(mode === 'edit' ? 'Vendor updated successfully' : 'Vendor created successfully');
       onSaved();
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {
         const errData = err.response.data.error;
         if (typeof errData === 'object') {
           setFieldErrors(errData as Record<string, string>);
+          showErrorToast('Please fix the highlighted errors');
         } else {
           setError(String(errData));
+          showErrorToast(String(errData));
         }
       } else {
         setError('Failed to save vendor');
+        showErrorToast('Failed to save vendor');
       }
     } finally {
       setSaving(false);
@@ -307,9 +312,9 @@ export function VendorForm({ mode, vendor, onClose, onSaved }: VendorFormProps) 
         <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
           Cancel
         </Button>
-        <Button onClick={handleSubmit} disabled={saving}>
-          {saving ? 'Saving...' : mode === 'edit' ? 'Update Vendor' : 'Create Vendor'}
-        </Button>
+        <LoadingButton onClick={handleSubmit} loading={saving}>
+          {mode === 'edit' ? 'Update Vendor' : 'Create Vendor'}
+        </LoadingButton>
       </div>
     </div>
   );

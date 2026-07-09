@@ -210,18 +210,18 @@ export function Header() {
       {/* Global Search */}
       <div className="flex-1 flex justify-center px-4 max-w-xl mx-auto">
         <div className="relative w-full">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-primary" />
           <Input
             ref={inputRef}
             type="text"
-            placeholder="Search... (Ctrl+K)"
+            placeholder="Search assets, people, vendors..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleSearchKeyDown}
             onFocus={() => {
               if (query.trim()) setIsOpen(true);
             }}
-            className="pl-9 h-9 w-full bg-muted/50 border-transparent focus-visible:border-input focus-visible:bg-transparent"
+            className="pl-9 h-9 w-full bg-muted/50 border border-primary/30 focus-visible:border-primary focus-visible:bg-transparent"
           />
           {isOpen && (
             <GlobalSearchDropdown

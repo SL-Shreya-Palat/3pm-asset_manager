@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { X, Plus, Trash2, SquarePen, Package } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, LoadingButton } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 import type { PartRow, LookupOption } from './types';
 
 interface PartFormProps {
@@ -223,14 +224,21 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
       } else {
         await axios.post('/api/parts', payload, { withCredentials: true });
       }
+      showSuccessToast(mode === 'edit' ? 'Stock updated successfully' : 'Stock created successfully');
       onSaved();
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {
         const errData = err.response.data.error;
-        if (typeof errData === 'object') setFieldErrors(errData as Record<string, string>);
-        else setError(String(errData));
+        if (typeof errData === 'object') {
+          setFieldErrors(errData as Record<string, string>);
+          showErrorToast('Please fix the highlighted errors');
+        } else {
+          setError(String(errData));
+          showErrorToast(String(errData));
+        }
       } else {
         setError('Failed to save part');
+        showErrorToast('Failed to save part');
       }
     } finally {
       setSaving(false);
@@ -555,9 +563,9 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
       {/* Footer actions */}
       <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
         <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
-        <Button onClick={handleSubmit} disabled={saving}>
-          {saving ? 'Saving...' : mode === 'edit' ? 'Update Stock' : 'Create Stock'}
-        </Button>
+        <LoadingButton onClick={handleSubmit} loading={saving}>
+          {mode === 'edit' ? 'Update Stock' : 'Create Stock'}
+        </LoadingButton>
       </div>
     </div>
   );
