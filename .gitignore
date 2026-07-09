@@ -32,6 +32,12 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...but keep the redacted template in the repo
+!.env.example
+
+# local-disk upload fallback (dev only; prod uses S3) — keep the dir, drop contents
+/public/uploads/*
+!/public/uploads/.gitkeep
 
 # vercel
 .vercel

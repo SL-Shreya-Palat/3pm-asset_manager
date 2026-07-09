@@ -16,14 +16,19 @@ import { Separator } from '@/components/ui/separator';
 import { navItems } from '@/constants/navigation';
 import type { NavItem, NavChild } from '@/constants/navigation';
 import { useRoleAccess } from '@/hooks/use-role-access';
+import { useConnection } from '@/hooks/use-connection';
 
 function useFilteredNavItems() {
   const { loading, isMobileOnly, canAccessModule, canAccessSubModule } = useRoleAccess();
+  // When connected to Command, hide features owned by Command (e.g. Purchase
+  // Orders — procurement is managed in Command only).
+  const { connected } = useConnection();
 
   const items = useMemo(() => {
     if (loading) return [];
 
     const canSeeItem = (item: NavChild | NavItem) => {
+      if (connected && item.hiddenWhenCommandConnected) return false;
       if (item.requiredSubModule && item.requiredModule) {
         return canAccessSubModule(item.requiredModule, item.requiredSubModule);
       }
@@ -47,7 +52,7 @@ function useFilteredNavItems() {
       }
     }
     return filtered;
-  }, [loading, isMobileOnly, canAccessModule, canAccessSubModule]);
+  }, [loading, isMobileOnly, canAccessModule, canAccessSubModule, connected]);
 
   return { loading, items };
 }

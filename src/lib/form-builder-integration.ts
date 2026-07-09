@@ -68,7 +68,7 @@ export async function onboardFormBuilderTenant(params: {
         firstName: params.firstName,
         lastName: params.lastName,
         email: params.email,
-        apiKeyName: `${params.organizationName} - Asset Manager Integration`,
+        apiKeyName: `${params.organizationName} - Drive Integration`,
         hasExpiry: false,
       }),
     });

@@ -7,7 +7,7 @@
 import { MongoClient, Db, Collection } from 'mongodb';
 
 const MONGODB_URI = process.env.MONGODB_URI!;
-const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || 'asset-manager';
+const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || 'drive';
 
 if (!MONGODB_URI) {
   throw new Error('MONGODB_URI environment variable is not set');
