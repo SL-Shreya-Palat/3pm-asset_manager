@@ -3,15 +3,16 @@
  * POST /api/defects -- Create a new defect
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { getAllDefects, createDefect } from '@/controller/defects';
-import { getFormPermissionLevels } from '@/lib/server-permissions';
+
+const FORM_ID = 'maintenance.defects.defect';
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, FORM_ID, 'view');
+  if (!auth.ok) return auth.res;
+  const { user, scope } = auth.ctx;
+  const createdBy = scope === 'OWN' ? user.id : undefined;
 
   const { searchParams } = request.nextUrl;
   const page = parseInt(searchParams.get('page') || '1', 10);
@@ -25,23 +26,18 @@ export async function GET(request: NextRequest) {
   const source = searchParams.get('source') || undefined;
   const showArchived = searchParams.get('showArchived') === 'true';
 
-  // Check if user has "OWN" view level — scope results to their records only
-  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, 'maintenance.defects.defect');
-  const createdBy = perms.view === 'OWN' ? user.id : undefined;
-
-  const result = await getAllDefects(user.currentTenantId, { page, limit, search, status, priority, severity, teamId, assetId, source, showArchived, createdBy });
+  const result = await getAllDefects(user.currentTenantId!, { page, limit, search, status, priority, severity, teamId, assetId, source, showArchived, createdBy });
   return NextResponse.json({ data: result, error: null });
 }
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, FORM_ID, 'create');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const body = await request.json();
-    const result = await createDefect(user.currentTenantId, user.id, body);
+    const result = await createDefect(user.currentTenantId!, user.id, body);
 
     if (result.error) {
       return NextResponse.json({ data: null, error: result.error }, { status: 400 });

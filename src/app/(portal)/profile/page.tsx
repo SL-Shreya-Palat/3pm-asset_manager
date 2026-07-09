@@ -10,7 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { AddressInput } from '@/components/ui/address-input';
-import { User, Camera, Loader2, ArrowLeft } from 'lucide-react';
+import { PageBackButton } from '@/components/ui/page-back-button';
+import { User, Camera, Loader2 } from 'lucide-react';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -28,8 +29,9 @@ export default function ProfilePage() {
   const [lastName, setLastName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
+  const [address, setAddress] = useState('');
+  // Keep parsed components for API persistence
   const [addressLine1, setAddressLine1] = useState('');
-  const [addressLine2, setAddressLine2] = useState('');
   const [city, setCity] = useState('');
   const [addrState, setAddrState] = useState('');
   const [postalCode, setPostalCode] = useState('');
@@ -49,11 +51,19 @@ export default function ProfilePage() {
       setProfileImageUrl(user.profileImageUrl || null);
       setPhotoPreview(user.profileImageUrl || null);
       setAddressLine1(user.address?.addressLine1 || '');
-      setAddressLine2(user.address?.addressLine2 || '');
       setCity(user.address?.city || '');
       setAddrState(user.address?.state || '');
       setPostalCode(user.address?.postalCode || '');
       setCountry(user.address?.country || '');
+      // Build display address from stored components
+      const parts = [
+        user.address?.addressLine1,
+        user.address?.city,
+        user.address?.state,
+        user.address?.postalCode,
+        user.address?.country,
+      ].filter(Boolean);
+      setAddress(parts.join(', '));
     }
   }, [user]);
 
@@ -66,11 +76,18 @@ export default function ProfilePage() {
       setPhotoPreview(user.profileImageUrl || null);
       setPhotoFile(null);
       setAddressLine1(user.address?.addressLine1 || '');
-      setAddressLine2(user.address?.addressLine2 || '');
       setCity(user.address?.city || '');
       setAddrState(user.address?.state || '');
       setPostalCode(user.address?.postalCode || '');
       setCountry(user.address?.country || '');
+      const parts = [
+        user.address?.addressLine1,
+        user.address?.city,
+        user.address?.state,
+        user.address?.postalCode,
+        user.address?.country,
+      ].filter(Boolean);
+      setAddress(parts.join(', '));
     }
     setEditing(false);
     setError('');
@@ -134,7 +151,6 @@ export default function ProfilePage() {
           profileImageUrl: finalImageUrl,
           address: {
             addressLine1: addressLine1.trim() || undefined,
-            addressLine2: addressLine2.trim() || undefined,
             city: city.trim() || undefined,
             state: addrState.trim() || undefined,
             postalCode: postalCode.trim() || undefined,
@@ -177,14 +193,7 @@ export default function ProfilePage() {
       {/* Header with Edit / Save+Cancel */}
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => router.back()}
-            className="shrink-0"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
+          <PageBackButton onClick={() => router.back()} />
           <div>
           <h1 className="text-2xl font-semibold text-foreground">Profile</h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -357,15 +366,16 @@ export default function ProfilePage() {
           <h2 className="text-base font-semibold text-foreground">Address</h2>
 
           <div>
-            <Label htmlFor="addressLine1" className="text-muted-foreground">
-              Address Line 1
+            <Label htmlFor="address" className="text-muted-foreground">
+              Address
             </Label>
             {editing ? (
               <AddressInput
-                id="addressLine1"
-                value={addressLine1}
-                onChange={setAddressLine1}
+                id="address"
+                value={address}
+                onChange={setAddress}
                 onSelect={(s) => {
+                  setAddress(s.fullAddress);
                   setAddressLine1(s.address);
                   setCity(s.city);
                   setAddrState(s.state);
@@ -377,80 +387,12 @@ export default function ProfilePage() {
               />
             ) : (
               <Input
-                id="addressLine1"
-                value={addressLine1}
+                id="address"
+                value={address}
                 readOnly
                 className="mt-1.5 bg-muted/50"
               />
             )}
-          </div>
-
-          <div>
-            <Label htmlFor="addressLine2" className="text-muted-foreground">
-              Address Line 2
-            </Label>
-            <Input
-              id="addressLine2"
-              value={addressLine2}
-              onChange={(e) => setAddressLine2(e.target.value)}
-              readOnly={!editing}
-              placeholder={editing ? 'Apt, suite, unit, etc.' : ''}
-              className={`mt-1.5 ${!editing ? 'bg-muted/50' : ''}`}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="city" className="text-muted-foreground">
-                City
-              </Label>
-              <Input
-                id="city"
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                readOnly={!editing}
-                className={`mt-1.5 ${!editing ? 'bg-muted/50' : ''}`}
-              />
-            </div>
-            <div>
-              <Label htmlFor="addrState" className="text-muted-foreground">
-                State / Province
-              </Label>
-              <Input
-                id="addrState"
-                value={addrState}
-                onChange={(e) => setAddrState(e.target.value)}
-                readOnly={!editing}
-                className={`mt-1.5 ${!editing ? 'bg-muted/50' : ''}`}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="postalCode" className="text-muted-foreground">
-                Postal Code
-              </Label>
-              <Input
-                id="postalCode"
-                value={postalCode}
-                onChange={(e) => setPostalCode(e.target.value)}
-                readOnly={!editing}
-                className={`mt-1.5 ${!editing ? 'bg-muted/50' : ''}`}
-              />
-            </div>
-            <div>
-              <Label htmlFor="country" className="text-muted-foreground">
-                Country
-              </Label>
-              <Input
-                id="country"
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-                readOnly={!editing}
-                className={`mt-1.5 ${!editing ? 'bg-muted/50' : ''}`}
-              />
-            </div>
           </div>
         </div>
       </div>

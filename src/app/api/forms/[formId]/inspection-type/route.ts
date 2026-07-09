@@ -6,17 +6,16 @@
  * This is the manual toggle that overrides the name-based smart default.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { requireAdmin } from '@/lib/authz';
 import { updateFormInspectionType } from '@/controller/forms';
 
 type RouteContext = { params: Promise<{ formId: string }> };
 
 export async function PATCH(req: NextRequest, context: RouteContext) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.id || !user.currentTenantId) {
-      return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await requireAdmin(req);
+    if (!auth.ok) return auth.res;
+    const user = auth.user;
 
     const { formId } = await context.params;
     const body = await req.json().catch(() => ({}));
@@ -28,7 +27,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
       );
     }
 
-    const ok = await updateFormInspectionType(user.currentTenantId, formId, inspectionType);
+    const ok = await updateFormInspectionType(user.currentTenantId!, formId, inspectionType);
     if (!ok) {
       return NextResponse.json({ data: null, error: 'Form not found' }, { status: 404 });
     }

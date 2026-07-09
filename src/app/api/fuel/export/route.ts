@@ -6,7 +6,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { getFuelTransactionsCollection, getAssetsCollection, getDriversCollection } from '@/lib/mongodb';
 import { buildExport, type FuelColumn } from '@/lib/data-io/xlsx';
 
@@ -33,14 +33,13 @@ const FUEL_EXPORT_COLUMNS: FuelColumn[] = [
 ];
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, 'fuel.fuel.fuelEntry', 'view');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const format = request.nextUrl.searchParams.get('format') === 'csv' ? 'csv' : 'xlsx';
-    const tenantOid = ObjectId.createFromHexString(user.currentTenantId);
+    const tenantOid = ObjectId.createFromHexString(user.currentTenantId!);
 
     const collection = await getFuelTransactionsCollection();
     const docs = await collection

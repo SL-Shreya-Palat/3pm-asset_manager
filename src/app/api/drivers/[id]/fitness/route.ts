@@ -7,17 +7,16 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { clearDriverFitnessFlag } from '@/controller/drivers';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(req: NextRequest, context: RouteContext) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.id || !user.currentTenantId) {
-      return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await authorize(req, 'people.drivers.driver', 'edit');
+    if (!auth.ok) return auth.res;
+    const { user } = auth.ctx;
 
     const { id: driverId } = await context.params;
     if (!ObjectId.isValid(driverId)) {
@@ -29,7 +28,7 @@ export async function POST(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ data: null, error: 'Only status "fit" is supported' }, { status: 400 });
     }
 
-    const ok = await clearDriverFitnessFlag(user.currentTenantId, driverId, user.id);
+    const ok = await clearDriverFitnessFlag(user.currentTenantId!, driverId, user.id);
     if (!ok) {
       return NextResponse.json({ data: null, error: 'Driver not found' }, { status: 404 });
     }

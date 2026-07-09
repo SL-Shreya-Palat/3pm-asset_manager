@@ -10,7 +10,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { isAiConfigured } from '@/lib/buddy-ai/provider';
 import { AI_IMPORT_MAX_BYTES, resolveAiMediaType } from '@/lib/data-io/ai-import';
 import { extractFuelRowsFromDocument, FUEL_EXTRACT_HEADERS } from '@/lib/data-io/ai-extract-fuel';
@@ -21,10 +21,9 @@ import type { AiFuelImportPreview } from '@/lib/data-io/types';
 export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, 'fuel.fuel.fuelEntry', 'create');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   if (!isAiConfigured()) {
     return NextResponse.json(
@@ -65,7 +64,7 @@ export async function POST(request: NextRequest) {
     // Dry-run validation when the AI found fuel data
     let validation: AiFuelImportPreview['validation'] = null;
     if (extraction.matchesModule) {
-      const tenantOid = ObjectId.createFromHexString(user.currentTenantId);
+      const tenantOid = ObjectId.createFromHexString(user.currentTenantId!);
       const userOid = ObjectId.createFromHexString(user.id);
       const batchId = `ai_import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 

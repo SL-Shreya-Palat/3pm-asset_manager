@@ -13,31 +13,27 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { requireAdmin } from '@/lib/authz';
 import { seedInspectionForms, updateInspectionForms, getOrCreateFbSession, fbFetch, cleanupDuplicateFormBuilderForms } from '@/controller/seeding';
 import { getFormsCollection, getDb } from '@/lib/mongodb';
+import { FORM_BUILDER_APP_NAME } from '@/lib/form-builder-integration';
+import { getEmbedTokenForTenant } from '@/lib/embed-token-storage';
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.id || !user.email) {
-      return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-    }
-    if (!user.currentTenantId) {
-      return NextResponse.json(
-        { data: null, error: 'User is not associated with any tenant' },
-        { status: 404 },
-      );
-    }
+    const auth = await requireAdmin(req);
+    if (!auth.ok) return auth.res;
+    const user = auth.user;
 
     // Clean up any duplicate forms in the form-builder service first.
     const duplicatesRemoved = await cleanupDuplicateFormBuilderForms({
+      tenantId: user.currentTenantId!,
       userEmail: user.email,
       userName: user.name || user.email,
     });
 
     const forms = await seedInspectionForms({
-      tenantId: user.currentTenantId,
+      tenantId: user.currentTenantId!,
       userId: user.id,
       userEmail: user.email,
       userName: user.name || user.email,
@@ -71,19 +67,12 @@ export async function POST(req: NextRequest) {
  */
 export async function PUT(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.id || !user.email) {
-      return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-    }
-    if (!user.currentTenantId) {
-      return NextResponse.json(
-        { data: null, error: 'User is not associated with any tenant' },
-        { status: 404 },
-      );
-    }
+    const auth = await requireAdmin(req);
+    if (!auth.ok) return auth.res;
+    const user = auth.user;
 
     const forms = await updateInspectionForms({
-      tenantId: user.currentTenantId,
+      tenantId: user.currentTenantId!,
       userId: user.id,
       userEmail: user.email,
       userName: user.name || user.email,
@@ -114,15 +103,11 @@ export async function PUT(req: NextRequest) {
  */
 export async function DELETE(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.id || !user.email) {
-      return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-    }
-    if (!user.currentTenantId) {
-      return NextResponse.json({ data: null, error: 'No tenant' }, { status: 404 });
-    }
+    const auth = await requireAdmin(req);
+    if (!auth.ok) return auth.res;
+    const user = auth.user;
 
-    const tenantOid = ObjectId.createFromHexString(user.currentTenantId);
+    const tenantOid = ObjectId.createFromHexString(user.currentTenantId!);
     const formsCol = await getFormsCollection();
     const db = await getDb();
     const defectCol = db.collection('prestartFormDefectSettings');
@@ -141,8 +126,11 @@ export async function DELETE(req: NextRequest) {
     // Get form-builder session for cleanup
     let sessionId: string | null = null;
     try {
-      const session = await getOrCreateFbSession(user.email, user.name || user.email);
-      sessionId = session.sessionId;
+      const embedToken = await getEmbedTokenForTenant(user.currentTenantId!, FORM_BUILDER_APP_NAME);
+      if (embedToken) {
+        const session = await getOrCreateFbSession(user.email, user.name || user.email, embedToken);
+        sessionId = session.sessionId;
+      }
     } catch {
       // Continue with local cleanup even if form-builder session fails
     }

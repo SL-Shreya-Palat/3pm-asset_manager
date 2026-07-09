@@ -6,17 +6,16 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { requireAdmin } from '@/lib/authz';
 import { getIoTSettings, saveIoTSettings } from '@/controller/iot';
 import type { IoTSettingsInput } from '@/controller/iot';
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.currentTenantId) {
-      return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-    }
-    const data = await getIoTSettings(ObjectId.createFromHexString(user.currentTenantId));
+    const auth = await requireAdmin(req);
+    if (!auth.ok) return auth.res;
+    const user = auth.user;
+    const data = await getIoTSettings(ObjectId.createFromHexString(user.currentTenantId!));
     return NextResponse.json({ data, error: null });
   } catch (error) {
     console.error('[IOT_SETTINGS_GET]', error);
@@ -26,10 +25,9 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.currentTenantId || !user.id) {
-      return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await requireAdmin(req);
+    if (!auth.ok) return auth.res;
+    const user = auth.user;
     const body = (await req.json()) as IoTSettingsInput;
     if (!Array.isArray(body.providerNames)) {
       return NextResponse.json(
@@ -39,7 +37,7 @@ export async function PUT(req: NextRequest) {
     }
     const data = await saveIoTSettings(
       body,
-      ObjectId.createFromHexString(user.currentTenantId),
+      ObjectId.createFromHexString(user.currentTenantId!),
       user.id,
     );
     return NextResponse.json({ data, error: null });

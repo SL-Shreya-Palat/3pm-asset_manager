@@ -3,17 +3,16 @@
  * POST /api/work-orders -- Create a new work order
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser, getUserRoleForTenant } from '@/lib/auth-helper';
+import { getUserRoleForTenant } from '@/lib/auth-helper';
 import { getAllWorkOrders, createWorkOrder } from '@/controller/work-orders';
-import { getFormPermissionLevels } from '@/lib/server-permissions';
+import { authorize } from '@/lib/authz';
 
 const FORM_ID = 'maintenance.workOrders.workOrder';
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, FORM_ID, 'view');
+  if (!auth.ok) return auth.res;
+  const { user, scope } = auth.ctx;
 
   const { searchParams } = request.nextUrl;
   const page = parseInt(searchParams.get('page') || '1', 10);
@@ -23,27 +22,24 @@ export async function GET(request: NextRequest) {
 
   // Role-based scoping: full-access roles (owner/admin/manager) see every work
   // order; everyone else (e.g. mechanics) sees only the ones assigned to them.
-  const role = await getUserRoleForTenant(user.id, user.currentTenantId);
+  const role = await getUserRoleForTenant(user.id, user.currentTenantId!);
   const assigneeId = role && !role.fullAccess ? user.id : undefined;
   const showArchived = searchParams.get('showArchived') === 'true';
 
-  // Check if user has "OWN" view level — scope results to their records only
-  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
-  const createdBy = perms.view === 'OWN' ? user.id : undefined;
+  const createdBy = scope === 'OWN' ? user.id : undefined;
 
-  const result = await getAllWorkOrders(user.currentTenantId, { page, limit, search, statusId, assigneeId, showArchived, createdBy });
+  const result = await getAllWorkOrders(user.currentTenantId!, { page, limit, search, statusId, assigneeId, showArchived, createdBy });
   return NextResponse.json({ data: result, error: null });
 }
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, FORM_ID, 'create');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const body = await request.json();
-    const result = await createWorkOrder(user.currentTenantId, user.id, body);
+    const result = await createWorkOrder(user.currentTenantId!, user.id, body);
 
     if (result.error) {
       return NextResponse.json({ data: null, error: result.error }, { status: 400 });

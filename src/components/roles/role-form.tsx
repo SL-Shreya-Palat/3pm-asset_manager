@@ -10,7 +10,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, LoadingButton } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -18,6 +18,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { PageBackButton } from '@/components/ui/page-back-button';
 import { cn } from '@/lib/utils';
+import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 import type { SparsePermissions } from '@/lib/rbac';
 import type { PermissionModule, PermissionLevel, PermissionForm } from './types';
 import {
@@ -357,17 +358,21 @@ export function RoleForm({ mode, initialData, roleId }: RoleFormProps) {
       } else {
         await axios.post('/api/roles', payload, { withCredentials: true });
       }
+      showSuccessToast(mode === 'edit' ? 'Role updated successfully' : 'Role created successfully');
       router.push('/people/roles');
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {
         const errData = err.response.data.error;
         if (typeof errData === 'object') {
           setFieldErrors(errData as Record<string, string>);
+          showErrorToast('Please fix the highlighted errors');
         } else {
           setError(String(errData));
+          showErrorToast(String(errData));
         }
       } else {
         setError('Failed to save role');
+        showErrorToast('Failed to save role');
       }
     } finally {
       setSaving(false);
@@ -642,13 +647,9 @@ export function RoleForm({ mode, initialData, roleId }: RoleFormProps) {
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={saving}>
-            {saving
-              ? 'Saving...'
-              : mode === 'edit'
-                ? 'Update Role'
-                : 'Create Role'}
-          </Button>
+          <LoadingButton type="submit" loading={saving}>
+            {mode === 'edit' ? 'Update Role' : 'Create Role'}
+          </LoadingButton>
         </div>
       </form>
     </div>

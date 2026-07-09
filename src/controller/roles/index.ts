@@ -3,7 +3,7 @@
  * MongoDB native driver, no Mongoose/ODM.
  */
 import { ObjectId } from 'mongodb';
-import { getRolesCollection } from '@/lib/mongodb';
+import { getRolesCollection, getTenantMembersCollection } from '@/lib/mongodb';
 import { validateCreateRoleInput, serializeRole } from './utils';
 import type { CreateRoleInput, UpdateRoleInput } from './types';
 
@@ -63,6 +63,14 @@ export async function createRole(tenantId: string, userId: string, input: Create
   const validation = validateCreateRoleInput(input);
   if (!validation.valid) {
     return { data: null, error: validation.errors };
+  }
+
+  // Defense-in-depth: deny creating admin or wildcard-permission roles.
+  if (input.isAdmin === true) {
+    return { data: null, error: { isAdmin: 'Cannot create an admin role' } };
+  }
+  if (Array.isArray(input.permissions?.forms) && input.permissions.forms[0] === '*') {
+    return { data: null, error: { permissions: 'Wildcard permissions are not allowed' } };
   }
 
   const collection = await getRolesCollection();
@@ -139,6 +147,16 @@ export async function updateRole(
     return { data: null, error: 'System roles cannot be modified' };
   }
 
+  // Defense-in-depth: deny escalation to admin or wildcard-permission roles.
+  if (input.isAdmin === true) {
+    return { data: null, error: { isAdmin: 'Cannot set admin flag' } };
+  }
+  if (input.permissions !== undefined) {
+    if (Array.isArray(input.permissions.forms) && input.permissions.forms[0] === '*') {
+      return { data: null, error: { permissions: 'Wildcard permissions are not allowed' } };
+    }
+  }
+
   const $set: Record<string, unknown> = {
     updatedBy: ObjectId.createFromHexString(userId),
     updatedAt: new Date(),
@@ -182,7 +200,11 @@ export async function updateRole(
 }
 
 /** Permanently delete a role. */
-export async function deleteRole(tenantId: string, userId: string, roleId: string) {
+export async function deleteRole(
+  tenantId: string,
+  userId: string,
+  roleId: string,
+): Promise<boolean | { error: string }> {
   const collection = await getRolesCollection();
   const roleOid = ObjectId.createFromHexString(roleId);
   const tenantOid = ObjectId.createFromHexString(tenantId);
@@ -191,6 +213,19 @@ export async function deleteRole(tenantId: string, userId: string, roleId: strin
   const existing = await collection.findOne({ _id: roleOid, tenantId: tenantOid });
   if (!existing) return false;
   if (existing.isSystem) return false;
+
+  // Check for assigned members
+  const membersCol = await getTenantMembersCollection();
+  const assignedCount = await membersCol.countDocuments({
+    tenantId: tenantOid,
+    roleId: roleOid,
+    isActive: true,
+  });
+  if (assignedCount > 0) {
+    return {
+      error: `Cannot delete role: ${assignedCount} active member(s) are assigned to it`,
+    };
+  }
 
   const result = await collection.deleteOne({ _id: roleOid, tenantId: tenantOid });
   return result.deletedCount > 0;

@@ -3,7 +3,7 @@
  *
  * Two-phase import (adapted from dispatch portal pattern):
  *   Phase 1: Validate all rows, collect errors, build ready documents.
- *            If errors exist and proceedValidOnly=false → return errors, no insert.
+ *            If errors exist and proceedValidOnly=false -> return errors, no insert.
  *   Phase 2: Insert only the rows that passed validation.
  *
  * Accepts multipart/form-data with a "file" field and optional "proceedValidOnly" flag.
@@ -11,7 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 import { ObjectId } from 'mongodb';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { getFuelTransactionsCollection } from '@/lib/mongodb';
 import { buildAssetLookup, buildDriverLookup, validateFuelRows } from '@/lib/data-io/fuel-validate';
 import type { ImportResult, RowError } from '@/lib/data-io/types';
@@ -26,10 +26,9 @@ const ALLOWED_MIME_TYPES = [
 const ALLOWED_EXTENSIONS = ['.xlsx', '.xls', '.csv'];
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, 'fuel.fuel.fuelEntry', 'create');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const formData = await request.formData();
@@ -111,7 +110,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Build lookup maps and validate
-    const tenantOid = ObjectId.createFromHexString(user.currentTenantId);
+    const tenantOid = ObjectId.createFromHexString(user.currentTenantId!);
     const [assetNameMap, driverNameMap] = await Promise.all([
       buildAssetLookup(tenantOid),
       buildDriverLookup(tenantOid),
@@ -120,7 +119,7 @@ export async function POST(request: NextRequest) {
     const userOid = ObjectId.createFromHexString(user.id);
     const importBatchId = `import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    // ── Phase 1: Validate all rows ──
+    // -- Phase 1: Validate all rows --
     const { ready, errors } = validateFuelRows(
       keyedRows, assetNameMap, driverNameMap, tenantOid, userOid, importBatchId,
     );
@@ -138,7 +137,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ data: result, error: null }, { status: 200 });
     }
 
-    // ── Phase 2: Insert valid rows ──
+    // -- Phase 2: Insert valid rows --
     const collection = await getFuelTransactionsCollection();
     let success = 0;
     const insertErrors: RowError[] = [];

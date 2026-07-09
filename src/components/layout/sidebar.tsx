@@ -18,11 +18,12 @@ import type { NavItem, NavChild } from '@/constants/navigation';
 import { useRoleAccess } from '@/hooks/use-role-access';
 
 function useFilteredNavItems() {
-  const { hasFullAccess, isMobileOnly, canAccessModule, canAccessSubModule } = useRoleAccess();
+  const { loading, isMobileOnly, canAccessModule, canAccessSubModule } = useRoleAccess();
 
-  return useMemo(() => {
+  const items = useMemo(() => {
+    if (loading) return [];
+
     const canSeeItem = (item: NavChild | NavItem) => {
-      if (item.adminOnly) return hasFullAccess;
       if (item.requiredSubModule && item.requiredModule) {
         return canAccessSubModule(item.requiredModule, item.requiredSubModule);
       }
@@ -46,12 +47,38 @@ function useFilteredNavItems() {
       }
     }
     return filtered;
-  }, [hasFullAccess, isMobileOnly, canAccessModule, canAccessSubModule]);
+  }, [loading, isMobileOnly, canAccessModule, canAccessSubModule]);
+
+  return { loading, items };
+}
+
+function NavSkeleton({ collapsed }: { collapsed: boolean }) {
+  return (
+    <div className="flex flex-col gap-1 px-2">
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div
+          key={i}
+          className={cn(
+            'flex items-center gap-3 rounded px-3 py-2.5',
+            collapsed && 'justify-center px-2',
+          )}
+        >
+          <div className="h-5 w-5 shrink-0 animate-pulse rounded bg-sidebar-border" />
+          {!collapsed && (
+            <div
+              className="h-4 animate-pulse rounded bg-sidebar-border"
+              style={{ width: `${60 + (i % 3) * 20}px` }}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export function Sidebar() {
   const pathname = usePathname();
-  const filteredItems = useFilteredNavItems();
+  const { loading, items: filteredItems } = useFilteredNavItems();
   const [collapsed, setCollapsed] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(() => {
     // Auto-expand parent if a child route is active
@@ -104,6 +131,9 @@ export function Sidebar() {
 
       {/* Navigation */}
       <ScrollArea className="flex-1 py-2">
+        {loading ? (
+          <NavSkeleton collapsed={collapsed} />
+        ) : (
         <nav className="flex flex-col gap-1 px-2">
           {filteredItems.map((item) => {
             const isActive =
@@ -192,6 +222,7 @@ export function Sidebar() {
             return linkContent;
           })}
         </nav>
+        )}
       </ScrollArea>
 
       {/* Footer */}

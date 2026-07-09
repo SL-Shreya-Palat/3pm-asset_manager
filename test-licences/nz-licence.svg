@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="540" height="340" viewBox="0 0 540 340">
+  <defs>
+    <linearGradient id="bg-nz" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="40%" style="stop-color:#16213e"/>
+      <stop offset="100%" style="stop-color:#0f3460"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Card background -->
+  <rect width="540" height="340" rx="12" fill="url(#bg-nz)"/>
+
+  <!-- Watermark -->
+  <text x="270" y="180" text-anchor="middle" font-family="Arial" font-size="48" font-weight="bold"
+        fill="#fff" opacity="0.04" transform="rotate(-30,270,180)">NZ TRANSPORT</text>
+
+  <!-- Header -->
+  <text x="24" y="32" font-family="Arial" font-size="13" font-weight="bold" fill="#fff"
+        letter-spacing="1">NEW ZEALAND DRIVER LICENCE</text>
+  <text x="24" y="48" font-family="Arial" font-size="11" fill="#fff" opacity="0.8">Aotearoa — NZ Transport Agency</text>
+
+  <!-- Photo placeholder -->
+  <rect x="24" y="70" width="90" height="110" rx="4" fill="#c0c0c0"/>
+  <text x="69" y="120" text-anchor="middle" font-family="Arial" font-size="11" fill="#555">PHOTO</text>
+  <text x="69" y="135" text-anchor="middle" font-family="Arial" font-size="10" fill="#555">PLACEHOLDER</text>
+
+  <!-- Licence Number -->
+  <text x="130" y="88" font-family="Arial" font-size="18" font-weight="bold" fill="#e94560"
+        letter-spacing="2">AB123456</text>
+
+  <!-- Surname -->
+  <text x="130" y="112" font-family="Arial" font-size="9" fill="#fff" opacity="0.6"
+        letter-spacing="0.5">SURNAME</text>
+  <text x="230" y="112" font-family="Arial" font-size="13" font-weight="600" fill="#fff">THOMPSON</text>
+
+  <!-- First Names -->
+  <text x="130" y="132" font-family="Arial" font-size="9" fill="#fff" opacity="0.6"
+        letter-spacing="0.5">FIRST NAMES</text>
+  <text x="230" y="132" font-family="Arial" font-size="13" font-weight="600" fill="#fff">JAMES WILLIAM</text>
+
+  <!-- Date of Birth -->
+  <text x="130" y="152" font-family="Arial" font-size="9" fill="#fff" opacity="0.6"
+        letter-spacing="0.5">DATE OF BIRTH</text>
+  <text x="230" y="152" font-family="Arial" font-size="13" font-weight="600" fill="#fff">15/03/1990</text>
+
+  <!-- Version -->
+  <text x="130" y="172" font-family="Arial" font-size="9" fill="#fff" opacity="0.6"
+        letter-spacing="0.5">VERSION</text>
+  <text x="230" y="172" font-family="Arial" font-size="13" font-weight="600" fill="#fff">742</text>
+
+  <!-- Expiry Date -->
+  <text x="130" y="192" font-family="Arial" font-size="9" fill="#fff" opacity="0.6"
+        letter-spacing="0.5">EXPIRY DATE</text>
+  <text x="230" y="192" font-family="Arial" font-size="13" font-weight="600" fill="#fff">15/03/2030</text>
+
+  <!-- Class box -->
+  <rect x="440" y="240" width="76" height="55" rx="6" fill="#fff" opacity="0.15"/>
+  <text x="478" y="262" text-anchor="middle" font-family="Arial" font-size="8" fill="#fff"
+        opacity="0.7" letter-spacing="0.5">CLASS</text>
+  <text x="478" y="286" text-anchor="middle" font-family="Arial" font-size="22" font-weight="bold"
+        fill="#fff">1, 2</text>
+
+  <!-- Footer -->
+  <text x="24" y="322" font-family="Arial" font-size="9" fill="#fff" opacity="0.6">ISSUED: 15/03/2020</text>
+  <text x="516" y="322" text-anchor="end" font-family="Arial" font-size="9" fill="#fff" opacity="0.6">DONOR: Yes</text>
+</svg>

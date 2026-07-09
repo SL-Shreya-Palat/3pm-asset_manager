@@ -7,17 +7,16 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { getFuelTransactionsCollection } from '@/lib/mongodb';
 import { AI_IMPORT_MAX_ROWS } from '@/lib/data-io/ai-import';
 import { buildAssetLookup, buildDriverLookup, validateFuelRows } from '@/lib/data-io/fuel-validate';
 import type { ImportResult, RowError } from '@/lib/data-io/types';
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, 'fuel.fuel.fuelEntry', 'create');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const body = await request.json();
@@ -35,7 +34,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const tenantOid = ObjectId.createFromHexString(user.currentTenantId);
+    const tenantOid = ObjectId.createFromHexString(user.currentTenantId!);
     const userOid = ObjectId.createFromHexString(user.id);
     const importBatchId = `ai_import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -44,7 +43,7 @@ export async function POST(request: NextRequest) {
       buildDriverLookup(tenantOid),
     ]);
 
-    // ── Phase 1: Validate ──
+    // -- Phase 1: Validate --
     const { ready, errors } = validateFuelRows(
       rows,
       assetMap,
@@ -66,7 +65,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ data: result, error: null });
     }
 
-    // ── Phase 2: Insert valid rows ──
+    // -- Phase 2: Insert valid rows --
     const collection = await getFuelTransactionsCollection();
     let success = 0;
     const insertErrors: RowError[] = [];

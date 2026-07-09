@@ -29,18 +29,3 @@ export function useAuth() {
     tenantName: user?.tenant?.name ?? null,
   };
 }
-
-export function usePermissions() {
-  const tenants = useAuthStore((s) => s.tenants);
-  const activeTenantId = useAuthStore((s) => s.activeTenantId);
-
-  const activeTenant = tenants.find((t) => t.id === activeTenantId);
-  const tenantRole = activeTenant?.role ?? null;
-
-  return {
-    isOwner: tenantRole === 'owner',
-    isAdmin: tenantRole === 'admin' || tenantRole === 'owner',
-    isMember: !!tenantRole,
-    tenantRole,
-  };
-}

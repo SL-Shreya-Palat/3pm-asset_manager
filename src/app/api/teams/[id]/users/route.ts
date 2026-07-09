@@ -4,16 +4,15 @@
  * PATCH  /api/teams/:id/users  — Update a user's team role (managing / following)
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { addUsersToTeam, removeUserFromTeam, updateUserTeamRole } from '@/controller/users';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, 'people.teams.team', 'view');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const { id: teamId } = await context.params;
@@ -25,7 +24,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ data: null, error: 'memberIds is required' }, { status: 400 });
     }
 
-    const count = await addUsersToTeam(user.currentTenantId, user.id, teamId, memberIds, role);
+    const count = await addUsersToTeam(user.currentTenantId!, user.id, teamId, memberIds, role);
     return NextResponse.json({ data: { modified: count }, error: null });
   } catch {
     return NextResponse.json({ data: null, error: 'Invalid request body' }, { status: 400 });
@@ -33,10 +32,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, 'people.teams.team', 'view');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const { id: teamId } = await context.params;
@@ -47,7 +45,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ data: null, error: 'memberId query param is required' }, { status: 400 });
     }
 
-    const removed = await removeUserFromTeam(user.currentTenantId, user.id, teamId, memberId);
+    const removed = await removeUserFromTeam(user.currentTenantId!, user.id, teamId, memberId);
     if (!removed) {
       return NextResponse.json({ data: null, error: 'User not found in team' }, { status: 404 });
     }
@@ -59,10 +57,9 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, 'people.teams.team', 'view');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const { id: teamId } = await context.params;
@@ -77,7 +74,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ data: null, error: 'role must be "managing" or "following"' }, { status: 400 });
     }
 
-    const updated = await updateUserTeamRole(user.currentTenantId, user.id, teamId, memberId, role);
+    const updated = await updateUserTeamRole(user.currentTenantId!, user.id, teamId, memberId, role);
     if (!updated) {
       return NextResponse.json({ data: null, error: 'User not found in team' }, { status: 404 });
     }

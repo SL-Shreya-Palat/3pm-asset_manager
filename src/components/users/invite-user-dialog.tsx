@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Button } from '@/components/ui/button';
+import { Button, LoadingButton } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -20,6 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 import type { RoleOption } from './types';
 
 interface InviteUserDialogProps {
@@ -92,17 +93,21 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
       }
 
       await axios.post('/api/users', body, { withCredentials: true });
+      showSuccessToast('User invited successfully');
       onSuccess();
     } catch (err: unknown) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {
         const apiError = err.response.data.error;
         if (typeof apiError === 'object') {
           setErrors(apiError);
+          showErrorToast('Failed to invite user');
         } else {
           setErrors({ _form: String(apiError) });
+          showErrorToast(String(apiError));
         }
       } else {
         setErrors({ _form: 'Failed to invite user. Please try again.' });
+        showErrorToast('Failed to invite user. Please try again.');
       }
     } finally {
       setSubmitting(false);
@@ -203,9 +208,9 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={submitting}>
-            {submitting ? 'Inviting...' : 'Invite User'}
-          </Button>
+          <LoadingButton onClick={handleSubmit} loading={submitting}>
+            Invite User
+          </LoadingButton>
         </DialogFooter>
       </DialogContent>
     </Dialog>

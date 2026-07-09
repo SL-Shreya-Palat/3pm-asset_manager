@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { generateObject } from 'ai';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { getExtractModel, isAiConfigured } from '@/lib/buddy-ai/provider';
 
 // Buffer + AI SDK file parts → Node runtime, not edge.
@@ -38,10 +38,8 @@ const PROMPT = [
 ].join('\n');
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, 'people.drivers.driver', 'create');
+  if (!auth.ok) return auth.res;
 
   if (!isAiConfigured()) {
     return NextResponse.json(
@@ -101,8 +99,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ data, error: null });
   } catch (err) {
     console.error('[extract-licence] AI extraction failed:', err);
+    const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json(
-      { data: null, error: 'Failed to extract licence details from image' },
+      { data: null, error: `Failed to extract licence details from image: ${message}` },
       { status: 500 },
     );
   }

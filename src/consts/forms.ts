@@ -119,6 +119,29 @@ export const allForms: FormDef[] = [
     name: "Driver",
     accessibility: ["view", "create", "edit", "archive", "delete"],
   },
+  {
+    module: "people",
+    subModule: "users",
+    key: "user",
+    name: "User",
+    accessibility: ["view", "create", "edit", "archive", "delete"],
+  },
+  {
+    module: "people",
+    subModule: "roles",
+    key: "role",
+    name: "Role",
+    accessibility: ["view", "create", "edit", "archive", "delete"],
+  },
+
+  // Vendors Module
+  {
+    module: "vendors",
+    subModule: "vendors",
+    key: "vendor",
+    name: "Vendor",
+    accessibility: ["view", "create", "edit", "archive", "delete"],
+  },
 
   // Fuel Module
   {

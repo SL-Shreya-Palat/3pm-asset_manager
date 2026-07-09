@@ -12,7 +12,7 @@ import {
   Archive,
   ArchiveRestore,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, LoadingButton } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -50,6 +50,7 @@ import { useRoleAccess } from '@/hooks/use-role-access';
 import { checkRecordOwnership } from '@/lib/rbac';
 import { PermissionGuard } from '@/components/auth/permission-guard';
 import { Permissions } from '@/consts/permissions';
+import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 import type { TeamRow, AssetRow, DriverRow, UserRow, DefectRow, InspectionRow, Pagination } from './types';
 
 const TEAM_TABS = ['Users', 'Drivers', 'Assets', 'Inspections', 'Defects', 'Documents'] as const;
@@ -610,16 +611,25 @@ export function TeamPage() {
       } else if (editingTeam) {
         await axios.put(`/api/teams/${editingTeam.id}`, { name: trimmed }, { withCredentials: true });
       }
+      showSuccessToast(dialogMode === 'create' ? 'Team created successfully' : 'Team updated successfully');
       setDialogOpen(false);
       fetchTeams(pagination.page);
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {
         const error = err.response.data.error;
-        if (typeof error === 'object' && error.name) setNameError(error.name);
-        else if (typeof error === 'string') setNameError(error);
-        else setNameError('Failed to save team');
+        if (typeof error === 'object' && error.name) {
+          setNameError(error.name);
+          showErrorToast(error.name);
+        } else if (typeof error === 'string') {
+          setNameError(error);
+          showErrorToast(error);
+        } else {
+          setNameError('Failed to save team');
+          showErrorToast('Failed to save team');
+        }
       } else {
         setNameError('Failed to save team');
+        showErrorToast('Failed to save team');
       }
     } finally {
       setSaving(false);
@@ -1888,9 +1898,9 @@ export function TeamPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>Cancel</Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? 'Saving...' : dialogMode === 'create' ? 'Create' : 'Save'}
-            </Button>
+            <LoadingButton onClick={handleSave} loading={saving}>
+              {dialogMode === 'create' ? 'Create' : 'Save'}
+            </LoadingButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>

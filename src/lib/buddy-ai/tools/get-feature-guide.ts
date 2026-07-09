@@ -10,7 +10,6 @@
 
 import { z } from "zod";
 import { getFlatNavItems } from "@/constants/navigation";
-import { isWildcardPermissions } from "@/lib/rbac";
 import type { BuddyAIContext } from "../utils/rbac";
 import { defineTool } from "./registry";
 
@@ -55,12 +54,10 @@ const ROUTE_DESCRIPTIONS: Record<string, string> = {
  * get_feature_guide — Returns routes the user can access, filtered by RBAC.
  */
 function getFeatureGuide(context: BuddyAIContext): GetFeatureGuideResult {
-  const { role, checker } = context;
-  const hasFullAccess = isWildcardPermissions(role.permissions);
+  const { checker } = context;
 
   const routes = getFlatNavItems()
     .filter((item) => {
-      if (item.adminOnly) return hasFullAccess;
       if (item.requiredModule) {
         return checker.hasPermission(`${item.requiredModule}:view`);
       }

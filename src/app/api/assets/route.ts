@@ -3,15 +3,15 @@
  * POST /api/assets — Create a new asset
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
 import { getAllAssets, createAsset } from '@/controller/assets';
-import { getFormPermissionLevels } from '@/lib/server-permissions';
+import { authorize } from '@/lib/authz';
+
+const FORM_ID = 'assets.assets.asset';
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, FORM_ID, 'view');
+  if (!auth.ok) return auth.res;
+  const { user, scope } = auth.ctx;
 
   const { searchParams } = request.nextUrl;
   const page = parseInt(searchParams.get('page') || '1', 10);
@@ -21,24 +21,20 @@ export async function GET(request: NextRequest) {
   const teamId = searchParams.get('teamId') || undefined;
   const complianceStatus = searchParams.get('complianceStatus') || undefined;
   const showArchived = searchParams.get('showArchived') === 'true';
+  const createdBy = scope === 'OWN' ? user.id : undefined;
 
-  // Check if user has "OWN" view level — scope results to their records only
-  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, 'assets.assets.asset');
-  const createdBy = perms.view === 'OWN' ? user.id : undefined;
-
-  const result = await getAllAssets(user.currentTenantId, { page, limit, search, status, teamId, complianceStatus, showArchived, createdBy, userId: user.id });
+  const result = await getAllAssets(user.currentTenantId!, { page, limit, search, status, teamId, complianceStatus, showArchived, createdBy, userId: user.id });
   return NextResponse.json({ data: result, error: null });
 }
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, FORM_ID, 'create');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const body = await request.json();
-    const result = await createAsset(user.currentTenantId, user.id, body);
+    const result = await createAsset(user.currentTenantId!, user.id, body);
 
     if (result.error) {
       return NextResponse.json({ data: null, error: result.error }, { status: 400 });

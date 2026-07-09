@@ -252,6 +252,7 @@ export async function updateTenantMember(
   tenantId: string,
   memberId: string,
   input: UpdateTenantMemberInput,
+  callerUserId?: string,
 ) {
   const collection = await getTenantMembersCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
@@ -259,6 +260,11 @@ export async function updateTenantMember(
 
   const existing = await collection.findOne({ _id: memberOid, tenantId: tenantOid });
   if (!existing) return { data: null, error: 'User not found' };
+
+  // Block self-role-change: admins cannot change their own role assignment.
+  if (input.roleId !== undefined && callerUserId && existing.userId?.toString() === callerUserId) {
+    return { data: null, error: 'You cannot change your own role' };
+  }
 
   const $set: Record<string, unknown> = { updatedAt: new Date() };
 
@@ -306,6 +312,14 @@ export async function deactivateTenantMember(tenantId: string, memberId: string)
   const collection = await getTenantMembersCollection();
   const docOid = ObjectId.createFromHexString(memberId);
   const tenantOid = ObjectId.createFromHexString(tenantId);
+
+  // Protect the tenant owner from being deactivated.
+  const tenantsCol = await getTenantsCollection();
+  const tenant = await tenantsCol.findOne({ _id: tenantOid });
+  const member = await collection.findOne({ _id: docOid, tenantId: tenantOid });
+  if (member?.userId && tenant?.ownerId && member.userId.toString() === tenant.ownerId.toString()) {
+    return false;
+  }
 
   const result = await collection.deleteOne({ _id: docOid, tenantId: tenantOid });
   return result.deletedCount > 0;

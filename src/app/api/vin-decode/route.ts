@@ -14,6 +14,7 @@
  * working unchanged; `color` and `licensePlate` are additive bonus fields.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { getAuthenticatedUser } from '@/lib/auth-helper';
 
 const MIN_QUERY_LENGTH = 2;
 
@@ -80,6 +81,11 @@ function findVehicle(node: unknown, depth = 0): Record<string, unknown> | null {
 }
 
 export async function GET(request: NextRequest) {
+  const user = await getAuthenticatedUser(request);
+  if (!user?.id) {
+    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
+  }
+
   const query = request.nextUrl.searchParams.get('vin')?.trim().toUpperCase();
 
   if (!query || query.length < MIN_QUERY_LENGTH) {

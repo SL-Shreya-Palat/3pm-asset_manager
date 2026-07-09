@@ -3,20 +3,15 @@
  * POST /api/teams -- Create a new team
  */
 import { NextRequest, NextResponse } from "next/server";
-import { getAuthenticatedUser } from "@/lib/auth-helper";
 import { getAllTeams, createTeam } from "@/controller/work-orders/teams";
-import { getFormPermissionLevels } from "@/lib/server-permissions";
+import { authorize } from '@/lib/authz';
 
 const FORM_ID = 'people.teams.team';
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json(
-      { data: null, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const auth = await authorize(request, FORM_ID, 'view');
+  if (!auth.ok) return auth.res;
+  const { user, scope } = auth.ctx;
 
   const { searchParams } = request.nextUrl;
   const page = parseInt(searchParams.get("page") || "1", 10);
@@ -24,11 +19,9 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get("search") || undefined;
   const showArchived = searchParams.get("showArchived") === "true";
 
-  // Check if user has "OWN" view level — scope results to their records only
-  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
-  const createdBy = perms.view === 'OWN' ? user.id : undefined;
+  const createdBy = scope === 'OWN' ? user.id : undefined;
 
-  const result = await getAllTeams(user.currentTenantId, {
+  const result = await getAllTeams(user.currentTenantId!, {
     page,
     limit,
     search,
@@ -39,17 +32,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json(
-      { data: null, error: "Unauthorized" },
-      { status: 401 },
-    );
-  }
+  const auth = await authorize(request, FORM_ID, 'create');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const body = await request.json();
-    const result = await createTeam(user.currentTenantId, user.id, body);
+    const result = await createTeam(user.currentTenantId!, user.id, body);
 
     if (result.error) {
       return NextResponse.json(

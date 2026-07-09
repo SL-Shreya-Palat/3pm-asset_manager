@@ -50,8 +50,7 @@ export const listTeams = defineTool({
 export const listVendors = defineTool({
   name: "list_vendors",
   access: "read",
-  permission: null,
-  adminOnly: true, // mirrors the Vendors nav item (admin/owner only)
+  permission: "vendors:view",
   description:
     "Returns vendors (suppliers, service providers). Use for vendor queries.",
   inputSchema: z.object({

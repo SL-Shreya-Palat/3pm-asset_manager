@@ -15,9 +15,15 @@ import {
   getUsersCollection,
 } from '@/lib/mongodb';
 import {
+  FORM_BUILDER_APP_NAME,
   createFormBuilderSession,
   createFormBuilderMember,
+  onboardFormBuilderTenant,
 } from '@/lib/form-builder-integration';
+import {
+  getEmbedTokenForTenant,
+  storeEmbedToken,
+} from '@/lib/embed-token-storage';
 import {
   getPrestartFormTemplates,
   deriveDefectSettingsFromTemplate,
@@ -30,12 +36,58 @@ const FORM_BUILDER_URL =
 
 // ── form-builder helpers ─────────────────────────────────────────────────────
 
+/**
+ * Resolve (or create) the embed token for a tenant.
+ * If no token exists, onboards the tenant to form-builder first.
+ */
+async function resolveEmbedToken(
+  tenantId: string,
+  userEmail: string,
+  userName: string,
+): Promise<string> {
+  const existing = await getEmbedTokenForTenant(tenantId, FORM_BUILDER_APP_NAME);
+  if (existing) return existing;
+
+  const tenantsCol = await getTenantsCollection();
+  const tenant = await tenantsCol.findOne({
+    _id: ObjectId.createFromHexString(tenantId),
+  });
+
+  const organizationName =
+    tenant?.name?.toString?.() || userName || userEmail.split('@')[0] || 'My Organization';
+  const parts = (userName || userEmail).split(' ');
+  const firstName = parts[0] || userEmail.split('@')[0];
+  const lastName = parts.slice(1).join(' ') || '-';
+
+  const onboardResult = await onboardFormBuilderTenant({
+    email: userEmail,
+    firstName,
+    lastName,
+    organizationName,
+  });
+
+  if (!onboardResult) {
+    throw new Error('Failed to onboard tenant to form-builder');
+  }
+
+  await storeEmbedToken(
+    tenantId,
+    onboardResult.organizationId,
+    onboardResult.token,
+    onboardResult.tokenId,
+    FORM_BUILDER_APP_NAME,
+  );
+
+  return onboardResult.token;
+}
+
 /** Mint a form-builder session for the user (create the member on first use). */
 export async function getOrCreateFbSession(
   userEmail: string,
   userName: string,
+  embedToken: string,
 ): Promise<{ sessionId: string; organizationId: string }> {
-  let result = await createFormBuilderSession(userEmail);
+  let result = await createFormBuilderSession({ userEmail, embedToken });
   if (!result.ok && result.status === 404) {
     const parts = (userName || userEmail).split(' ');
     await createFormBuilderMember({
@@ -43,9 +95,10 @@ export async function getOrCreateFbSession(
       firstName: parts[0] || userEmail.split('@')[0],
       lastName: parts.slice(1).join(' ') || '-',
       ownerEmail: userEmail,
+      embedToken,
       role: 'owner',
     });
-    result = await createFormBuilderSession(userEmail);
+    result = await createFormBuilderSession({ userEmail, embedToken });
   }
   if (!result.ok || !result.data) {
     throw new Error(result.error || 'Failed to create form-builder session');
@@ -89,10 +142,12 @@ export interface FormSeedResult {
  * Returns the number of duplicates removed.
  */
 export async function cleanupDuplicateFormBuilderForms(params: {
+  tenantId: string;
   userEmail: string;
   userName: string;
 }): Promise<number> {
-  const { sessionId } = await getOrCreateFbSession(params.userEmail, params.userName);
+  const embedToken = await resolveEmbedToken(params.tenantId, params.userEmail, params.userName);
+  const { sessionId } = await getOrCreateFbSession(params.userEmail, params.userName, embedToken);
   let removed = 0;
   try {
     const fbForms = await fbFetch('/forms', sessionId, 'GET');
@@ -205,7 +260,8 @@ export async function seedInspectionForms(params: {
     await updateInspectionForms({ tenantId, userId, userEmail, userName });
   }
 
-  const { sessionId, organizationId } = await getOrCreateFbSession(userEmail, userName);
+  const embedToken = await resolveEmbedToken(tenantId, userEmail, userName);
+  const { sessionId, organizationId } = await getOrCreateFbSession(userEmail, userName, embedToken);
 
   // Ensure the org→tenant mapping exists.
   if (organizationId) {
@@ -387,7 +443,8 @@ export async function updateInspectionForms(params: {
     return templates.map((t) => ({ title: t.title, status: 'not_found' as const }));
   }
 
-  const { sessionId } = await getOrCreateFbSession(userEmail, userName);
+  const embedToken = await resolveEmbedToken(tenantId, userEmail, userName);
+  const { sessionId } = await getOrCreateFbSession(userEmail, userName, embedToken);
 
   const results: FormUpdateResult[] = [];
 

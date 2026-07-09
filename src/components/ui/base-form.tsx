@@ -1,7 +1,7 @@
 'use client';
 
 import { Camera } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, LoadingButton } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { PageBackButton } from '@/components/ui/page-back-button';
 import type { BaseFormProps } from './base-form.types';
@@ -100,9 +100,9 @@ export function BaseForm({
             <Button type="button" variant="outline" onClick={onBack} disabled={saving}>
               Cancel
             </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Saving...' : submitLabel}
-            </Button>
+            <LoadingButton type="submit" loading={saving}>
+              {submitLabel}
+            </LoadingButton>
           </div>
         </form>
       </div>

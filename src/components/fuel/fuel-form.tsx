@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, LoadingButton } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { DateField } from '@/components/ui/date-field';
@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/select';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { getTodayDateString } from '@/lib/utils';
+import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 import type { FuelTransactionRow } from './types';
 
 interface FuelFormProps {
@@ -176,17 +177,21 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
       } else {
         await axios.post('/api/fuel', payload, { withCredentials: true });
       }
+      showSuccessToast(mode === 'edit' ? 'Fuel transaction updated successfully' : 'Fuel transaction created successfully');
       onSaved();
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {
         const errData = err.response.data.error;
         if (typeof errData === 'object') {
           setFieldErrors(errData as Record<string, string>);
+          showErrorToast('Please fix the highlighted errors');
         } else {
           setError(String(errData));
+          showErrorToast(String(errData));
         }
       } else {
         setError('Failed to save fuel transaction');
+        showErrorToast('Failed to save fuel transaction');
       }
     } finally {
       setSaving(false);
@@ -436,9 +441,9 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
         <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
           Cancel
         </Button>
-        <Button onClick={handleSubmit} disabled={saving}>
-          {saving ? 'Saving...' : mode === 'edit' ? 'Update Transaction' : 'Create Transaction'}
-        </Button>
+        <LoadingButton onClick={handleSubmit} loading={saving}>
+          {mode === 'edit' ? 'Update Transaction' : 'Create Transaction'}
+        </LoadingButton>
       </div>
     </div>
   );

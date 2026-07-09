@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { X, Plus, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button, LoadingButton } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 import type { PurchaseOrderRow, LookupOption } from './types';
 
 interface PurchaseOrderFormProps {
@@ -209,14 +210,21 @@ export function PurchaseOrderForm({ mode, purchaseOrder, onClose, onSaved }: Pur
       } else {
         await axios.post('/api/purchase-orders', payload, { withCredentials: true });
       }
+      showSuccessToast(submitStatus === 'draft' ? 'Purchase order saved as draft' : 'Purchase order sent for approval');
       onSaved();
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {
         const errData = err.response.data.error;
-        if (typeof errData === 'object') setFieldErrors(errData as Record<string, string>);
-        else setError(String(errData));
+        if (typeof errData === 'object') {
+          setFieldErrors(errData as Record<string, string>);
+          showErrorToast('Please fix the highlighted errors');
+        } else {
+          setError(String(errData));
+          showErrorToast(String(errData));
+        }
       } else {
         setError('Failed to save purchase order');
+        showErrorToast('Failed to save purchase order');
       }
     } finally {
       setSaving(false);
@@ -552,21 +560,21 @@ export function PurchaseOrderForm({ mode, purchaseOrder, onClose, onSaved }: Pur
         <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
           Cancel
         </Button>
-        <Button
+        <LoadingButton
           type="button"
           variant="secondary"
           onClick={() => handleSubmit('draft')}
-          disabled={saving}
+          loading={saving}
         >
-          {saving ? 'Saving...' : 'Save as Draft'}
-        </Button>
-        <Button
+          Save as Draft
+        </LoadingButton>
+        <LoadingButton
           type="button"
           onClick={() => handleSubmit('pending_approval')}
-          disabled={saving}
+          loading={saving}
         >
-          {saving ? 'Saving...' : 'Send for Approval'}
-        </Button>
+          Send for Approval
+        </LoadingButton>
       </div>
     </div>
   );

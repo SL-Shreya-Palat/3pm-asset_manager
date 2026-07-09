@@ -101,8 +101,9 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
         fullGrant('people.teams.team'),
         fullGrant('people.drivers.driver'),
         fullGrant('fuel.fuel.fuelEntry'),
+        fullGrant('vendors.vendors.vendor'),
       ],
-      m: ['assets', 'inspections', 'maintenance', 'people', 'fuel'],
+      m: ['assets', 'inspections', 'maintenance', 'people', 'fuel', 'vendors'],
       sm: [
         'assets.assets',
         'inspections.inspectionHistory',
@@ -117,6 +118,7 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
         'people.teams',
         'people.drivers',
         'fuel.fuel',
+        'vendors.vendors',
       ],
     },
     teamScoped: false,
@@ -243,8 +245,6 @@ export async function seedSystemRoles(tenantId: ObjectId, userId: ObjectId): Pro
             createdBy: userId,
             createdAt: now,
             isActive: true,
-          },
-          $set: {
             isSystem: def.isSystem,
             type: def.type,
             teamScoped: def.teamScoped,
@@ -254,6 +254,8 @@ export async function seedSystemRoles(tenantId: ObjectId, userId: ObjectId): Pro
             isMechanic: def.isMechanic ?? null,
             isDriver: def.isDriver ?? null,
             isAdmin: def.isAdmin ?? null,
+          },
+          $set: {
             updatedBy: userId,
             updatedAt: now,
           },

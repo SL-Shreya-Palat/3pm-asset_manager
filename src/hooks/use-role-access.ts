@@ -10,6 +10,8 @@ import {
 import type { SparsePermissions } from '@/lib/rbac';
 
 interface RoleAccess {
+  /** True while auth is still hydrating — UI should show a loading state. */
+  loading: boolean;
   /** True for admin/owner (wildcard permissions). */
   hasFullAccess: boolean;
   /** True for driver role (mobile-only, no portal access). */
@@ -28,26 +30,23 @@ export function useRoleAccess(): RoleAccess {
   return useMemo(() => {
     const tenant = user?.tenant;
 
-    // Not loaded yet — grant full access to avoid hiding the UI during loading
+    // Not loaded yet — deny everything and signal loading.
+    // Consumers (sidebar, PortalGuard) should render a skeleton.
     if (!tenant) {
-      const idx = new SparsePermissionIndex();
-      idx.build({ v: 2, forms: ['*'], m: ['*'], sm: [] });
       return {
-        hasFullAccess: true,
+        loading: true,
+        hasFullAccess: false,
         isMobileOnly: false,
-        canAccessModule: () => true,
-        canAccessSubModule: () => true,
-        permissionIndex: idx,
+        canAccessModule: () => false,
+        canAccessSubModule: () => false,
+        permissionIndex: new SparsePermissionIndex(),
       };
     }
 
-    // Check role flags, name, and tenant ownership for admin/owner detection.
-    const roleName = (tenant.roleName || '').toLowerCase();
+    // Check role flags and tenant ownership for admin/owner detection.
     const isOwnerByTenant = !!(user?.id && tenant.ownerId && user.id === tenant.ownerId);
     const isOwnerOrAdmin =
       tenant.isAdmin === true ||
-      roleName === 'owner' ||
-      roleName === 'admin' ||
       isOwnerByTenant;
 
     const permissions = tenant.permissions;
@@ -55,13 +54,14 @@ export function useRoleAccess(): RoleAccess {
     // Build the permission index
     const index = new SparsePermissionIndex();
 
-    // Admin/Owner — full access (via wildcard or role flags/name)
+    // Admin/Owner — full access (via wildcard or role flags)
     if (
       isOwnerOrAdmin ||
       (isSparsePermissions(permissions) && isWildcardPermissions(permissions as SparsePermissions))
     ) {
       index.build({ v: 2, forms: ['*'], m: ['*'], sm: [] });
       return {
+        loading: false,
         hasFullAccess: true,
         isMobileOnly: false,
         canAccessModule: () => true,
@@ -76,6 +76,7 @@ export function useRoleAccess(): RoleAccess {
       const isMobileOnly = tenant.mobileOnly === true;
 
       return {
+        loading: false,
         hasFullAccess: false,
         isMobileOnly,
         canAccessModule: (moduleKey: string) => index.hasModuleView(moduleKey),
@@ -87,6 +88,7 @@ export function useRoleAccess(): RoleAccess {
 
     // Fallback — no recognized permissions structure, grant no access
     return {
+      loading: false,
       hasFullAccess: false,
       isMobileOnly: false,
       canAccessModule: () => false,

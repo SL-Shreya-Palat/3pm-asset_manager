@@ -4,7 +4,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { requireAdmin } from '@/lib/authz';
 import {
   getDefectSettings,
   upsertDefectSettings,
@@ -15,17 +15,16 @@ export async function GET(
   { params }: { params: Promise<{ formId: string }> },
 ) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.id || !user.currentTenantId) {
-      return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await requireAdmin(req);
+    if (!auth.ok) return auth.res;
+    const user = auth.user;
 
     const { formId } = await params;
     if (!ObjectId.isValid(formId)) {
       return NextResponse.json({ data: null, error: 'Invalid formId' }, { status: 400 });
     }
 
-    const result = await getDefectSettings(user.currentTenantId, formId, {
+    const result = await getDefectSettings(user.currentTenantId!, formId, {
       email: user.email,
       name: user.name,
     });
@@ -49,10 +48,9 @@ export async function PUT(
   { params }: { params: Promise<{ formId: string }> },
 ) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.id || !user.currentTenantId) {
-      return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await requireAdmin(req);
+    if (!auth.ok) return auth.res;
+    const user = auth.user;
 
     const { formId } = await params;
     if (!ObjectId.isValid(formId)) {
@@ -61,7 +59,7 @@ export async function PUT(
 
     const body = await req.json();
     const result = await upsertDefectSettings(
-      user.currentTenantId,
+      user.currentTenantId!,
       user.id,
       formId,
       body,

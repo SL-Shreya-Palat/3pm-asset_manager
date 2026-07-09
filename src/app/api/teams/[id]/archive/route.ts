@@ -3,19 +3,17 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { getTeamsCollection } from '@/lib/mongodb';
-import { getFormPermissionLevels } from '@/lib/server-permissions';
 
 const FORM_ID = 'people.teams.team';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, FORM_ID, 'archive');
+  if (!auth.ok) return auth.res;
+  const { user, scope } = auth.ctx;
 
   try {
     const { id } = await context.params;
@@ -28,18 +26,13 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const collection = await getTeamsCollection();
     const now = new Date();
     const userOid = ObjectId.createFromHexString(user.id);
-    const tenantOid = ObjectId.createFromHexString(user.currentTenantId);
+    const tenantOid = ObjectId.createFromHexString(user.currentTenantId!);
     const docOid = ObjectId.createFromHexString(id);
 
-    // "OWN" archive: verify the user created this team
-    const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
-    if (perms.archive === 'OWN') {
+    if (scope === 'OWN') {
       const existing = await collection.findOne({ _id: docOid, tenantId: tenantOid });
-      if (!existing) {
-        return NextResponse.json({ data: null, error: 'Not found' }, { status: 404 });
-      }
-      if (existing.createdBy?.toString() !== user.id) {
-        return NextResponse.json({ data: null, error: 'You can only archive teams you created' }, { status: 403 });
+      if (!existing || existing.createdBy?.toString() !== user.id) {
+        return NextResponse.json({ data: null, error: 'You can only archive records you created' }, { status: 403 });
       }
     }
 

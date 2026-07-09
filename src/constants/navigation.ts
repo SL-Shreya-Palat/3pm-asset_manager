@@ -16,8 +16,6 @@ export interface NavChild {
   requiredModule?: string;
   /** SubModule key required to see this item (checked via submodule view permission). */
   requiredSubModule?: string;
-  /** If true, only users with full access (admin/owner) can see this. */
-  adminOnly?: boolean;
 }
 
 export interface NavItem {
@@ -29,8 +27,6 @@ export interface NavItem {
   requiredModule?: string;
   /** SubModule key required to see this item (checked via submodule view permission). */
   requiredSubModule?: string;
-  /** If true, only users with full access (admin/owner) can see this. */
-  adminOnly?: boolean;
 }
 
 export const navItems: NavItem[] = [
@@ -62,17 +58,17 @@ export const navItems: NavItem[] = [
     ],
   },
   { label: 'Assets', href: '/assets', icon: Truck, requiredModule: 'assets' },
-  { label: 'Vendors', href: '/vendors', icon: Store, adminOnly: true },
+  { label: 'Vendors', href: '/vendors', icon: Store, requiredModule: 'vendors' },
   { label: 'Fuel', href: '/fuel', icon: Fuel, requiredModule: 'fuel' },
   {
     label: 'People',
     href: '/people',
     icon: Users,
     children: [
-      { label: 'Users', href: '/people/users', adminOnly: true },
+      { label: 'Users', href: '/people/users', requiredModule: 'people', requiredSubModule: 'users' },
       { label: 'Teams', href: '/people/teams', requiredModule: 'people', requiredSubModule: 'teams' },
       { label: 'Drivers', href: '/people/drivers', requiredModule: 'people', requiredSubModule: 'drivers' },
-      { label: 'Roles', href: '/people/roles', adminOnly: true },
+      { label: 'Roles', href: '/people/roles', requiredModule: 'people', requiredSubModule: 'roles' },
     ],
   },
   { label: 'Settings', href: '/settings', icon: Settings, requiredModule: 'settings' },
@@ -85,7 +81,6 @@ export function getFlatNavItems(): Array<{
   parent?: string;
   requiredModule?: string;
   requiredSubModule?: string;
-  adminOnly?: boolean;
 }> {
   const flat: Array<{
     label: string;
@@ -93,7 +88,6 @@ export function getFlatNavItems(): Array<{
     parent?: string;
     requiredModule?: string;
     requiredSubModule?: string;
-    adminOnly?: boolean;
   }> = [];
   for (const item of navItems) {
     flat.push({
@@ -101,7 +95,6 @@ export function getFlatNavItems(): Array<{
       href: item.href,
       requiredModule: item.requiredModule,
       requiredSubModule: item.requiredSubModule,
-      adminOnly: item.adminOnly,
     });
     if (item.children) {
       for (const child of item.children) {
@@ -111,7 +104,6 @@ export function getFlatNavItems(): Array<{
           parent: item.label,
           requiredModule: child.requiredModule,
           requiredSubModule: child.requiredSubModule,
-          adminOnly: child.adminOnly,
         });
       }
     }

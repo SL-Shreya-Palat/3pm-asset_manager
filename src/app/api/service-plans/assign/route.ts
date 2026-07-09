@@ -3,14 +3,13 @@
  * Sets asset.servicePlanId for the given assets (null clears the plan).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { assignPlanToAssets } from '@/controller/service-plans';
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, 'maintenance.servicePlans.servicePlan', 'edit');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
   try {
     const body = (await request.json()) as { planId?: string | null; assetIds?: unknown };
     const assetIds = Array.isArray(body.assetIds) ? body.assetIds.map(String) : [];
@@ -18,7 +17,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ data: null, error: 'assetIds are required' }, { status: 400 });
     }
     const result = await assignPlanToAssets(
-      user.currentTenantId,
+      user.currentTenantId!,
       user.id,
       body.planId ?? null,
       assetIds,
