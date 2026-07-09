@@ -28,6 +28,7 @@ const EXPIRY_BUFFER_MS = 5 * 60 * 1000; // 5 minutes
 export async function getCachedFormBuilderSession(
   tenantId: string | ObjectId,
   userId: string | ObjectId,
+  tokenFp?: string,
 ): Promise<{ sessionId: string; expiresAt: Date } | null> {
   try {
     const collection = await getFormBuilderSessionsCollection();
@@ -44,6 +45,10 @@ export async function getCachedFormBuilderSession(
       tenantId: tenantObjectId,
       userId: userObjectId,
       expiresAt: { $gt: bufferThreshold },
+      // Only reuse a session minted against the same token/org. When tokenFp is
+      // supplied, legacy rows (no tokenFp) and rows from a different org won't
+      // match, so we re-mint against the correct (shared) org.
+      ...(tokenFp ? { tokenFp } : {}),
     });
 
     if (!doc) return null;
@@ -70,6 +75,7 @@ export async function upsertFormBuilderSession(
   userId: string | ObjectId,
   sessionId: string,
   expiresAt: Date | string,
+  tokenFp?: string,
 ): Promise<void> {
   try {
     const collection = await getFormBuilderSessionsCollection();
@@ -94,6 +100,7 @@ export async function upsertFormBuilderSession(
           sessionId,
           expiresAt: expiresAtDate,
           updatedAt: now,
+          ...(tokenFp ? { tokenFp } : {}),
         },
         $setOnInsert: {
           tenantId: tenantObjectId,

@@ -20,9 +20,56 @@
 
 import { ObjectId } from 'mongodb';
 import { getEmbedTokensCollection } from '@/lib/mongodb';
+import { FORM_BUILDER_APP_NAME } from '@/lib/form-builder-integration';
 
 function toObjectId(id: string | ObjectId): ObjectId {
   return typeof id === 'string' ? ObjectId.createFromHexString(id) : id;
+}
+
+/**
+ * Short, stable fingerprint of an embed token. Cached form-builder sessions
+ * store this so a session minted against a DIFFERENT token/org is never
+ * reused — e.g. when a tenant is switched to the shared org, its old
+ * per-tenant session is automatically invalidated instead of failing with
+ * "Form not found or not published".
+ */
+export function embedTokenFingerprint(token: string): string {
+  let h = 0;
+  for (let i = 0; i < token.length; i++) {
+    h = (Math.imul(31, h) + token.charCodeAt(i)) | 0;
+  }
+  return (h >>> 0).toString(16);
+}
+
+/**
+ * Shared form-builder org override. When configured, EVERY tenant mints its
+ * inspection session against ONE shared organization, so the seeded pre-start
+ * forms are visible in every org (instead of each tenant onboarding its own
+ * empty org and hitting "Form not found or not published").
+ *
+ * Configure either (env):
+ *   FORM_BUILDER_SHARED_EMBED_TOKEN — the embed token directly, or
+ *   FORM_BUILDER_SHARED_ORG_ID      — the shared org id; the token is resolved
+ *                                     from the stored embedTokens row for it.
+ */
+async function getSharedFormBuilderToken(): Promise<string | null> {
+  const direct = process.env.FORM_BUILDER_SHARED_EMBED_TOKEN;
+  if (direct) return direct;
+
+  const orgId = process.env.FORM_BUILDER_SHARED_ORG_ID;
+  if (!orgId) return null;
+
+  try {
+    const collection = await getEmbedTokensCollection();
+    const doc = await collection.findOne({
+      organizationId: orgId,
+      appName: FORM_BUILDER_APP_NAME,
+    });
+    return doc?.token ?? null;
+  } catch (error) {
+    console.error('[EMBED_TOKEN_STORAGE] Error resolving shared embed token:', error);
+    return null;
+  }
 }
 
 /** Get the stored embed token for a tenant + app. Returns null if none. */
@@ -31,6 +78,13 @@ export async function getEmbedTokenForTenant(
   appName: string,
 ): Promise<string | null> {
   try {
+    // Inspection form-builder: honour the shared-org override so all tenants
+    // resolve to the org that holds the seeded pre-start forms.
+    if (appName === FORM_BUILDER_APP_NAME) {
+      const shared = await getSharedFormBuilderToken();
+      if (shared) return shared;
+    }
+
     const collection = await getEmbedTokensCollection();
     const doc = await collection.findOne({
       tenantId: toObjectId(tenantId),
