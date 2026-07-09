@@ -127,12 +127,13 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
         if (data.licenseNumber) setLicenseNumber(data.licenseNumber);
         if (data.licenseClass) setLicenseClass(data.licenseClass);
         if (data.cardVersion) setDriverLicense(data.cardVersion);
+        showSuccessToast('Licence details extracted successfully');
       }
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {
-        setError(String(err.response.data.error));
+        showErrorToast(String(err.response.data.error));
       } else {
-        setError('Failed to extract licence details. Please try a clearer photo.');
+        showErrorToast('Failed to extract licence details. Please try a clearer photo.');
       }
     } finally {
       setScanning(false);

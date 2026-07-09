@@ -30,8 +30,7 @@ export const listParts = defineTool({
 export const listPurchaseOrders = defineTool({
   name: "list_purchase_orders",
   access: "read",
-  permission: null,
-  adminOnly: true, // mirrors the Purchase Orders nav item (admin/owner only)
+  permission: "maintenance:purchaseOrders:view",
   description:
     "Returns purchase orders for parts. Filter by status (draft, pending_approval, rejected, approved, purchased, received, received_partial, closed).",
   inputSchema: z.object({

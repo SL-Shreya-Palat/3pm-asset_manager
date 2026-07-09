@@ -9,7 +9,8 @@ import {
   getPrestartFormDefectSettingsCollection,
   getFormsCollection,
 } from '@/lib/mongodb';
-import { fetchLiveFormSchema } from '@/lib/form-builder-integration';
+import { FORM_BUILDER_APP_NAME, fetchLiveFormSchema } from '@/lib/form-builder-integration';
+import { getEmbedTokenForTenant } from '@/lib/embed-token-storage';
 import { classifyInspectionType } from '@/controller/forms';
 import type {
   DefectSettingsDocument,
@@ -134,7 +135,10 @@ export async function getDefectSettings(
   let source: 'live' | 'local' = 'local';
 
   if (user?.email) {
-    const live = await fetchLiveFormSchema(user.email, user.name || user.email, formId);
+    const embedToken = await getEmbedTokenForTenant(tenantId, FORM_BUILDER_APP_NAME);
+    const live = embedToken
+      ? await fetchLiveFormSchema(user.email, user.name || user.email, formId, embedToken)
+      : null;
     if (live && Array.isArray(live.pages) && live.pages.length > 0) {
       pages = live.pages;
       formVersion = live.versionNumber ?? formVersion;

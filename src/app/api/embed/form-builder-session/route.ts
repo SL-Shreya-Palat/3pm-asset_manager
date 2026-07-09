@@ -5,22 +5,36 @@
  * a cached) session on the form-builder portal. Returns only the sessionId
  * to the frontend — raw embed tokens never leave the server.
  *
- * Flow:
+ * Flow (matching construction-portal):
  *   1. Authenticate the asset-manager user.
  *   2. Check local DB for a cached session that hasn't expired yet.
- *   3. If no cached session -> create a new one via form-builder API.
- *   4. Upsert the new session in local DB.
- *   5. Return the sessionId to the frontend.
+ *   3. Resolve the tenant's stored embed token.
+ *   4. If no embed token -> onboard the tenant first -> store the token.
+ *   5. Create a new session via form-builder's POST /api/embed/sessions.
+ *   6. On 404 (tenant exists but user isn't a member yet) -> create the user
+ *      via POST /api/embed/users (session-based) -> retry session creation.
+ *   7. Upsert the new session in local DB.
+ *   8. Return the sessionId to the frontend.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { ObjectId } from 'mongodb';
 import { getAuthenticatedUser } from '@/lib/auth-helper';
-import { createFormBuilderSession, createFormBuilderMember } from '@/lib/form-builder-integration';
+import { getTenantsCollection } from '@/lib/mongodb';
+import {
+  FORM_BUILDER_APP_NAME,
+  createFormBuilderSession,
+  createFormBuilderMember,
+  onboardFormBuilderTenant,
+} from '@/lib/form-builder-integration';
+import {
+  getEmbedTokenForTenant,
+  storeEmbedToken,
+} from '@/lib/embed-token-storage';
 import {
   getCachedFormBuilderSession,
   upsertFormBuilderSession,
 } from '@/lib/form-builder-session-storage';
 import { getFormBuilderOrgMappingsCollection } from '@/lib/mongodb';
-import { ObjectId } from 'mongodb';
 
 export async function POST(request: NextRequest) {
   const user = await getAuthenticatedUser(request);
@@ -50,14 +64,76 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // ─── 2. No valid session — create a new one ───
-  let result = await createFormBuilderSession(user.email);
+  // ─── 2. No valid session — resolve embed token ───
+  let embedToken = await getEmbedTokenForTenant(
+    user.currentTenantId,
+    FORM_BUILDER_APP_NAME,
+  );
+
+  // ─── 3. If no embed token exists, onboard the tenant first (owner flow) ───
+  if (!embedToken) {
+    console.log(
+      `[FORM_BUILDER_SESSION] No embed token for tenant ${user.currentTenantId}, onboarding...`,
+    );
+
+    const tenantsCollection = await getTenantsCollection();
+    const tenant = await tenantsCollection.findOne({
+      _id: ObjectId.createFromHexString(user.currentTenantId),
+    });
+
+    const organizationName =
+      tenant?.name?.toString?.() ||
+      user.name ||
+      user.email.split('@')[0] ||
+      'My Organization';
+
+    const nameParts = (user.name || user.email).split(' ');
+    const firstName = nameParts[0] || user.email.split('@')[0];
+    const lastName = nameParts.slice(1).join(' ') || '-';
+
+    const onboardResult = await onboardFormBuilderTenant({
+      email: user.email,
+      firstName,
+      lastName,
+      organizationName,
+    });
+
+    if (!onboardResult) {
+      return NextResponse.json(
+        {
+          data: null,
+          error:
+            'Failed to set up form builder access for your organization. Please contact your administrator.',
+        },
+        { status: 500 },
+      );
+    }
+
+    await storeEmbedToken(
+      user.currentTenantId,
+      onboardResult.organizationId,
+      onboardResult.token,
+      onboardResult.tokenId,
+      FORM_BUILDER_APP_NAME,
+    );
+
+    embedToken = onboardResult.token;
+    console.log(
+      `[FORM_BUILDER_SESSION] Onboarded and stored embed token for tenant ${user.currentTenantId}`,
+    );
+  }
+
+  // ─── 4. Create a new session via form-builder ───
+  let result = await createFormBuilderSession({
+    userEmail: user.email,
+    embedToken,
+  });
 
   // If user not found (404) — the tenant is onboarded but this specific user
-  // hasn't been created in form-builder yet. Create them with owner role and retry.
+  // hasn't been created in form-builder yet. Create them and retry.
   if (!result.ok && result.status === 404) {
     console.log(
-      `[FORM_BUILDER_SESSION] User ${user.email} not found, creating in form-builder with owner role...`,
+      `[FORM_BUILDER_SESSION] User ${user.email} not found, creating in form-builder...`,
     );
 
     const nameParts = (user.name || user.email).split(' ');
@@ -69,11 +145,15 @@ export async function POST(request: NextRequest) {
       firstName,
       lastName,
       ownerEmail: user.email,
-      role: 'owner',
+      embedToken,
+      role: 'user',
     });
 
     if (userCreated) {
-      result = await createFormBuilderSession(user.email);
+      result = await createFormBuilderSession({
+        userEmail: user.email,
+        embedToken,
+      });
       console.log(
         `[FORM_BUILDER_SESSION] Created user & retried session for ${user.email}`,
       );
@@ -87,7 +167,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ─── 3. Cache the new session locally ───
+  // ─── 5. Cache the new session locally ───
   await upsertFormBuilderSession(
     user.currentTenantId,
     user.id,
@@ -95,7 +175,7 @@ export async function POST(request: NextRequest) {
     result.data.expiresAt,
   );
 
-  // ─── 4. Store org→tenant mapping for webhook form resolution ───
+  // ─── 6. Store org→tenant mapping for webhook form resolution ───
   if (result.data.organizationId && user.currentTenantId) {
     try {
       const orgMappingsCollection = await getFormBuilderOrgMappingsCollection();

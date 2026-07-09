@@ -4,21 +4,20 @@
  * the schedule (due-status recomputes from the new baseline).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { logServiceEntry } from '@/controller/service-history';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, 'assets.assets.asset', 'view');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const { id } = await context.params;
     const body = await request.json();
-    const result = await logServiceEntry(user.currentTenantId, user.id, { ...body, assetId: id });
+    const result = await logServiceEntry(user.currentTenantId!, user.id, { ...body, assetId: id });
 
     if (result.error) {
       return NextResponse.json({ data: null, error: result.error }, { status: 400 });

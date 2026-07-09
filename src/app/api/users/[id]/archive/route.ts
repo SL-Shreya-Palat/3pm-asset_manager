@@ -3,16 +3,15 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { requireAdmin } from '@/lib/authz';
 import { getTenantMembersCollection } from '@/lib/mongodb';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.res;
+  const user = auth.user;
 
   try {
     const { id } = await context.params;
@@ -25,7 +24,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const collection = await getTenantMembersCollection();
     const now = new Date();
     const userOid = ObjectId.createFromHexString(user.id);
-    const tenantOid = ObjectId.createFromHexString(user.currentTenantId);
+    const tenantOid = ObjectId.createFromHexString(user.currentTenantId!);
     const docOid = ObjectId.createFromHexString(id);
 
     const result = await collection.updateOne(

@@ -6,11 +6,17 @@
  * - Shorter chassis/frame numbers (common in NZ for Japanese imports) → pass-through
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { getAuthenticatedUser } from '@/lib/auth-helper';
 
 const MIN_VIN_LENGTH = 5;
 const STANDARD_VIN_LENGTH = 17;
 
 export async function GET(request: NextRequest) {
+  const user = await getAuthenticatedUser(request);
+  if (!user?.id) {
+    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
+  }
+
   const vin = request.nextUrl.searchParams.get('vin')?.trim().toUpperCase();
 
   if (!vin || vin.length < MIN_VIN_LENGTH) {

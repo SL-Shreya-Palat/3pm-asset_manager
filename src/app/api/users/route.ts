@@ -3,14 +3,13 @@
  * POST /api/users -- Invite a user (create users + tenantMembers records)
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { requireAdmin } from '@/lib/authz';
 import { getAllTenantMembers, inviteUser } from '@/controller/users';
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.res;
+  const user = auth.user;
 
   const { searchParams } = request.nextUrl;
   const page = parseInt(searchParams.get('page') || '1', 10);
@@ -19,19 +18,18 @@ export async function GET(request: NextRequest) {
   const teamId = searchParams.get('teamId') || undefined;
   const showArchived = searchParams.get('showArchived') === 'true';
 
-  const result = await getAllTenantMembers(user.currentTenantId, { page, limit, search, teamId, showArchived });
+  const result = await getAllTenantMembers(user.currentTenantId!, { page, limit, search, teamId, showArchived });
   return NextResponse.json({ data: result, error: null });
 }
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.res;
+  const user = auth.user;
 
   try {
     const body = await request.json();
-    const result = await inviteUser(user.currentTenantId, user.id, body);
+    const result = await inviteUser(user.currentTenantId!, user.id, body);
 
     if (result.error) {
       return NextResponse.json({ data: null, error: result.error }, { status: 400 });

@@ -130,6 +130,32 @@ export const allModules: Modules = [
         description: "Manage driver profiles, licences, and assignments",
         accessibility: ["view"],
       },
+      {
+        name: "Users",
+        key: "users",
+        description: "Manage user accounts and team memberships",
+        accessibility: ["view"],
+      },
+      {
+        name: "Roles",
+        key: "roles",
+        description: "Configure roles and permission grants",
+        accessibility: ["view"],
+      },
+    ],
+  },
+  // Vendors Module
+  {
+    name: "Vendors",
+    key: "vendors",
+    accessibility: ["view"],
+    subModules: [
+      {
+        name: "Vendors",
+        key: "vendors",
+        description: "Manage vendor and supplier records",
+        accessibility: ["view"],
+      },
     ],
   },
   // Fuel Module

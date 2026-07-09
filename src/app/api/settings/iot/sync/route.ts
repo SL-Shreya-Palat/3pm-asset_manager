@@ -4,17 +4,16 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { requireAdmin } from '@/lib/authz';
 import { syncAssetsFromIoTHub } from '@/controller/iot';
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.currentTenantId || !user.id) {
-      return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await requireAdmin(req);
+    if (!auth.ok) return auth.res;
+    const user = auth.user;
     const result = await syncAssetsFromIoTHub(
-      ObjectId.createFromHexString(user.currentTenantId),
+      ObjectId.createFromHexString(user.currentTenantId!),
       user.id,
     );
     // Surface a partial-failure as 200 with the error list; hard failure → 502.

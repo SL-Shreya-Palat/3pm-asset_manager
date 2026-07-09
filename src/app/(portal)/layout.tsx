@@ -4,6 +4,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 import { BuddyRail } from '@/components/buddy/buddy-rail';
 import { BuddyPanel } from '@/components/buddy/buddy-panel';
+import { PortalGuard } from '@/components/auth/portal-guard';
 
 export default async function PortalLayout({
   children,
@@ -21,7 +22,9 @@ export default async function PortalLayout({
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
-        <main className="flex-1 overflow-auto bg-background">{children}</main>
+        <main className="flex-1 overflow-auto bg-background">
+          <PortalGuard>{children}</PortalGuard>
+        </main>
       </div>
       <BuddyRail />
       <BuddyPanel />

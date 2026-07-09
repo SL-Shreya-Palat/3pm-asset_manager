@@ -5,7 +5,7 @@
  * explaining how to fill in each column.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { buildTemplate, type FuelColumn } from '@/lib/data-io/xlsx';
 import { FUEL_TYPES } from '@/controller/fuel/types';
 
@@ -35,10 +35,8 @@ const FUEL_TEMPLATE_NOTES = [
 ];
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, 'fuel.fuel.fuelEntry', 'view');
+  if (!auth.ok) return auth.res;
 
   try {
     const buffer = buildTemplate('Fuel Transactions', FUEL_TEMPLATE_COLUMNS, FUEL_TEMPLATE_NOTES);

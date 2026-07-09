@@ -3,16 +3,17 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { getAssetsCollection } from '@/lib/mongodb';
+
+const FORM_ID = 'assets.assets.asset';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, FORM_ID, 'archive');
+  if (!auth.ok) return auth.res;
+  const { user, scope } = auth.ctx;
 
   try {
     const { id } = await context.params;
@@ -25,8 +26,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const collection = await getAssetsCollection();
     const now = new Date();
     const userOid = ObjectId.createFromHexString(user.id);
-    const tenantOid = ObjectId.createFromHexString(user.currentTenantId);
+    const tenantOid = ObjectId.createFromHexString(user.currentTenantId!);
     const docOid = ObjectId.createFromHexString(id);
+
+    if (scope === 'OWN') {
+      const existing = await collection.findOne({ _id: docOid, tenantId: tenantOid });
+      if (!existing || existing.createdBy?.toString() !== user.id) {
+        return NextResponse.json({ data: null, error: 'You can only archive records you created' }, { status: 403 });
+      }
+    }
 
     const result = await collection.updateOne(
       { _id: docOid, tenantId: tenantOid },

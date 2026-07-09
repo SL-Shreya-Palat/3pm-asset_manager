@@ -3,14 +3,13 @@
  * Body: { ids: string[], status: string }
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { bulkUpdateDefectStatus } from '@/controller/defects';
 
 export async function PUT(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, 'maintenance.defects.defect', 'edit');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const body = await request.json();
@@ -25,7 +24,7 @@ export async function PUT(request: NextRequest) {
     }
 
     const result = await bulkUpdateDefectStatus(
-      user.currentTenantId,
+      user.currentTenantId!,
       user.id,
       ids,
       status,

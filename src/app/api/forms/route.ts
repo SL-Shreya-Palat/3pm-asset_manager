@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { requireAdmin } from '@/lib/authz';
 import {
   getFormsByTenantId,
   getFormsByOrganizationId,
@@ -140,14 +141,8 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(req);
-
-    if (!user?.id) {
-      return NextResponse.json(
-        { data: null, error: 'Unauthorized' },
-        { status: 401 },
-      );
-    }
+    const auth = await requireAdmin(req);
+    if (!auth.ok) return auth.res;
 
     const body: FormCreationData = await req.json();
 

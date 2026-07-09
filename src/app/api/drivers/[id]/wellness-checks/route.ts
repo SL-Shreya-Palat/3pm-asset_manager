@@ -7,17 +7,16 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { listInspectionSubmissions } from '@/controller/inspection-submissions';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(req: NextRequest, context: RouteContext) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.id || !user.currentTenantId) {
-      return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await authorize(req, 'people.drivers.driver', 'view');
+    if (!auth.ok) return auth.res;
+    const { user } = auth.ctx;
 
     const { id: driverId } = await context.params;
     if (!ObjectId.isValid(driverId)) {
@@ -28,7 +27,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
     const page = Math.max(1, parseInt(url.searchParams.get('page') || '1'));
     const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get('limit') || '25')));
 
-    const data = await listInspectionSubmissions(user.currentTenantId, {
+    const data = await listInspectionSubmissions(user.currentTenantId!, {
       page,
       limit,
       driverId,

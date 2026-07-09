@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="540" height="340" viewBox="0 0 540 340">
+  <defs>
+    <linearGradient id="bg-au" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0c2340"/>
+      <stop offset="40%" style="stop-color:#1b4f72"/>
+      <stop offset="100%" style="stop-color:#2e86c1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Card background -->
+  <rect width="540" height="340" rx="12" fill="url(#bg-au)"/>
+
+  <!-- Watermark -->
+  <text x="270" y="180" text-anchor="middle" font-family="Arial" font-size="42" font-weight="bold"
+        fill="#fff" opacity="0.04" transform="rotate(-30,270,180)">NSW TRANSPORT</text>
+
+  <!-- Header -->
+  <text x="24" y="32" font-family="Arial" font-size="13" font-weight="bold" fill="#fff"
+        letter-spacing="1">NEW SOUTH WALES DRIVER LICENCE</text>
+  <text x="24" y="48" font-family="Arial" font-size="11" fill="#fff" opacity="0.8">Transport for NSW — Australia</text>
+
+  <!-- Photo placeholder -->
+  <rect x="24" y="70" width="90" height="110" rx="4" fill="#c0c0c0"/>
+  <text x="69" y="120" text-anchor="middle" font-family="Arial" font-size="11" fill="#555">PHOTO</text>
+  <text x="69" y="135" text-anchor="middle" font-family="Arial" font-size="10" fill="#555">PLACEHOLDER</text>
+
+  <!-- Licence Number -->
+  <text x="130" y="88" font-family="Arial" font-size="18" font-weight="bold" fill="#f39c12"
+        letter-spacing="2">98 765 432</text>
+
+  <!-- Family Name -->
+  <text x="130" y="112" font-family="Arial" font-size="9" fill="#fff" opacity="0.6"
+        letter-spacing="0.5">FAMILY NAME</text>
+  <text x="245" y="112" font-family="Arial" font-size="13" font-weight="600" fill="#fff">MITCHELL</text>
+
+  <!-- Given Names -->
+  <text x="130" y="132" font-family="Arial" font-size="9" fill="#fff" opacity="0.6"
+        letter-spacing="0.5">GIVEN NAMES</text>
+  <text x="245" y="132" font-family="Arial" font-size="13" font-weight="600" fill="#fff">SARAH ELIZABETH</text>
+
+  <!-- Date of Birth -->
+  <text x="130" y="152" font-family="Arial" font-size="9" fill="#fff" opacity="0.6"
+        letter-spacing="0.5">DATE OF BIRTH</text>
+  <text x="245" y="152" font-family="Arial" font-size="13" font-weight="600" fill="#fff">22/07/1985</text>
+
+  <!-- Card Number -->
+  <text x="130" y="172" font-family="Arial" font-size="9" fill="#fff" opacity="0.6"
+        letter-spacing="0.5">CARD NUMBER</text>
+  <text x="245" y="172" font-family="Arial" font-size="13" font-weight="600" fill="#fff">1234567890</text>
+
+  <!-- Expiry Date -->
+  <text x="130" y="192" font-family="Arial" font-size="9" fill="#fff" opacity="0.6"
+        letter-spacing="0.5">EXPIRY DATE</text>
+  <text x="245" y="192" font-family="Arial" font-size="13" font-weight="600" fill="#fff">22/07/2029</text>
+
+  <!-- Class box -->
+  <rect x="450" y="240" width="66" height="55" rx="6" fill="#fff" opacity="0.15"/>
+  <text x="483" y="262" text-anchor="middle" font-family="Arial" font-size="8" fill="#fff"
+        opacity="0.7" letter-spacing="0.5">CLASS</text>
+  <text x="483" y="286" text-anchor="middle" font-family="Arial" font-size="22" font-weight="bold"
+        fill="#fff">C</text>
+
+  <!-- Footer -->
+  <text x="24" y="322" font-family="Arial" font-size="9" fill="#fff" opacity="0.6">ISSUED: 22/07/2024</text>
+  <text x="516" y="322" text-anchor="end" font-family="Arial" font-size="9" fill="#fff" opacity="0.6">LICENCE TYPE: FULL</text>
+</svg>

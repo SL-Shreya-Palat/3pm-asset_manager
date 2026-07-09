@@ -3,18 +3,27 @@
  * POST /api/documents — create a document
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize, requireAdmin } from '@/lib/authz';
 import { listDocuments, createDocument } from '@/controller/documents';
 
+/** Map document scope to the parent entity's form ID for authorization. */
+const SCOPE_FORM_MAP: Record<string, string> = {
+  asset: 'assets.assets.asset',
+  driver: 'people.drivers.driver',
+  team: 'people.teams.team',
+};
+
 export async function GET(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const scope = request.nextUrl.searchParams.get('scope') || '';
+  const formId = SCOPE_FORM_MAP[scope] || SCOPE_FORM_MAP.asset;
+
+  const auth = await authorize(request, formId, 'view');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   const { searchParams } = request.nextUrl;
   const result = await listDocuments(user.currentTenantId, {
-    scope: searchParams.get('scope') || undefined,
+    scope: scope || undefined,
     assetId: searchParams.get('assetId') || undefined,
     driverId: searchParams.get('driverId') || undefined,
     teamId: searchParams.get('teamId') || undefined,
@@ -23,14 +32,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.res;
+  const user = auth.user;
 
   try {
     const body = await request.json();
-    const result = await createDocument(user.currentTenantId, user.id, body);
+    const result = await createDocument(user.currentTenantId!, user.id, body);
     if (result.error) {
       return NextResponse.json({ data: null, error: result.error }, { status: 400 });
     }

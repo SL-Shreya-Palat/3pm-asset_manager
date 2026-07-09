@@ -181,6 +181,48 @@ export class SparsePermissionIndex {
     return this.formIndex.get(formId)?.c ?? false;
   }
 
+  /**
+   * Check if a permission string is granted.
+   *
+   * Supports:
+   * - "module:view"
+   * - "module:submodule:view"
+   * - "module:submodule:form:action"
+   */
+  hasPermission(permission: string | undefined | null): boolean {
+    if (this.wildcard) return true;
+    if (!permission || typeof permission !== "string" || !permission.trim()) {
+      return false;
+    }
+
+    const parts = permission.split(":");
+
+    // "module:view"
+    if (parts.length === 2 && parts[1] === "view") {
+      return this.hasModuleView(parts[0]);
+    }
+
+    // "module:submodule:view"
+    if (parts.length === 3 && parts[2] === "view") {
+      return this.hasSubModuleView(parts[0], parts[1]);
+    }
+
+    // "module:submodule:form:action"
+    if (parts.length === 4) {
+      const [mod, sub, form, action] = parts;
+      const formId = `${mod}.${sub}.${form}`;
+      if (["view", "create", "edit", "archive", "delete", "inspect"].includes(action)) {
+        const result = this.hasFormPermission(
+          formId,
+          action as "view" | "create" | "edit" | "archive" | "delete" | "inspect",
+        );
+        return action === "view" ? result !== "NONE" : Boolean(result);
+      }
+    }
+
+    return false;
+  }
+
   getGrantedFormIds(): string[] {
     if (this.wildcard) return ["*"];
     return Array.from(this.formIndex.keys());

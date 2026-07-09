@@ -5,21 +5,20 @@
  * entry when scheduled work was fulfilled.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { completeWorkOrder } from '@/controller/work-orders';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function PUT(request: NextRequest, context: RouteContext) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, 'maintenance.workOrders.workOrder', 'edit');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
-    const result = await completeWorkOrder(user.currentTenantId, user.id, id, {
+    const result = await completeWorkOrder(user.currentTenantId!, user.id, id, {
       servicePlanId: typeof body.servicePlanId === 'string' ? body.servicePlanId : undefined,
       servicePlanSchedule: typeof body.servicePlanSchedule === 'string' ? body.servicePlanSchedule : undefined,
       meterAtService: typeof body.meterAtService === 'number' ? body.meterAtService : undefined,

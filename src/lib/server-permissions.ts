@@ -13,6 +13,7 @@ import type { SparsePermissions, ViewLevel, EditLevel, ArchiveLevel, DeleteLevel
 
 export interface FormPermissionLevels {
   fullAccess: boolean;
+  mobileOnly: boolean;
   view: ViewLevel;
   create: boolean;
   inspect: InspectLevel;
@@ -29,11 +30,11 @@ export interface FormPermissionLevels {
 async function buildPermissionIndex(
   userId: string,
   tenantId: string,
-): Promise<{ index: SparsePermissionIndex; fullAccess: boolean }> {
+): Promise<{ index: SparsePermissionIndex; fullAccess: boolean; mobileOnly: boolean }> {
   const index = new SparsePermissionIndex();
 
   if (!ObjectId.isValid(userId) || !ObjectId.isValid(tenantId)) {
-    return { index, fullAccess: false };
+    return { index, fullAccess: false, mobileOnly: false };
   }
 
   const [tenantMembersCol, rolesCol, tenantsCol] = await Promise.all([
@@ -48,7 +49,7 @@ async function buildPermissionIndex(
 
   if (isOwner) {
     index.build({ v: 2, forms: ['*'], m: ['*'], sm: [] });
-    return { index, fullAccess: true };
+    return { index, fullAccess: true, mobileOnly: false };
   }
 
   const member = await tenantMembersCol.findOne({
@@ -58,31 +59,32 @@ async function buildPermissionIndex(
   });
 
   if (!member?.roleId) {
-    return { index, fullAccess: false };
+    return { index, fullAccess: false, mobileOnly: false };
   }
 
   const role = await rolesCol.findOne({ _id: member.roleId as ObjectId });
   if (!role) {
-    return { index, fullAccess: false };
+    return { index, fullAccess: false, mobileOnly: false };
   }
 
-  // Admin/owner roles get full access
-  const nameLower = ((role.nameLower as string) || '').toLowerCase();
-  if (role.isAdmin === true || nameLower === 'admin' || nameLower === 'owner') {
+  const roleMobileOnly = role.mobileOnly === true;
+
+  // Admin roles get full access
+  if (role.isAdmin === true) {
     index.build({ v: 2, forms: ['*'], m: ['*'], sm: [] });
-    return { index, fullAccess: true };
+    return { index, fullAccess: true, mobileOnly: false };
   }
 
   const permissions = role.permissions;
   if (isSparsePermissions(permissions)) {
     if (isWildcardPermissions(permissions as SparsePermissions)) {
       index.build({ v: 2, forms: ['*'], m: ['*'], sm: [] });
-      return { index, fullAccess: true };
+      return { index, fullAccess: true, mobileOnly: roleMobileOnly };
     }
     index.build(permissions as SparsePermissions);
   }
 
-  return { index, fullAccess: false };
+  return { index, fullAccess: false, mobileOnly: roleMobileOnly };
 }
 
 /**
@@ -97,11 +99,12 @@ export async function getFormPermissionLevels(
   tenantId: string,
   formId: string,
 ): Promise<FormPermissionLevels> {
-  const { index, fullAccess } = await buildPermissionIndex(userId, tenantId);
+  const { index, fullAccess, mobileOnly } = await buildPermissionIndex(userId, tenantId);
 
   if (fullAccess) {
     return {
       fullAccess: true,
+      mobileOnly,
       view: 'ALL',
       create: true,
       inspect: 'ALL',
@@ -113,6 +116,7 @@ export async function getFormPermissionLevels(
 
   return {
     fullAccess: false,
+    mobileOnly,
     view: index.getViewLevel(formId),
     create: index.getCreatePermission(formId),
     inspect: index.getInspectLevel(formId),

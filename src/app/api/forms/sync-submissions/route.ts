@@ -12,7 +12,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { MongoClient, ObjectId } from 'mongodb';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { requireAdmin } from '@/lib/authz';
 import {
   getFormsCollection,
   getInspectionSubmissionsCollection,
@@ -27,12 +27,11 @@ const FORM_BUILDER_DB_NAME =
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.id || !user.currentTenantId) {
-      return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await requireAdmin(req);
+    if (!auth.ok) return auth.res;
+    const user = auth.user;
 
-    const tenantId = user.currentTenantId;
+    const tenantId = user.currentTenantId!;
 
     // Get the organizationId for this tenant from org mappings
     const orgMappingsCol = await getFormBuilderOrgMappingsCollection();

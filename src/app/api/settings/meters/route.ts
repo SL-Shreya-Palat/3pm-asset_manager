@@ -6,16 +6,15 @@
  *       current meter, or are kept as reference on the service record only.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { requireAdmin } from '@/lib/authz';
 import { getMeterSettings, saveMeterSettings } from '@/controller/meter-settings';
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.currentTenantId) {
-      return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-    }
-    const data = await getMeterSettings(user.currentTenantId);
+    const auth = await requireAdmin(req);
+    if (!auth.ok) return auth.res;
+    const user = auth.user;
+    const data = await getMeterSettings(user.currentTenantId!);
     return NextResponse.json({ data, error: null });
   } catch (error) {
     console.error('[METER_SETTINGS_GET]', error);
@@ -25,10 +24,9 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.currentTenantId || !user.id) {
-      return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await requireAdmin(req);
+    if (!auth.ok) return auth.res;
+    const user = auth.user;
     const body = await req.json().catch(() => ({}));
     if (typeof body.serviceUpdatesCurrentMeter !== 'boolean') {
       return NextResponse.json(
@@ -36,7 +34,7 @@ export async function PUT(req: NextRequest) {
         { status: 400 },
       );
     }
-    const data = await saveMeterSettings(user.currentTenantId, user.id, {
+    const data = await saveMeterSettings(user.currentTenantId!, user.id, {
       serviceUpdatesCurrentMeter: body.serviceUpdatesCurrentMeter,
     });
     return NextResponse.json({ data, error: null });

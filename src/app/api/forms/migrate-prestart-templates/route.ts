@@ -9,15 +9,17 @@
  *
  * Safe to call repeatedly — tenants already at the current version are
  * skipped automatically.
+ *
+ * SECURITY: This is a cross-tenant operation — gated behind CRON_SECRET,
+ * never a normal user session.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
 import { migrateAllTenantPrestartForms } from '@/controller/seeding';
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.id || !user.email) {
+    const secret = process.env.CRON_SECRET;
+    if (!secret || req.headers.get('authorization') !== `Bearer ${secret}`) {
       return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
     }
 

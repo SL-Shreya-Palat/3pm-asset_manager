@@ -3,17 +3,16 @@
  * POST /api/faults -- Create a new fault
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { getAllFaults, createFault } from '@/controller/faults';
-import { getFormPermissionLevels } from '@/lib/server-permissions';
 
 const FORM_ID = 'maintenance.faults.fault';
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, FORM_ID, 'view');
+  if (!auth.ok) return auth.res;
+  const { user, scope } = auth.ctx;
+  const createdBy = scope === 'OWN' ? user.id : undefined;
 
   const { searchParams } = request.nextUrl;
   const page = parseInt(searchParams.get('page') || '1', 10);
@@ -27,25 +26,20 @@ export async function GET(request: NextRequest) {
   const assetId = searchParams.get('assetId') || undefined;
   const showArchived = searchParams.get('showArchived') === 'true';
 
-  // Check if user has "OWN" view level — scope results to their records only
-  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
-  const createdBy = perms.view === 'OWN' ? user.id : undefined;
-
-  const result = await getAllFaults(user.currentTenantId, {
+  const result = await getAllFaults(user.currentTenantId!, {
     page, limit, search, status, category, priority, severity, teamId, assetId, showArchived, createdBy,
   });
   return NextResponse.json({ data: result, error: null });
 }
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, FORM_ID, 'create');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const body = await request.json();
-    const result = await createFault(user.currentTenantId, user.id, body);
+    const result = await createFault(user.currentTenantId!, user.id, body);
 
     if (result.error) {
       return NextResponse.json({ data: null, error: result.error }, { status: 400 });

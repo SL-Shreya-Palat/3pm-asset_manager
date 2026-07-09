@@ -187,7 +187,7 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
 
   const fetchAssetTypes = useCallback(async () => {
     try {
-      const res = await axios.get('/api/asset-types', { withCredentials: true });
+      const res = await axios.get('/api/inventory-settings/asset-types', { withCredentials: true });
       setAssetTypes(res.data.data || []);
     } catch {
       // Silently fail
@@ -266,7 +266,7 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
 
     // Auto-create asset type
     try {
-      const res = await axios.post('/api/asset-types', { name: vehicleTypeName }, { withCredentials: true });
+      const res = await axios.post('/api/inventory-settings/asset-types', { name: vehicleTypeName }, { withCredentials: true });
       const created = res.data.data;
       if (created?.id) {
         // Refresh list so it shows in the dropdown

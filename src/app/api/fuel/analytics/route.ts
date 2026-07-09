@@ -2,21 +2,20 @@
  * GET /api/fuel/analytics -- Get fuel analytics/trends/summary
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { getFuelAnalytics } from '@/controller/fuel';
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, 'fuel.fuel.fuelEntry', 'view');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   const { searchParams } = request.nextUrl;
   const assetId = searchParams.get('assetId') || undefined;
   const startDate = searchParams.get('startDate') || undefined;
   const endDate = searchParams.get('endDate') || undefined;
 
-  const result = await getFuelAnalytics(user.currentTenantId, {
+  const result = await getFuelAnalytics(user.currentTenantId!, {
     assetId,
     startDate,
     endDate,

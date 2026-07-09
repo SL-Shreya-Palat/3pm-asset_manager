@@ -28,7 +28,6 @@ interface EndpointConfig {
   url: string;
   category: 'asset' | 'driver' | 'vendor';
   requiredModule: string;
-  adminOnly?: boolean;
   toResult: (item: Record<string, string>) => SearchResult;
 }
 
@@ -60,8 +59,7 @@ const ENDPOINTS: EndpointConfig[] = [
   {
     url: '/api/vendors',
     category: 'vendor',
-    requiredModule: 'assets', // placeholder — gated by adminOnly
-    adminOnly: true,
+    requiredModule: 'vendors',
     toResult: (item) => ({
       id: `vendor-${item.id}`,
       label: item.name,
@@ -80,7 +78,7 @@ export function useGlobalSearch(debounceMs = 300): UseGlobalSearchReturn {
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const abortRef = useRef<AbortController | null>(null);
-  const { hasFullAccess, isMobileOnly, canAccessModule } = useRoleAccess();
+  const { isMobileOnly, canAccessModule, canAccessSubModule } = useRoleAccess();
 
   // Debounce
   useEffect(() => {
@@ -114,7 +112,9 @@ export function useGlobalSearch(debounceMs = 300): UseGlobalSearchReturn {
       const navMatches: SearchResult[] = getFlatNavItems()
         .filter((item) => {
           if (!item.label.toLowerCase().includes(q)) return false;
-          if (item.adminOnly) return hasFullAccess;
+          if (item.requiredSubModule && item.requiredModule) {
+            return canAccessSubModule(item.requiredModule, item.requiredSubModule);
+          }
           if (item.requiredModule) return canAccessModule(item.requiredModule);
           return !isMobileOnly;
         })
@@ -129,7 +129,6 @@ export function useGlobalSearch(debounceMs = 300): UseGlobalSearchReturn {
 
       // Filter endpoints by role
       const accessibleEndpoints = ENDPOINTS.filter((ep) => {
-        if (ep.adminOnly) return hasFullAccess;
         return canAccessModule(ep.requiredModule);
       });
 
@@ -171,7 +170,7 @@ export function useGlobalSearch(debounceMs = 300): UseGlobalSearchReturn {
     return () => {
       abortRef.current?.abort();
     };
-  }, [debouncedQuery, hasFullAccess, isMobileOnly, canAccessModule]);
+  }, [debouncedQuery, isMobileOnly, canAccessModule, canAccessSubModule]);
 
   return { query, setQuery, results, loading, isOpen, setIsOpen, activeIndex, setActiveIndex };
 }

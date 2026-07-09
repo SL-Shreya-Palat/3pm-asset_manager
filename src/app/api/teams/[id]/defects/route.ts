@@ -3,16 +3,15 @@
  * DELETE /api/teams/:id/defects — Remove a defect from a team
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { addTeamToDefects, removeTeamFromDefect } from '@/controller/defects';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, 'people.teams.team', 'view');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const { id: teamId } = await context.params;
@@ -23,7 +22,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ data: null, error: 'defectIds is required' }, { status: 400 });
     }
 
-    const count = await addTeamToDefects(user.currentTenantId, user.id, teamId, defectIds);
+    const count = await addTeamToDefects(user.currentTenantId!, user.id, teamId, defectIds);
     return NextResponse.json({ data: { modified: count }, error: null });
   } catch {
     return NextResponse.json({ data: null, error: 'Invalid request body' }, { status: 400 });
@@ -31,10 +30,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, 'people.teams.team', 'view');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const { id: teamId } = await context.params;
@@ -45,7 +43,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ data: null, error: 'defectId query param is required' }, { status: 400 });
     }
 
-    const removed = await removeTeamFromDefect(user.currentTenantId, user.id, teamId, defectId);
+    const removed = await removeTeamFromDefect(user.currentTenantId!, user.id, teamId, defectId);
     if (!removed) {
       return NextResponse.json({ data: null, error: 'Defect not found' }, { status: 404 });
     }

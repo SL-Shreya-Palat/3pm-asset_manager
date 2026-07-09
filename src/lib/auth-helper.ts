@@ -497,9 +497,9 @@ export async function getUserRoleForTenant(
     if (!role) return null;
 
     const nameLower = (role.nameLower as string) || '';
-    const isAdmin = role.isAdmin === true || nameLower === 'admin' || nameLower === 'owner';
-    const isManager = role.isManager === true || nameLower === 'manager';
-    const isMechanic = role.isMechanic === true || nameLower === 'mechanic';
+    const isAdmin = role.isAdmin === true;
+    const isManager = role.isManager === true;
+    const isMechanic = role.isMechanic === true;
     const scopeAll =
       typeof role.permissions === 'object' &&
       role.permissions !== null &&
