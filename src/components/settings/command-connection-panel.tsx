@@ -143,6 +143,7 @@ export function CommandConnectionPanel() {
         let cursor: number | null = 1;
         let created = 0;
         let processed = 0;
+        let tasksCreated = 0;
         const errors: string[] = [];
         // Loop batches until this entity reports done.
         while (cursor !== null) {
@@ -159,6 +160,7 @@ export function CommandConnectionPanel() {
             data: {
               processed?: number;
               created?: number;
+              tasksCreated?: number;
               errors?: string[];
               nextCursor?: number | null;
               done?: boolean;
@@ -171,12 +173,13 @@ export function CommandConnectionPanel() {
           }
           processed += body.data.processed ?? 0;
           created += body.data.created ?? 0;
+          tasksCreated += body.data.tasksCreated ?? 0;
           if (Array.isArray(body.data.errors)) errors.push(...body.data.errors.slice(0, 3));
           cursor = body.data.done ? null : (body.data.nextCursor ?? null);
         }
         setHistoryProgress((prev) => ({
           ...prev,
-          [entity.key]: `${created} imported of ${processed} processed${errors.length ? ` — ${errors[0]}` : ''}`,
+          [entity.key]: `${created} imported of ${processed} processed${tasksCreated ? ` — ${tasksCreated} service tasks created` : ''}${errors.length ? ` — ${errors[0]}` : ''}`,
         }));
       }
     } catch {

@@ -18,7 +18,7 @@ import { getAssetServiceStatus } from '@/controller/service-plans';
 import { listServiceHistory } from '@/controller/service-history';
 import { listInspectionSubmissions } from '@/controller/inspection-submissions';
 import { getAllWorkOrders } from '@/controller/work-orders';
-import { getAllFaults } from '@/controller/faults';
+import { getAllDefects } from '@/controller/defects';
 
 type RouteContext = { params: Promise<{ commandAssetId: string }> };
 
@@ -53,13 +53,30 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const tenantId = user.currentTenantId;
   const assetId = asset._id.toString();
 
-  const [status, history, prestarts, workOrders, faults] = await Promise.all([
+  const [status, history, prestarts, workOrders, issues] = await Promise.all([
     getAssetServiceStatus(tenantId, assetId),
     listServiceHistory(tenantId, assetId, { limit: 50 }),
     listInspectionSubmissions(tenantId, { assetId, limit: 50 }),
     getAllWorkOrders(tenantId, { assetId, limit: 50 }),
-    getAllFaults(tenantId, { assetId, limit: 100 }),
+    // Faults AND defects live in one AM collection; `source:'fault'` = a manual
+    // fault, everything else = a defect (mostly pre-start raised). Command shows
+    // them TOGETHER under "Faults" with a per-type breakdown, so return the
+    // combined list normalized to one shape carrying its `type`.
+    getAllDefects(tenantId, { assetId, limit: 200 }),
   ]);
+
+  const faults = (issues.items as Array<Record<string, unknown>>).map((d) => ({
+    id: d.id as string,
+    type: d.source === 'fault' ? 'fault' : 'defect',
+    number: (d.defectNumber as string) ?? null,
+    title: (d.name as string) ?? null,
+    description: (d.comment as string) ?? null,
+    priority: (d.priority as string) ?? null,
+    severity: (d.severity as string) ?? null,
+    status: (d.status as string) ?? null,
+    reportedAt: (d.date as string) ?? (d.createdAt as string) ?? null,
+    workOrderNumber: (d.workOrderNumber as string) ?? null,
+  }));
 
   // Rollup across the plan's schedules (same shape as /api/assets/[id]/service-status).
   const summary = { overdue: 0, due: 0, upcoming: 0, planned: 0 };
@@ -92,7 +109,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       serviceHistory: history.items,
       prestarts: prestarts.items,
       workOrders: workOrders.items,
-      faults: faults.items,
+      faults,
     },
     error: null,
   });
