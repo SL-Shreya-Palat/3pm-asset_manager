@@ -146,6 +146,7 @@ export function ArchiveConfirmDialog({
           <Button
             type="button"
             variant={isDelete ? 'destructive' : isArchive ? 'secondary' : 'default'}
+            className={isArchive ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : undefined}
             onClick={handleConfirm}
             disabled={loading}
           >

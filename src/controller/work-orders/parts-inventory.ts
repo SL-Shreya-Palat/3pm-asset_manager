@@ -62,14 +62,15 @@ export async function resolveWorkOrderParts(
     const vendors = (doc.vendors as Array<{ unitCost: number }>) || [];
     // Imported Command stock: consumption belongs to Command's ledger, not the
     // local inventory — mark the line so the delta skips it and completion
-    // pushes a RECEIPTED_OUT to Command. Cost basis = Command's costPrice.
+    // pushes a RECEIPTED_OUT to Command. Command owns the cost basis, so the
+    // client-sent unitCost is ignored for these lines (a UI defaulting to 0
+    // must never become the ledger valuation).
     const isCommandStock = doc.source === 'command' && doc.commandStockId;
-    const unitCost =
-      agg.unitCost != null && agg.unitCost >= 0
+    const unitCost = isCommandStock
+      ? Number(doc.commandUnitCost ?? 0)
+      : agg.unitCost != null && agg.unitCost >= 0
         ? agg.unitCost
-        : isCommandStock
-          ? Number(doc.commandUnitCost ?? 0)
-          : vendors[0]?.unitCost ?? 0;
+        : vendors[0]?.unitCost ?? 0;
     const lineTotal = money(unitCost * agg.quantity);
     parts.push({
       partId: doc._id as ObjectId,
@@ -143,8 +144,8 @@ export async function resolveCommandStockParts(
         `Could not resolve Command stock item ${stockId} (${res.reason}${res.status ? ` ${res.status}` : ''})`,
       );
     }
-    const unitCost =
-      agg.unitCost != null && agg.unitCost >= 0 ? agg.unitCost : res.data.costPrice;
+    // Command owns the cost basis for its stock — never the client payload.
+    const unitCost = res.data.costPrice;
     const lineTotal = money(unitCost * agg.quantity);
     const prior = pushedBefore.get(stockId);
     // A line already pushed to Command must keep its pushed state and quantity —

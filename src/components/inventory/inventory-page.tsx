@@ -18,7 +18,7 @@ import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { Badge } from '@/components/ui/badge';
 import { SearchInput } from '@/components/ui/search-input';
 import { PageHeader } from '@/components/ui/page-header';
-import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
+import { DataTable, type DataTableColumn, type DataTableFilterDef } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
@@ -30,7 +30,7 @@ import { useRoleAccess } from '@/hooks/use-role-access';
 import { checkRecordOwnership } from '@/lib/rbac';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
-import { useDataTable } from '@/hooks/use-data-table';
+import { useDataTable, applyTableFilters } from '@/hooks/use-data-table';
 import { useConnection } from '@/hooks/use-connection';
 import { SourceBadge, CommandManagedBanner } from '@/components/command/source-badge';
 import { GenerateBarcodeDialog } from '@/components/assets/generate-barcode-dialog';
@@ -98,6 +98,7 @@ export function InventoryPage() {
   const {
     hiddenColumnKeys, setHiddenColumnKeys,
     density, setDensity,
+    filters, setFilter, clearFilters,
   } = useDataTable();
 
   // Panel state
@@ -374,6 +375,19 @@ export function InventoryPage() {
   // Hide the Source column when standalone (every row would just read "Local").
   const columns = connected ? partColumns : partColumns.filter((c) => c.key !== 'source');
 
+  // Filters (Category) — reuses the shared toolbar Filters control.
+  const partFilterDefs: DataTableFilterDef[] = useMemo(() => {
+    const categoryOptions = Object.entries(categoryMap).map(([id, name]) => ({ label: name, value: id }));
+    return categoryOptions.length > 0
+      ? [{ columnKey: 'categoryId', label: 'Category', type: 'select' as const, options: categoryOptions }]
+      : [];
+  }, [categoryMap]);
+
+  const filteredParts = useMemo(
+    () => applyTableFilters(parts, filters, partFilterDefs),
+    [parts, filters, partFilterDefs],
+  );
+
   return (
     <div className="relative flex h-full">
       {/* Main content */}
@@ -401,7 +415,11 @@ export function InventoryPage() {
             onHiddenColumnKeysChange={setHiddenColumnKeys}
             density={density}
             onDensityChange={setDensity}
-            actions={
+            filterDefs={partFilterDefs}
+            filters={filters}
+            onFilterChange={setFilter}
+            onFiltersClear={clearFilters}
+            afterControls={
               <Button
                 variant="outline"
                 size="sm"
@@ -424,7 +442,7 @@ export function InventoryPage() {
           />
           <DataTable<PartRow>
             columns={columns}
-            data={parts}
+            data={filteredParts}
             pagination={pagination}
             loading={loading}
             rowsPerPage={rowsPerPage}

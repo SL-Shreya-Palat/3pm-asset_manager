@@ -9,13 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 import type { PartRow, LookupOption } from './types';
 
@@ -383,22 +377,18 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
               {/* Measurement Unit */}
               <div>
                 <Label>Measurement unit</Label>
-                <Select value={measurementUnitId} onValueChange={setMeasurementUnitId}>
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder="Select unit" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {measurementUnits.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">No data yet</div>
-                    ) : (
-                      measurementUnits.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.name}{u.symbol ? ` (${u.symbol})` : ''}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  className="mt-1.5"
+                  options={measurementUnits.map((u) => ({
+                    label: `${u.name}${u.symbol ? ` (${u.symbol})` : ''}`,
+                    value: u.id,
+                  }))}
+                  value={measurementUnitId || null}
+                  onValueChange={(val) => setMeasurementUnitId(val || '')}
+                  placeholder="Select unit"
+                  searchPlaceholder="Search units..."
+                  emptyMessage="No data yet"
+                />
                 <p className="text-xs text-muted-foreground mt-1">
                   Can&apos;t find the measurement unit? You can add it in{' '}
                   <button
@@ -414,20 +404,15 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
               {/* Category */}
               <div>
                 <Label>Category</Label>
-                <Select value={categoryId} onValueChange={setCategoryId}>
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">No data yet</div>
-                    ) : (
-                      categories.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  className="mt-1.5"
+                  options={categories.map((c) => ({ label: c.name, value: c.id }))}
+                  value={categoryId || null}
+                  onValueChange={(val) => setCategoryId(val || '')}
+                  placeholder="Select category"
+                  searchPlaceholder="Search categories..."
+                  emptyMessage="No data yet"
+                />
                 <p className="text-xs text-muted-foreground mt-1">
                   Can&apos;t find the category? You can add it in{' '}
                   <button
@@ -462,20 +447,15 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
                 <div key={idx} className="flex items-end gap-3">
                   <div className="flex-1">
                     <Label className="text-xs">Vendor</Label>
-                    <Select value={line.vendorId} onValueChange={(val) => updateVendorLine(idx, 'vendorId', val)}>
-                      <SelectTrigger className="mt-1">
-                        <SelectValue placeholder="Select vendor" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {vendors.length === 0 ? (
-                          <div className="px-3 py-2 text-sm text-muted-foreground">No data yet</div>
-                        ) : (
-                          vendors.map((v) => (
-                            <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
+                    <SearchableSelect
+                      className="mt-1"
+                      options={vendors.map((v) => ({ label: v.name, value: v.id }))}
+                      value={line.vendorId || null}
+                      onValueChange={(val) => updateVendorLine(idx, 'vendorId', val || '')}
+                      placeholder="Select vendor"
+                      searchPlaceholder="Search vendors..."
+                      emptyMessage="No data yet"
+                    />
                   </div>
                   <div className="w-[120px]">
                     <Label className="text-xs">Unit Cost ($)</Label>
@@ -517,20 +497,15 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
                 <div key={idx} className="flex items-end gap-3">
                   <div className="flex-1">
                     <Label className="text-xs">Location</Label>
-                    <Select value={line.locationId} onValueChange={(val) => updateLocationLine(idx, 'locationId', val)}>
-                      <SelectTrigger className="mt-1">
-                        <SelectValue placeholder="Select location" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {locations.length === 0 ? (
-                          <div className="px-3 py-2 text-sm text-muted-foreground">No data yet</div>
-                        ) : (
-                          locations.map((l) => (
-                            <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
+                    <SearchableSelect
+                      className="mt-1"
+                      options={locations.map((l) => ({ label: l.name, value: l.id }))}
+                      value={line.locationId || null}
+                      onValueChange={(val) => updateLocationLine(idx, 'locationId', val || '')}
+                      placeholder="Select location"
+                      searchPlaceholder="Search locations..."
+                      emptyMessage="No data yet"
+                    />
                   </div>
                   <div className="w-[120px]">
                     <Label className="text-xs">Quantity</Label>

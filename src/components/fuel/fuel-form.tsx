@@ -234,20 +234,16 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
                 error={fieldErrors.assetId}
                 className="mt-0"
               />
-              <div>
-                <Label htmlFor="driverId">Driver</Label>
-                <Select value={driverId} onValueChange={setDriverId}>
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder="Select driver (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No driver</SelectItem>
-                    {drivers.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              <SearchableSelect
+                options={drivers.map((d) => ({ label: d.name, value: d.id }))}
+                value={driverId || null}
+                onValueChange={(v) => setDriverId(v || '')}
+                placeholder="Select driver (optional)"
+                searchPlaceholder="Search drivers..."
+                emptyMessage="No drivers found"
+                label="Driver"
+                className="mt-0"
+              />
             </div>
           </div>
 

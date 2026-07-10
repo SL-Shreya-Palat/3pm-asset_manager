@@ -637,13 +637,46 @@ export async function completeWorkOrder(
   const woOid = ObjectId.createFromHexString(woId);
   const userOid = ObjectId.createFromHexString(userId);
 
-  const wo = await col.findOne({ _id: woOid, tenantId: tenantOid, isArchived: { $ne: true } });
-  if (!wo) return { data: null, error: 'Work order not found' };
-  if (wo.isCompleted) {
-    return { data: serializeWorkOrder(wo as Record<string, unknown>), error: null };
+  const now = new Date();
+
+  // Atomic completion claim — the Command stock OUT below is non-idempotent, so
+  // two racing completions (double-click, two tabs) must be stopped BEFORE any
+  // push, not discovered after. A crashed run's stale lock expires after 10
+  // minutes; sourceRef-keyed pushes make the retry safe even then.
+  const lockExpiry = new Date(now.getTime() - 10 * 60 * 1000);
+  const wo = await col.findOneAndUpdate(
+    {
+      _id: woOid,
+      tenantId: tenantOid,
+      isArchived: { $ne: true },
+      isCompleted: { $ne: true },
+      $or: [
+        { completionLockAt: { $exists: false } },
+        { completionLockAt: null },
+        { completionLockAt: { $lt: lockExpiry } },
+      ],
+    },
+    { $set: { completionLockAt: now } },
+    { returnDocument: 'after' },
+  );
+  if (!wo) {
+    const existing = await col.findOne({ _id: woOid, tenantId: tenantOid, isArchived: { $ne: true } });
+    if (!existing) return { data: null, error: 'Work order not found' };
+    if (existing.isCompleted) {
+      // Idempotent re-complete — already done is success, not an error.
+      return { data: serializeWorkOrder(existing as Record<string, unknown>), error: null };
+    }
+    return { data: null, error: 'This work order is already being completed by someone else — try again shortly.' };
   }
 
-  const now = new Date();
+  // Every early exit must release the claim so a fixed-up retry isn't stuck
+  // behind the 10-minute expiry.
+  const fail = async (error: string) => {
+    await col
+      .updateOne({ _id: woOid, tenantId: tenantOid }, { $set: { completionLockAt: null } })
+      .catch(() => {});
+    return { data: null as null, error };
+  };
 
   // 0) Strict lockstep — push unpushed Command stock lines FIRST (same contract
   //    as the dispatch portal's move completion): pre-flight on-hand, push the
@@ -657,11 +690,9 @@ export async function completeWorkOrder(
   if (pendingCommandParts.length > 0) {
     const authTenantId = await getEnabledConnectionAuthTenantId(tenantOid);
     if (!authTenantId) {
-      return {
-        data: null,
-        error:
-          'This work order consumes Command stock, but the Command connection is off. Reconnect (Settings → Connections → Command) and try again.',
-      };
+      return fail(
+        'This work order consumes Command stock, but the Command connection is off. Reconnect (Settings → Connections → Command) and try again.',
+      );
     }
 
     // Attribute the Command stock transaction to the completing user.
