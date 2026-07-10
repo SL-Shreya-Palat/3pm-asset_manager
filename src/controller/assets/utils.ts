@@ -144,7 +144,6 @@ export function serializeAsset(doc: Record<string, unknown>): Record<string, unk
     color: doc.color || '',
     tireSize: doc.tireSize || '',
     notes: doc.notes || '',
-    assetSubtype: doc.assetSubtype || '',
     teamIds: Array.isArray(doc.teamIds) ? doc.teamIds.map((id: { toString: () => string }) => id.toString()) : [],
     currentOdometer: doc.currentOdometer ?? null,
     currentEngineHours: doc.currentEngineHours ?? null,

@@ -591,8 +591,8 @@ export function AssetTable() {
     },
     {
       key: 'vin',
-      header: 'VIN',
-      label: 'VIN',
+      header: 'Rego Number',
+      label: 'Rego Number',
       render: (asset) => (
         <span className="text-muted-foreground">{asset.vin || '—'}</span>
       ),
@@ -645,14 +645,6 @@ export function AssetTable() {
         <span className="text-muted-foreground">
           {asset.currentEngineHours != null ? asset.currentEngineHours.toLocaleString() : '—'}
         </span>
-      ),
-    },
-    {
-      key: 'assetSubtype',
-      header: 'Subtype',
-      label: 'Asset Subtype',
-      render: (asset) => (
-        <span className="text-muted-foreground">{asset.assetSubtype || '—'}</span>
       ),
     },
     {

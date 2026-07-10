@@ -67,7 +67,6 @@ export function serializeDriver(doc: Record<string, unknown>): Record<string, un
     dateOfBirth: doc.dateOfBirth ? (doc.dateOfBirth as Date).toISOString() : null,
 
     employeeNumber: doc.employeeNumber || undefined,
-    jobPosition: doc.jobPosition || undefined,
     rateCurrency: doc.rateCurrency || undefined,
     ratePerUnit: doc.ratePerUnit ?? undefined,
     otherNotes: doc.otherNotes || undefined,

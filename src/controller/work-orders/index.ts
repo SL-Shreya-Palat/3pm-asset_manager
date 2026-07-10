@@ -9,6 +9,7 @@ import {
 } from '@/lib/mongodb';
 import type { CreateWorkOrderInput, UpdateWorkOrderInput, WOPart } from './types';
 import { validateCreateWOInput, serializeWorkOrder, generateWONumber } from './utils';
+import { formatDate } from '@/lib/utils';
 import {
   resolveWorkOrderParts,
   resolveCommandStockParts,
@@ -317,7 +318,7 @@ export async function createWorkOrder(
     await notifyUser(tenantId, assigneeId, {
       type: 'work_order_assigned',
       title: `Work order ${workOrderNumber} assigned to you`,
-      body: `${assetName || 'Asset'} — ${statusLabel || 'New'}${input.dueDate ? `, due ${new Date(input.dueDate).toLocaleDateString()}` : ''}`,
+      body: `${assetName || 'Asset'} — ${statusLabel || 'New'}${input.dueDate ? `, due ${formatDate(input.dueDate)}` : ''}`,
       link: '/maintenance/work-orders',
       entityType: 'workOrder',
       entityId: result.insertedId.toString(),
@@ -330,7 +331,7 @@ export async function createWorkOrder(
     {
       type: 'work_order_created',
       title: `Work order ${workOrderNumber} created`,
-      body: `${assetName || 'Asset'}${statusLabel ? ` — ${statusLabel}` : ''}${input.dueDate ? `, due ${new Date(input.dueDate).toLocaleDateString()}` : ''}`,
+      body: `${assetName || 'Asset'}${statusLabel ? ` — ${statusLabel}` : ''}${input.dueDate ? `, due ${formatDate(input.dueDate)}` : ''}`,
       link: '/maintenance/work-orders',
       entityType: 'workOrder',
       entityId: result.insertedId.toString(),

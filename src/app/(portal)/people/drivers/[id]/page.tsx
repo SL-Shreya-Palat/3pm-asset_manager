@@ -28,6 +28,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
 import { DetailCard, DetailField } from '@/components/ui/detail-field';
+import { formatDate } from '@/lib/utils';
 import {
   Dialog,
   DialogContent,
@@ -207,15 +208,14 @@ export default function DriverDetailPage() {
   const mobileNumber = String(driver.mobileNumber || '');
   const homePhone = String(driver.homePhone || '');
   const workPhone = String(driver.workPhone || '');
-  const dateOfBirth = driver.dateOfBirth ? new Date(String(driver.dateOfBirth)).toLocaleDateString() : '';
+  const dateOfBirth = driver.dateOfBirth ? formatDate(String(driver.dateOfBirth)) : '';
   const employeeNumber = String(driver.employeeNumber || '');
-  const jobPosition = String(driver.jobPosition || '');
   const ratePerUnit = driver.ratePerUnit != null ? String(driver.ratePerUnit) : '';
   const driverLicense = String(driver.driverLicense || '');
   const licenseClass = String(driver.licenseClass || '');
   const licenseNumber = String(driver.licenseNumber || '');
   const healthCertificate = String(driver.healthCertificate || '');
-  const createdAt = driver.createdAt ? new Date(String(driver.createdAt)).toLocaleDateString() : '';
+  const createdAt = driver.createdAt ? formatDate(String(driver.createdAt)) : '';
   const createdBy = driver.createdBy ? String(driver.createdBy) : null;
 
   const isUnfit = driver.fitnessStatus === 'unfit';
@@ -256,8 +256,6 @@ export default function DriverDetailPage() {
             <div className="min-w-0">
               <h1 className="text-2xl font-semibold tracking-tight text-foreground">{fullName}</h1>
               <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground flex-wrap">
-                {jobPosition && <span>{jobPosition}</span>}
-                {jobPosition && employeeNumber && <span>·</span>}
                 {employeeNumber && <span className="font-mono">#{employeeNumber}</span>}
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -382,7 +380,6 @@ export default function DriverDetailPage() {
           {/* Employment Details */}
           <DetailCard icon={Briefcase} title="Employment Details">
             <DetailField label="Employee Number" value={employeeNumber} />
-            <DetailField label="Job Position" value={jobPosition} />
             <DetailField label="Rate per mi/hr" value={ratePerUnit} />
             <DetailField label="Created" value={createdAt} icon={Calendar} />
           </DetailCard>

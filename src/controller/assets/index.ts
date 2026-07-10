@@ -398,7 +398,6 @@ export async function createAsset(
     notes: input.notes?.trim() || undefined,
 
     // Other details
-    assetSubtype: input.assetSubtype?.trim() || undefined,
     teamIds: input.teamIds?.map((id) => ObjectId.createFromHexString(id)) || [],
     currentOdometer: input.currentOdometer ?? undefined,
     currentEngineHours: input.currentEngineHours ?? undefined,
@@ -493,8 +492,6 @@ export async function updateAsset(
   if (input.assetNumber !== undefined)
     $set.assetNumber = input.assetNumber.trim();
   if (input.status !== undefined) $set.status = input.status;
-  if (input.assetSubtype !== undefined)
-    $set.assetSubtype = input.assetSubtype.trim();
   if (input.vin !== undefined) $set.vin = input.vin.trim();
   if (input.licensePlate !== undefined)
     $set.licensePlate = input.licensePlate.trim();

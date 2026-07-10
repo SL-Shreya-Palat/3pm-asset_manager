@@ -18,7 +18,6 @@ export default function NewAssetPage() {
         model: searchParams.get('model') || '',
         year: searchParams.get('year') ? Number(searchParams.get('year')) : undefined,
         vehicleType: searchParams.get('vehicleType') || '',
-        assetSubtype: searchParams.get('bodyClass') || '',
         color: searchParams.get('color') || '',
       }
     : undefined;

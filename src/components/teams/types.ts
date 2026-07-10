@@ -25,7 +25,6 @@ export interface AssetRow {
   color?: string;
   tireSize?: string;
   notes?: string;
-  assetSubtype?: string;
   estimatedCost?: number;
   currencyCode?: string;
   subscriptionType?: string;

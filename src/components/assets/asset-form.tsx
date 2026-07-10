@@ -73,7 +73,6 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
   const [assetTypeId, setAssetTypeId] = useState('');
   const [lastServiceDate, setLastServiceDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [lastServiceMileage, setLastServiceMileage] = useState('');
-  const [assetSubtype, setAssetSubtype] = useState('');
   const [lastServiceEngineHours, setLastServiceEngineHours] = useState('');
   const [hubometer, setHubometer] = useState('');
 
@@ -149,7 +148,6 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
       setLastServiceMileage(
         initialData.lastServiceMileage != null ? String(initialData.lastServiceMileage) : '',
       );
-      setAssetSubtype((initialData.assetSubtype as string) || '');
       setLastServiceEngineHours(
         initialData.lastServiceEngineHours != null
           ? String(initialData.lastServiceEngineHours)
@@ -299,7 +297,6 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
       if (data.make) setMake(data.make);
       if (data.model) setModel(data.model);
       if (data.year) setYear(data.year);
-      if (data.bodyClass) setAssetSubtype(data.bodyClass);
       if (data.color) setColor(data.color);
       if (data.licensePlate) setLicensePlate(data.licensePlate);
       setVinDecoded(true);
@@ -382,7 +379,6 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
       currencyCode: currencyCode || 'USD',
       currentEngineHours: engineHours ? parseFloat(engineHours) : undefined,
       assetTypeId: assetTypeId || undefined,
-      assetSubtype: assetSubtype.trim() || undefined,
       lastServiceDate: lastServiceDate || undefined,
       lastServiceMileage: lastServiceMileage ? parseFloat(lastServiceMileage) : undefined,
       lastServiceEngineHours: lastServiceEngineHours
@@ -637,6 +633,28 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
                   />
                 </div>
               </div>
+              <div className="col-span-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="assetType">Asset Type</Label>
+                  <button
+                    type="button"
+                    onClick={() => setAssetTypeDialogOpen(true)}
+                    className="text-xs text-primary hover:underline flex items-center gap-1"
+                  >
+                    <Settings className="h-3 w-3" />
+                    Edit Asset Types
+                  </button>
+                </div>
+                <SearchableSelect
+                  className="mt-1.5"
+                  options={assetTypes.map((t) => ({ label: t.name, value: t.id }))}
+                  value={assetTypeId || null}
+                  onValueChange={(val) => setAssetTypeId(val || '')}
+                  placeholder="Select type"
+                  searchPlaceholder="Search asset types..."
+                  emptyMessage="No asset types found"
+                />
+              </div>
               <div>
                 <Label htmlFor="estimatedCost">Estimated Cost</Label>
                 <div className="flex gap-2 mt-1.5">
@@ -665,39 +683,7 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
                 </div>
               </div>
               <div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="assetType">Asset Type</Label>
-                  <button
-                    type="button"
-                    onClick={() => setAssetTypeDialogOpen(true)}
-                    className="text-xs text-primary hover:underline flex items-center gap-1"
-                  >
-                    <Settings className="h-3 w-3" />
-                    Edit Asset Types
-                  </button>
-                </div>
-                <SearchableSelect
-                  className="mt-1.5"
-                  options={assetTypes.map((t) => ({ label: t.name, value: t.id }))}
-                  value={assetTypeId || null}
-                  onValueChange={(val) => setAssetTypeId(val || '')}
-                  placeholder="Select type"
-                  searchPlaceholder="Search asset types..."
-                  emptyMessage="No asset types found"
-                />
-              </div>
-              <div>
                 <DateField id="lastServiceDate" label="Last Service Date" value={lastServiceDate} onChange={setLastServiceDate} placeholder="Select date" />
-              </div>
-              <div>
-                <Label htmlFor="assetSubtype">Asset Subtype</Label>
-                <Input
-                  id="assetSubtype"
-                  value={assetSubtype}
-                  onChange={(e) => setAssetSubtype(e.target.value)}
-                  placeholder="e.g. Sedan, Pickup, Excavator"
-                  className="mt-1.5"
-                />
               </div>
               <div>
                 <Label htmlFor="lastServiceMileage">Last Service Odometer (km)</Label>

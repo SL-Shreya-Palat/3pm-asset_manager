@@ -33,6 +33,7 @@ import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
 import { useDataTable } from '@/hooks/use-data-table';
 import { useConnection } from '@/hooks/use-connection';
+import { formatDate } from '@/lib/utils';
 import { SourceBadge, CommandManagedBanner } from '@/components/command/source-badge';
 import { Spinner } from '@/components/ui/spinner';
 import { useAuth } from '@/hooks/useAuth';
@@ -43,6 +44,24 @@ import { Permissions } from '@/consts/permissions';
 import type { DriverRow, TeamOption, Pagination } from './types';
 
 const DRIVER_FORM_ID = 'people.drivers.driver';
+
+/**
+ * Secondary driver fields — available as toggleable columns (so every field on
+ * the driver form is reachable from the Columns control) but hidden by default
+ * to keep the table readable.
+ */
+const DEFAULT_HIDDEN_DRIVER_COLUMNS = [
+  'dateOfBirth',
+  'homePhone',
+  'workPhone',
+  'employeeNumber',
+  'driverLicense',
+  'licenseClass',
+  'ratePerUnit',
+  'healthCertificate',
+  'notes',
+  'otherNotes',
+];
 
 export function DriversPage() {
   const router = useRouter();
@@ -64,11 +83,11 @@ export function DriversPage() {
   // Connected to Command → drivers are mastered there (read-only, auto-synced).
   const { connected } = useConnection();
 
-  // Table features
+  // Table features. Secondary form fields start hidden but stay toggleable.
   const {
     hiddenColumnKeys, setHiddenColumnKeys,
     density, setDensity,
-  } = useDataTable();
+  } = useDataTable({ initialHiddenColumnKeys: DEFAULT_HIDDEN_DRIVER_COLUMNS });
 
   // Teams for display
   const [teams, setTeams] = useState<TeamOption[]>([]);
@@ -269,6 +288,93 @@ export function DriversPage() {
       sortable: true,
       render: (driver) => (
         <span className="text-muted-foreground">{driver.licenseNumber || '—'}</span>
+      ),
+    },
+    {
+      key: 'dateOfBirth',
+      header: 'Date of Birth',
+      label: 'Date of Birth',
+      sortable: true,
+      sortValue: (driver) => (driver.dateOfBirth ? new Date(driver.dateOfBirth).getTime() : null),
+      render: (driver) => (
+        <span className="text-muted-foreground text-xs">{driver.dateOfBirth ? formatDate(driver.dateOfBirth) : '—'}</span>
+      ),
+    },
+    {
+      key: 'homePhone',
+      header: 'Home Phone',
+      label: 'Home Phone',
+      render: (driver) => (
+        <span className="text-muted-foreground">{driver.homePhone || '—'}</span>
+      ),
+    },
+    {
+      key: 'workPhone',
+      header: 'Work Phone',
+      label: 'Work Phone',
+      render: (driver) => (
+        <span className="text-muted-foreground">{driver.workPhone || '—'}</span>
+      ),
+    },
+    {
+      key: 'employeeNumber',
+      header: 'Employee #',
+      label: 'Employee Number',
+      sortable: true,
+      render: (driver) => (
+        <span className="text-muted-foreground font-mono text-xs">{driver.employeeNumber || '—'}</span>
+      ),
+    },
+    {
+      key: 'driverLicense',
+      header: 'Driver License',
+      label: 'Driver License',
+      render: (driver) => (
+        <span className="text-muted-foreground">{driver.driverLicense || '—'}</span>
+      ),
+    },
+    {
+      key: 'licenseClass',
+      header: 'License Class',
+      label: 'License Class',
+      render: (driver) => (
+        <span className="text-muted-foreground">{driver.licenseClass || '—'}</span>
+      ),
+    },
+    {
+      key: 'ratePerUnit',
+      header: 'Rate',
+      label: 'Rate per mi/hr',
+      sortable: true,
+      sortValue: (driver) => driver.ratePerUnit ?? null,
+      render: (driver) => (
+        <span className="text-muted-foreground">
+          {driver.ratePerUnit != null ? `${driver.rateCurrency || ''} ${driver.ratePerUnit}`.trim() : '—'}
+        </span>
+      ),
+    },
+    {
+      key: 'healthCertificate',
+      header: 'Health Certificate',
+      label: 'Health Certificate',
+      render: (driver) => (
+        <span className="text-muted-foreground">{driver.healthCertificate || '—'}</span>
+      ),
+    },
+    {
+      key: 'notes',
+      header: 'Notes',
+      label: 'Notes',
+      render: (driver) => (
+        <span className="text-muted-foreground truncate max-w-[200px] inline-block">{driver.notes || '—'}</span>
+      ),
+    },
+    {
+      key: 'otherNotes',
+      header: 'Other Notes',
+      label: 'Other Notes',
+      render: (driver) => (
+        <span className="text-muted-foreground truncate max-w-[200px] inline-block">{driver.otherNotes || '—'}</span>
       ),
     },
     {

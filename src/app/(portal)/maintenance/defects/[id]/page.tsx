@@ -23,7 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Separator } from '@/components/ui/separator';
 import { DetailCard, DetailField } from '@/components/ui/detail-field';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DefectForm } from '@/components/defects/defect-form';
 import { WorkOrderForm } from '@/components/work-orders/work-order-form';
@@ -246,7 +246,7 @@ export default function DefectDetailPage() {
               {STATUS_DISPLAY_NAME[status] || status}
             </Badge>
           } />
-          <DetailField label="Date" value={date ? date.toLocaleDateString() : ''} />
+          <DetailField label="Date" value={date ? formatDate(date) : ''} />
           <DetailField label="Severity" value={
             <span className={cn(
               'inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium',

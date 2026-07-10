@@ -243,7 +243,6 @@ const ENDPOINTS = [
       { name: 'firstName', path: 'firstName', type: 'string', description: 'First name', isIdentifier: true },
       { name: 'lastName', path: 'lastName', type: 'string', description: 'Last name', isIdentifier: true },
       { name: 'email', path: 'email', type: 'string', description: 'Email address' },
-      { name: 'jobPosition', path: 'jobPosition', type: 'string', description: 'Job position', groupable: true },
       { name: 'fitnessStatus', path: 'fitnessStatus', type: 'string', description: 'Wellness/fitness status', groupable: true, enumValues: ['fit', 'unfit'] },
       { name: 'teamId', path: 'teamId', type: 'objectId', description: 'Team the driver belongs to' },
       { name: 'isActive', path: 'isActive', type: 'boolean', description: 'Whether the driver is active', groupable: true },

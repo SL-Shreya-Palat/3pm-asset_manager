@@ -9,6 +9,7 @@ import {
   getTenantMembersCollection,
   getRolesCollection,
   getTenantsCollection,
+  getCountersCollection,
 } from '@/lib/mongodb';
 import { validateCreateDriverInput, serializeDriver } from './utils';
 import { createInvitation } from '@/controller/invitations';
@@ -20,6 +21,37 @@ import {
 } from '@/controller/command-connection/guard';
 import { ensureFreshFromCommand } from '@/controller/command-connection/auto-sync';
 import type { CreateDriverInput, UpdateDriverInput } from './types';
+
+/**
+ * Generate the next system employee number (EMP-0001) using an atomic
+ * per-tenant counter. Employee numbers are system-generated and immutable.
+ */
+async function generateEmployeeNumber(tenantOid: ObjectId): Promise<string> {
+  const counters = await getCountersCollection();
+  const result = await counters.findOneAndUpdate(
+    { _id: `emp_${tenantOid.toString()}` as unknown as ObjectId, tenantId: tenantOid },
+    { $inc: { seq: 1 } },
+    { upsert: true, returnDocument: 'after' },
+  );
+  const seq = (result?.seq as number) || 1;
+  return `EMP-${String(seq).padStart(4, '0')}`;
+}
+
+/**
+ * Preview the next employee number WITHOUT consuming it. Used by the create
+ * form to show the projected EMP-xxxx before the driver is saved. The value
+ * actually assigned on save comes from generateEmployeeNumber().
+ */
+export async function peekNextEmployeeNumber(tenantId: string): Promise<string> {
+  const counters = await getCountersCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const doc = await counters.findOne({
+    _id: `emp_${tenantOid.toString()}` as unknown as ObjectId,
+    tenantId: tenantOid,
+  });
+  const next = ((doc?.seq as number) || 0) + 1;
+  return `EMP-${String(next).padStart(4, '0')}`;
+}
 
 /** List drivers with pagination and search. */
 export async function getAllDrivers(
@@ -155,6 +187,17 @@ export async function createDriver(tenantId: string, userId: string, input: Crea
   const userOid = ObjectId.createFromHexString(userId);
   const normalizedEmail = input.email?.trim().toLowerCase() || undefined;
 
+  // Emails must be unique per tenant (case-insensitive).
+  if (normalizedEmail) {
+    const duplicate = await collection.findOne(
+      { tenantId: tenantOid, email: normalizedEmail },
+      { collation: { locale: 'en', strength: 2 } },
+    );
+    if (duplicate) {
+      return { data: null, error: { email: 'A driver with this email already exists' } };
+    }
+  }
+
   const doc: Record<string, unknown> = {
     tenantId: tenantOid,
     firstName: input.firstName.trim(),
@@ -169,8 +212,8 @@ export async function createDriver(tenantId: string, userId: string, input: Crea
     workPhone: input.workPhone?.trim() || undefined,
     dateOfBirth: input.dateOfBirth ? new Date(input.dateOfBirth) : null,
 
-    employeeNumber: input.employeeNumber?.trim() || undefined,
-    jobPosition: input.jobPosition?.trim() || undefined,
+    // System-generated, immutable employee number.
+    employeeNumber: await generateEmployeeNumber(tenantOid),
     rateCurrency: input.rateCurrency?.trim() || undefined,
     ratePerUnit: input.ratePerUnit ?? undefined,
     otherNotes: input.otherNotes?.trim() || undefined,
@@ -441,7 +484,20 @@ export async function updateDriver(
     $set.lastName = trimmed;
   }
 
-  if (input.email !== undefined) $set.email = input.email?.trim() || undefined;
+  if (input.email !== undefined) {
+    const normalized = input.email?.trim().toLowerCase() || undefined;
+    if (normalized) {
+      // Emails must be unique per tenant (case-insensitive), excluding self.
+      const duplicate = await collection.findOne(
+        { tenantId: tenantOid, email: normalized, _id: { $ne: driverOid } },
+        { collation: { locale: 'en', strength: 2 } },
+      );
+      if (duplicate) {
+        return { data: null, error: { email: 'A driver with this email already exists' } };
+      }
+    }
+    $set.email = normalized;
+  }
   if (input.photoUrl !== undefined) $set.photoUrl = input.photoUrl || undefined;
   if (input.notes !== undefined) $set.notes = input.notes?.trim() || undefined;
   if (input.teamId !== undefined) {
@@ -455,8 +511,6 @@ export async function updateDriver(
     $set.dateOfBirth = input.dateOfBirth ? new Date(input.dateOfBirth) : null;
   }
 
-  if (input.employeeNumber !== undefined) $set.employeeNumber = input.employeeNumber?.trim() || undefined;
-  if (input.jobPosition !== undefined) $set.jobPosition = input.jobPosition?.trim() || undefined;
   if (input.rateCurrency !== undefined) $set.rateCurrency = input.rateCurrency?.trim() || undefined;
   if (input.ratePerUnit !== undefined) $set.ratePerUnit = input.ratePerUnit ?? undefined;
   if (input.otherNotes !== undefined) $set.otherNotes = input.otherNotes?.trim() || undefined;

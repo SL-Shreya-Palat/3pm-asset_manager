@@ -31,7 +31,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
+import { FormattedDate } from '@/components/ui/formatted-date';
 import { ASSET_STATUS_CONFIG, type AssetStatus } from '@/constants/assets';
 import {
   SERVICE_STATUS_TEXT,
@@ -545,7 +546,7 @@ export default function AssetDetailPage() {
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <CalendarClock className="h-4 w-4 shrink-0" />
                   Last service:
-                  <span className="font-medium text-foreground">{lastServiceDate.toLocaleDateString()}</span>
+                  <FormattedDate value={lastServiceDate} className="font-medium text-foreground" />
                 </div>
               )}
             </div>
@@ -586,17 +587,16 @@ export default function AssetDetailPage() {
             <StatCard label="Odometer (km)" value={odo != null ? odo.toLocaleString() : '—'} icon={<Gauge />} />
             <StatCard label="Engine Hours" value={engineHours != null ? engineHours.toLocaleString() : '—'} icon={<Clock />} />
             <StatCard label="Estimated Cost" value={estCost != null ? `${currency} ${estCost.toLocaleString()}` : '—'} icon={<DollarSign />} />
-            <StatCard label="Last Service" value={lastServiceDate ? lastServiceDate.toLocaleDateString() : '—'} icon={<CalendarClock />} />
+            <StatCard label="Last Service" value={lastServiceDate ? formatDate(lastServiceDate) : '—'} icon={<CalendarClock />} />
           </div>
 
           {/* Identification */}
           <DetailCard icon={Fingerprint} title="Identification">
-            <DetailField label="VIN" value={String(asset.vin || '')} />
+            <DetailField label="Rego Number" value={String(asset.vin || '')} />
             <DetailField label="License Plate" value={String(asset.licensePlate || '')} />
             <DetailField label="Asset Type" value={assetTypeName} />
-            <DetailField label="Asset Subtype" value={String(asset.assetSubtype || '')} />
             <DetailField label="Subscription Type" value={String(asset.subscriptionType || '')} />
-            <DetailField label="Created" value={createdAt ? createdAt.toLocaleDateString() : ''} />
+            <DetailField label="Created" value={createdAt ? formatDate(createdAt) : ''} />
           </DetailCard>
 
           {/* Vehicle Specifications */}
@@ -610,7 +610,7 @@ export default function AssetDetailPage() {
 
           {/* Service History */}
           <DetailCard icon={Wrench} title="Service History">
-            <DetailField label="Last Service Date" value={lastServiceDate ? lastServiceDate.toLocaleDateString() : ''} />
+            <DetailField label="Last Service Date" value={lastServiceDate ? formatDate(lastServiceDate) : ''} />
             <DetailField label="Last Service Odometer (km)" value={asset.lastServiceMileage != null ? Number(asset.lastServiceMileage).toLocaleString() : ''} />
             <DetailField label="Last Service Engine Hours" value={asset.lastServiceEngineHours != null ? String(asset.lastServiceEngineHours) : ''} />
           </DetailCard>

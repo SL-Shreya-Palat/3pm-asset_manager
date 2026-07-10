@@ -35,7 +35,6 @@ export interface Driver {
 
   // Details
   employeeNumber?: string;
-  jobPosition?: string;
   rateCurrency?: string;
   ratePerUnit?: number;
   otherNotes?: string;
@@ -78,8 +77,6 @@ export interface CreateDriverInput {
   workPhone?: string;
   dateOfBirth?: string;
 
-  employeeNumber?: string;
-  jobPosition?: string;
   rateCurrency?: string;
   ratePerUnit?: number;
   otherNotes?: string;
@@ -109,7 +106,6 @@ export interface DriverResponse {
   dateOfBirth?: string | null;
 
   employeeNumber?: string;
-  jobPosition?: string;
   rateCurrency?: string;
   ratePerUnit?: number;
   otherNotes?: string;

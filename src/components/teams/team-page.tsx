@@ -1168,13 +1168,6 @@ export function TeamPage() {
       ),
     },
     {
-      key: 'assetSubtype',
-      header: 'Subtype',
-      render: (asset) => (
-        <span className="text-muted-foreground">{asset.assetSubtype || '—'}</span>
-      ),
-    },
-    {
       key: 'subscriptionType',
       header: 'Subscription',
       render: (asset) => (
