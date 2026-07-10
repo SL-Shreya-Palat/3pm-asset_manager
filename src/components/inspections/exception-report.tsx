@@ -67,9 +67,9 @@ const FORM_COL = 230;
 const CELL_CLASS: Record<CellStatus, string> = {
   inspected: 'bg-emerald-500 hover:bg-emerald-600',
   exception: 'bg-red-500 hover:bg-red-600',
-  missed: 'bg-muted hover:bg-muted-foreground/25',
+  missed: 'bg-yellow-100 hover:bg-yellow-200',
   due: 'bg-muted ring-1 ring-inset ring-primary hover:bg-muted-foreground/25',
-  upcoming: 'bg-muted/40 hover:bg-muted',
+  upcoming: 'bg-sky-300 hover:bg-sky-400',
 };
 const STATUS_LABEL: Record<CellStatus, string> = {
   inspected: 'Inspected',
@@ -81,9 +81,9 @@ const STATUS_LABEL: Record<CellStatus, string> = {
 const STATUS_HEADER_CLASS: Record<CellStatus, string> = {
   inspected: 'text-emerald-600',
   exception: 'text-red-600',
-  missed: 'text-primary',
+  missed: 'text-yellow-600',
   due: 'text-primary',
-  upcoming: 'text-muted-foreground',
+  upcoming: 'text-sky-600',
 };
 
 /** Derive a rendered cell's status from its (maybe absent) submission-backed cell. */
@@ -239,6 +239,37 @@ export function ExceptionReport() {
           <Switch checked={remindersOnly} onChange={setRemindersOnly} label="Reminders only:" />
         </div>
       </div>
+
+      {/* Active filter chips — the selected forms/teams, removable individually */}
+      {(formIds.length > 0 || teamIds.length > 0) && (
+        <div className="flex flex-wrap items-center gap-1.5 px-6 pb-4">
+          <span className="text-xs text-muted-foreground">Filtered by:</span>
+          {formIds.map((id) => (
+            <FilterChip
+              key={`form-${id}`}
+              label={formOptions.find((o) => o.value === id)?.label ?? id}
+              onRemove={() => setFormIds(formIds.filter((x) => x !== id))}
+            />
+          ))}
+          {teamIds.map((id) => (
+            <FilterChip
+              key={`team-${id}`}
+              label={teamOptions.find((o) => o.value === id)?.label ?? id}
+              onRemove={() => setTeamIds(teamIds.filter((x) => x !== id))}
+            />
+          ))}
+          <button
+            type="button"
+            onClick={() => {
+              setFormIds([]);
+              setTeamIds([]);
+            }}
+            className="text-xs font-medium text-primary hover:underline"
+          >
+            Clear all
+          </button>
+        </div>
+      )}
 
       {/* Grid */}
       <div className="flex-1 overflow-hidden px-6 pb-8">
@@ -503,9 +534,9 @@ function Grid({
       <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
         <LegendDot className="bg-emerald-500" label="Inspected" />
         <LegendDot className="bg-red-500" label="Exception" />
-        <LegendDot className="bg-muted" label="Missed" />
+        <LegendDot className="bg-yellow-100" label="Missed" />
         <LegendDot className="bg-muted ring-1 ring-inset ring-primary" label="Due today" />
-        <LegendDot className="bg-muted/40" label="Upcoming" />
+        <LegendDot className="bg-sky-300" label="Upcoming" />
       </div>
     </div>
   );
@@ -645,15 +676,15 @@ function MultiSelectButton({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button className="gap-2">
-          <Icon className="h-4 w-4" />
+        <Button variant="outline" className="gap-2 border-primary/30 bg-primary-50 text-primary hover:bg-primary-100">
+          <Icon className="h-4 w-4 text-primary" />
           {label}
           {selected.length > 0 && (
-            <span className="rounded-full bg-primary-foreground/20 px-1.5 text-xs font-semibold tabular-nums">
+            <span className="rounded-full bg-primary px-1.5 text-xs font-semibold tabular-nums text-primary-foreground">
               {selected.length}
             </span>
           )}
-          <ChevronDown className="h-4 w-4" />
+          <ChevronDown className="h-4 w-4 text-primary" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-0">
@@ -693,6 +724,22 @@ function MultiSelectButton({
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <span className="inline-flex max-w-[220px] items-center gap-1 rounded-full border border-primary/30 bg-primary-50 px-2 py-0.5 text-xs font-medium text-primary">
+      <span className="truncate">{label}</span>
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove ${label}`}
+        className="shrink-0 text-primary/70 transition-colors hover:text-destructive"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </span>
   );
 }
 
@@ -741,14 +788,14 @@ function Switch({
         aria-checked={checked}
         onClick={() => onChange(!checked)}
         className={cn(
-          'relative h-6 w-11 shrink-0 rounded-full transition-colors',
+          'inline-flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors',
           checked ? 'bg-primary' : 'bg-muted',
         )}
       >
         <span
           className={cn(
-            'absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform',
-            checked ? 'translate-x-5.5' : 'translate-x-0.5',
+            'inline-block h-5 w-5 rounded-full bg-white shadow transition-transform',
+            checked ? 'translate-x-5' : 'translate-x-0',
           )}
         />
       </button>

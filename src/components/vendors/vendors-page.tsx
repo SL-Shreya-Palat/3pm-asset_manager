@@ -30,6 +30,7 @@ import { useConnection } from '@/hooks/use-connection';
 import { SourceBadge, CommandManagedBanner } from '@/components/command/source-badge';
 import { VendorForm } from './vendor-form';
 import type { VendorRow, Pagination } from './types';
+import { VENDOR_TYPE_LABELS, vendorTypeLabel, vendorWebsiteHref } from './types';
 
 const VENDOR_TYPE_FILTER: DataTableFilterDef[] = [
   {
@@ -37,8 +38,8 @@ const VENDOR_TYPE_FILTER: DataTableFilterDef[] = [
     label: 'Vendor Type',
     type: 'select',
     options: [
-      { label: 'Parts', value: 'parts' },
-      { label: 'Services', value: 'services' },
+      { label: VENDOR_TYPE_LABELS.parts, value: 'parts' },
+      { label: VENDOR_TYPE_LABELS.services, value: 'services' },
     ],
   },
 ];
@@ -233,13 +234,24 @@ export function VendorsPage() {
       key: 'website',
       header: 'Website',
       label: 'Website',
-      render: (vendor) => (
-        <span className="text-muted-foreground">{vendor.website || '—'}</span>
-      ),
+      render: (vendor) =>
+        vendor.website ? (
+          <a
+            href={vendorWebsiteHref(vendor.website)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="text-blue-600 hover:underline"
+          >
+            {vendor.website}
+          </a>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
     },
     {
       key: 'vendorTypes',
-      header: 'Type',
+      header: 'Vendor Type',
       label: 'Vendor Type',
       render: (vendor) => (
         <div className="flex items-center gap-1">
@@ -248,7 +260,7 @@ export function VendorsPage() {
           ) : (
             vendor.vendorTypes.map((t) => (
               <Badge key={t} variant="secondary" className="capitalize text-xs">
-                {t}
+                {vendorTypeLabel(t)}
               </Badge>
             ))
           )}
@@ -321,10 +333,11 @@ export function VendorsPage() {
           )}
         </PageHeader>
 
-        <div className="space-y-3 px-6 pb-3">
-          {connected && <CommandManagedBanner />}
-          <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
-        </div>
+        {connected && (
+          <div className="px-6 pb-3">
+            <CommandManagedBanner />
+          </div>
+        )}
 
         {/* Toolbar + Table */}
         <div className="flex-1 overflow-auto px-6 pb-6">
@@ -338,6 +351,9 @@ export function VendorsPage() {
             filters={filters}
             onFilterChange={setFilter}
             onFiltersClear={clearFilters}
+            afterControls={
+              <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+            }
             searchNode={
               <SearchInput value={search} onChange={setSearch} placeholder="Search vendors..." />
             }

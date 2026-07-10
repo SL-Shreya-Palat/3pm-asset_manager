@@ -54,6 +54,28 @@ export async function peekNextEmployeeNumber(tenantId: string): Promise<string> 
   return `EMP-${String(next).padStart(4, '0')}`;
 }
 
+/**
+ * Resolve a driver record id from a login email within a tenant.
+ * Used to scope a logged-in driver's asset list to the assets they've been
+ * granted access to (asset.driverAccessIds contains this driver id).
+ */
+export async function getDriverIdByEmail(
+  tenantId: string,
+  email: string,
+): Promise<string | null> {
+  if (!ObjectId.isValid(tenantId) || !email?.trim()) return null;
+  const collection = await getDriversCollection();
+  const driver = await collection.findOne(
+    {
+      tenantId: ObjectId.createFromHexString(tenantId),
+      email: email.toLowerCase().trim(),
+      isArchived: { $ne: true },
+    },
+    { projection: { _id: 1 } },
+  );
+  return driver ? driver._id.toString() : null;
+}
+
 /** List drivers with pagination and search. */
 export async function getAllDrivers(
   tenantId: string,

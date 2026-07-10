@@ -282,10 +282,6 @@ export function RolesPage() {
         </Button>
       </PageHeader>
 
-      <div className="px-6 pb-3">
-        <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
-      </div>
-
       {/* Toolbar + Table */}
       <div className="flex-1 overflow-auto px-6 pb-6">
         <DataTableToolbar
@@ -298,6 +294,9 @@ export function RolesPage() {
           filters={filters}
           onFilterChange={setFilter}
           onFiltersClear={clearFilters}
+          afterControls={
+            <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+          }
           searchNode={
             <SearchInput value={search} onChange={setSearch} placeholder="Search roles..." />
           }

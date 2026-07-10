@@ -4,7 +4,9 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllAssets, createAsset } from '@/controller/assets';
+import { getDriverIdByEmail } from '@/controller/drivers';
 import { authorize } from '@/lib/authz';
+import { getUserRoleForTenant } from '@/lib/auth-helper';
 
 const FORM_ID = 'assets.assets.asset';
 
@@ -23,7 +25,23 @@ export async function GET(request: NextRequest) {
   const showArchived = searchParams.get('showArchived') === 'true';
   const createdBy = scope === 'OWN' ? user.id : undefined;
 
-  const result = await getAllAssets(user.currentTenantId!, { page, limit, search, status, teamId, complianceStatus, showArchived, createdBy, userId: user.id });
+  // Driver-scoped access: a driver only sees assets explicitly granted to them
+  // via the asset's "Driver Access". Map the login to their driver record; if
+  // there's no matching driver record (so no grants), return an empty list.
+  let driverAccessId: string | undefined;
+  const role = await getUserRoleForTenant(user.id, user.currentTenantId!);
+  if (role?.isDriver) {
+    const driverId = await getDriverIdByEmail(user.currentTenantId!, String(user.email || ''));
+    if (!driverId) {
+      return NextResponse.json({
+        data: { items: [], pagination: { page, limit, total: 0, hasMore: false } },
+        error: null,
+      });
+    }
+    driverAccessId = driverId;
+  }
+
+  const result = await getAllAssets(user.currentTenantId!, { page, limit, search, status, teamId, complianceStatus, showArchived, createdBy, userId: user.id, driverAccessId });
   return NextResponse.json({ data: result, error: null });
 }
 

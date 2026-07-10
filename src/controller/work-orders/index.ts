@@ -6,6 +6,7 @@ import {
   getVendorsCollection,
   getTenantMembersCollection,
   getDefectsCollection,
+  getServiceTasksCollection,
 } from '@/lib/mongodb';
 import type { CreateWorkOrderInput, UpdateWorkOrderInput, WOPart } from './types';
 import { validateCreateWOInput, serializeWorkOrder, generateWONumber } from './utils';
@@ -121,7 +122,60 @@ export async function getWorkOrderById(tenantId: string, woId: string) {
     tenantId: ObjectId.createFromHexString(tenantId),
     isArchived: { $ne: true },
   });
-  return doc ? serializeWorkOrder(doc as Record<string, unknown>) : null;
+  if (!doc) return null;
+
+  const serialized = serializeWorkOrder(doc as Record<string, unknown>);
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+
+  // Resolve service-task names so the detail view shows titles, not raw ids
+  // (the client's lookup can miss archived tasks or those beyond its page).
+  const taskIds = ((serialized.serviceTaskIds as string[]) || []).filter((id) => ObjectId.isValid(id));
+  const serviceTaskNames: Record<string, string> = {};
+  if (taskIds.length > 0) {
+    const tasksCol = await getServiceTasksCollection();
+    const tasks = await tasksCol
+      .find(
+        { _id: { $in: taskIds.map((id) => ObjectId.createFromHexString(id)) }, tenantId: tenantOid },
+        { projection: { title: 1, name: 1 } },
+      )
+      .toArray();
+    for (const t of tasks) {
+      serviceTaskNames[t._id.toString()] = (t.title as string) || (t.name as string) || '';
+    }
+  }
+
+  // Resolve "changed by" user names for the status history.
+  const history = (serialized.statusHistory as Array<Record<string, unknown>>) || [];
+  const changedByIds = [
+    ...new Set(history.map((h) => h.changedBy as string).filter((id) => id && ObjectId.isValid(id))),
+  ];
+  const userNameById: Record<string, string> = {};
+  if (changedByIds.length > 0) {
+    const usersCol = await getUsersCollection();
+    const users = await usersCol
+      .find(
+        { _id: { $in: changedByIds.map((id) => ObjectId.createFromHexString(id)) } },
+        { projection: { name: 1, firstName: 1, lastName: 1, email: 1 } },
+      )
+      .toArray();
+    for (const u of users) {
+      userNameById[u._id.toString()] =
+        (u.name as string) ||
+        `${u.firstName || ''} ${u.lastName || ''}`.trim() ||
+        (u.email as string) ||
+        '';
+    }
+  }
+
+  const result: Record<string, unknown> = {
+    ...serialized,
+    serviceTaskNames,
+    statusHistory: history.map((h) => ({
+      ...h,
+      changedByName: userNameById[h.changedBy as string] || undefined,
+    })),
+  };
+  return result;
 }
 
 // ---------------------------------------------------------------------------

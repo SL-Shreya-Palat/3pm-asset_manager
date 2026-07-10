@@ -33,7 +33,7 @@ async function getRoleMap(tenantOid: ObjectId): Promise<Map<string, string>> {
 /** List tenant members with pagination and search. */
 export async function getAllTenantMembers(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; teamId?: string; showArchived?: boolean },
+  options: { page?: number; limit?: number; search?: string; teamId?: string; showArchived?: boolean; mechanicOnly?: boolean },
 ) {
   const collection = await getTenantMembersCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
@@ -51,6 +51,18 @@ export async function getAllTenantMembers(
 
   if (options.teamId) {
     filter['teamMemberships.teamId'] = ObjectId.createFromHexString(options.teamId);
+  }
+
+  // Restrict to members whose role is flagged as a mechanic role. Uses the
+  // role's isMechanic flag (not the name), so renamed/custom mechanic roles
+  // still qualify.
+  if (options.mechanicOnly) {
+    const rolesCol = await getRolesCollection();
+    const mechanicRoles = await rolesCol
+      .find({ tenantId: tenantOid, isMechanic: true, isArchived: { $ne: true } })
+      .project({ _id: 1 })
+      .toArray();
+    filter.roleId = { $in: mechanicRoles.map((r) => r._id) };
   }
 
   if (options.search) {
@@ -153,11 +165,14 @@ export async function inviteUser(tenantId: string, invitedByUserId: string, inpu
   }
 
   // Check if this user already exists (e.g. registered via SSO before).
-  // If they already have a verified account, link them directly and set active.
+  // If they already have a verified account, link the userId directly.
   const existingUser = await usersCol.findOne({ email: normalizedEmail });
   const isAlreadyVerified = existingUser?.emailVerified === true;
 
-  // Insert tenantMember — only link userId and set active if the user is already verified
+  // Insert tenantMember. Always start as 'pending' ("Invited") — the status only
+  // flips to 'active' when the invited user actually logs in (the login /
+  // provisioning flow activates the membership). The userId is still linked
+  // up front when the invitee already has a verified account.
   const tmDoc: Record<string, unknown> = {
     ...(isAlreadyVerified && existingUser ? { userId: existingUser._id } : {}),
     tenantId: tenantOid,
@@ -168,7 +183,7 @@ export async function inviteUser(tenantId: string, invitedByUserId: string, inpu
     roleId: ObjectId.createFromHexString(input.roleId),
     isActive: true,
     portalUser: true,
-    status: isAlreadyVerified ? 'active' : 'pending',
+    status: 'pending',
     invitedBy: invitedByOid,
     invitedAt: now,
     createdAt: now,

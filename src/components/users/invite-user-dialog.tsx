@@ -14,7 +14,13 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { SearchableSelect } from '@/components/ui/searchable-select';
-import { isValidEmail, isValidPhone } from '@/lib/validation/commonValidators';
+import {
+  PhoneInput,
+  phoneToE164,
+  isValidPhoneForCountry,
+  DEFAULT_COUNTRY_KEY,
+} from '@/components/ui/phone-input';
+import { isValidEmail } from '@/lib/validation/commonValidators';
 import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 import type { RoleOption } from './types';
 
@@ -29,8 +35,12 @@ const INITIAL_FORM = {
   lastName: '',
   email: '',
   roleId: '',
+  countryCode: DEFAULT_COUNTRY_KEY,
   mobileNumber: '',
 };
+
+/** Roles that can't be assigned when inviting a user (hidden from the dropdown). */
+const EXCLUDED_ROLE_NAMES = new Set(['owner', 'driver']);
 
 export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDialogProps) {
   const [form, setForm] = useState(INITIAL_FORM);
@@ -45,7 +55,11 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
       try {
         const res = await axios.get('/api/roles?limit=100', { withCredentials: true });
         const items = res.data.data?.items || [];
-        setRoles(items.map((r: { id: string; name: string }) => ({ id: r.id, name: r.name })));
+        setRoles(
+          items
+            .filter((r: { name: string }) => !EXCLUDED_ROLE_NAMES.has(r.name.trim().toLowerCase()))
+            .map((r: { id: string; name: string }) => ({ id: r.id, name: r.name })),
+        );
       } catch {
         setRoles([]);
       }
@@ -89,8 +103,8 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
 
     if (!form.roleId) next.roleId = 'Role is required';
 
-    if (form.mobileNumber.trim() && !isValidPhone(form.mobileNumber.trim())) {
-      next.mobileNumber = 'Enter a valid phone number';
+    if (!isValidPhoneForCountry(form.countryCode, form.mobileNumber)) {
+      next.mobileNumber = 'Enter a valid mobile number for the selected country';
     }
 
     setErrors(next);
@@ -111,7 +125,8 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
         roleId: form.roleId,
       };
       if (form.mobileNumber.trim()) {
-        body.mobileNumber = form.mobileNumber;
+        // Send E.164 so 3pm-auth can register the user with the mobile.
+        body.mobileNumber = phoneToE164(form.countryCode, form.mobileNumber);
       }
 
       await axios.post('/api/users', body, { withCredentials: true });
@@ -208,16 +223,20 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
 
           <div className="space-y-2">
             <Label htmlFor="invite-mobile">Mobile Number</Label>
-            <Input
+            <PhoneInput
               id="invite-mobile"
-              type="tel"
+              countryCode={form.countryCode}
+              onCountryCodeChange={(v) => handleChange('countryCode', v)}
               value={form.mobileNumber}
-              onChange={(e) => handleChange('mobileNumber', e.target.value)}
-              placeholder="+1 (555) 000-0000"
+              onValueChange={(v) => handleChange('mobileNumber', v)}
+              error={!!errors.mobileNumber}
             />
             {errors.mobileNumber && (
               <p className="text-sm text-destructive">{errors.mobileNumber}</p>
             )}
+            <p className="text-xs text-muted-foreground">
+              Select the country code — the number is registered in 3PM Auth in international format.
+            </p>
           </div>
         </div>
 

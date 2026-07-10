@@ -22,8 +22,10 @@ export async function GET(request: NextRequest) {
 
   // Role-based scoping: full-access roles (owner/admin/manager) see every work
   // order; everyone else (e.g. mechanics) sees only the ones assigned to them.
+  // A work order's assigneeId is the assignee's tenantMember id, so scope by the
+  // user's tenantMember id (NOT their user id, which never matches).
   const role = await getUserRoleForTenant(user.id, user.currentTenantId!);
-  const assigneeId = role && !role.fullAccess ? user.id : undefined;
+  const assigneeId = role && !role.fullAccess ? role.memberId : undefined;
   const showArchived = searchParams.get('showArchived') === 'true';
 
   const createdBy = scope === 'OWN' ? user.id : undefined;

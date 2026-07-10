@@ -22,6 +22,7 @@ import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { cn } from '@/lib/utils';
 import { VendorForm } from './vendor-form';
 import type { VendorRow } from './types';
+import { vendorTypeLabel, vendorWebsiteHref } from './types';
 
 export function VendorDetail() {
   const params = useParams();
@@ -94,7 +95,7 @@ export function VendorDetail() {
         badges={
           <>
             {vendor.vendorTypes.map((t) => (
-              <Badge key={t} variant="secondary" className="capitalize">{t}</Badge>
+              <Badge key={t} variant="secondary" className="capitalize">{vendorTypeLabel(t)}</Badge>
             ))}
           </>
         }
@@ -104,7 +105,7 @@ export function VendorDetail() {
               <Edit className="h-4 w-4" />
               Edit
             </Button>
-            <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
+            <Button variant="archive-ghost" onClick={() => setArchiveDialogOpen(true)}>
               <Archive className="h-4 w-4" />
               Archive
             </Button>
@@ -116,7 +117,21 @@ export function VendorDetail() {
       <DetailCard icon={Store} title="Vendor Details" columns={3}>
         <DetailField label="Vendor Name" value={vendor.name} />
         <DetailField label="Address" value={vendor.address} />
-        <DetailField label="Website" value={vendor.website} />
+        <DetailField
+          label="Website"
+          value={
+            vendor.website ? (
+              <a
+                href={vendorWebsiteHref(vendor.website)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline break-all"
+              >
+                {vendor.website}
+              </a>
+            ) : undefined
+          }
+        />
       </DetailCard>
 
       {/* Primary Contact */}
@@ -130,7 +145,7 @@ export function VendorDetail() {
       <DetailCard icon={Settings} title="Vendor Type" columns={1} className="mt-6">
         <DetailField
           label="Vendor Type"
-          value={vendor.vendorTypes.length > 0 ? vendor.vendorTypes.join(', ') : undefined}
+          value={vendor.vendorTypes.length > 0 ? vendor.vendorTypes.map(vendorTypeLabel).join(', ') : undefined}
         />
       </DetailCard>
 

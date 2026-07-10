@@ -17,8 +17,9 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get('search') || undefined;
   const teamId = searchParams.get('teamId') || undefined;
   const showArchived = searchParams.get('showArchived') === 'true';
+  const mechanicOnly = searchParams.get('role') === 'mechanic';
 
-  const result = await getAllTenantMembers(user.currentTenantId!, { page, limit, search, teamId, showArchived });
+  const result = await getAllTenantMembers(user.currentTenantId!, { page, limit, search, teamId, showArchived, mechanicOnly });
   return NextResponse.json({ data: result, error: null });
 }
 

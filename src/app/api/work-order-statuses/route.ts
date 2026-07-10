@@ -14,6 +14,7 @@ import {
   updateWorkOrderStatus,
   deleteWorkOrderStatus,
   archiveWorkOrderStatus,
+  seedWorkOrderStatuses,
 } from '@/controller/work-order-statuses';
 import { getFormPermissionLevels } from '@/lib/server-permissions';
 
@@ -32,6 +33,18 @@ export async function GET(request: NextRequest) {
   if (perms.view === 'NONE') {
     return NextResponse.json({ data: null, error: 'You do not have permission to view work order statuses' }, { status: 403 });
   }
+
+  // Lazily backfill the default statuses for tenants that predate default
+  // seeding. One-time per tenant (guarded by a tenant flag) and only triggered
+  // by users who can manage statuses, so a read-only viewer never causes writes.
+  if (perms.create) {
+    try {
+      await seedWorkOrderStatuses(user.currentTenantId, user.id);
+    } catch (err) {
+      console.error('[work-order-statuses] lazy default seeding failed (non-fatal):', err);
+    }
+  }
+
   const createdBy = perms.view === 'OWN' ? user.id : undefined;
 
   const items = await getAllWorkOrderStatuses(user.currentTenantId, search, { showArchived, createdBy });

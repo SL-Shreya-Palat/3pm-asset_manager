@@ -11,7 +11,14 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { AddressInput } from '@/components/ui/address-input';
 import { PageBackButton } from '@/components/ui/page-back-button';
-import { User, Camera, Loader2 } from 'lucide-react';
+import {
+  PhoneInput,
+  phoneToE164,
+  parseE164,
+  DEFAULT_COUNTRY_KEY,
+} from '@/components/ui/phone-input';
+import { User, Camera, Loader2, Edit } from 'lucide-react';
+import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -28,6 +35,9 @@ export default function ProfilePage() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  // Country + national parts for the edit-mode PhoneInput (recombined to E.164 on save).
+  const [phoneCountry, setPhoneCountry] = useState(DEFAULT_COUNTRY_KEY);
+  const [phoneLocal, setPhoneLocal] = useState('');
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [address, setAddress] = useState('');
   // Keep parsed components for API persistence
@@ -48,6 +58,9 @@ export default function ProfilePage() {
       setFirstName(user.firstName || '');
       setLastName(user.lastName || '');
       setPhoneNumber(user.phoneNumber || '');
+      const parsedPhone = parseE164(user.phoneNumber || '');
+      setPhoneCountry(parsedPhone.countryKey);
+      setPhoneLocal(parsedPhone.localNumber);
       setProfileImageUrl(user.profileImageUrl || null);
       setPhotoPreview(user.profileImageUrl || null);
       setAddressLine1(user.address?.addressLine1 || '');
@@ -72,6 +85,9 @@ export default function ProfilePage() {
       setFirstName(user.firstName || '');
       setLastName(user.lastName || '');
       setPhoneNumber(user.phoneNumber || '');
+      const parsedPhone = parseE164(user.phoneNumber || '');
+      setPhoneCountry(parsedPhone.countryKey);
+      setPhoneLocal(parsedPhone.localNumber);
       setProfileImageUrl(user.profileImageUrl || null);
       setPhotoPreview(user.profileImageUrl || null);
       setPhotoFile(null);
@@ -147,7 +163,7 @@ export default function ProfilePage() {
         {
           firstName: firstName.trim(),
           lastName: lastName.trim(),
-          phoneNumber: phoneNumber.trim() || null,
+          phoneNumber: phoneToE164(phoneCountry, phoneLocal) || null,
           profileImageUrl: finalImageUrl,
           address: {
             addressLine1: addressLine1.trim() || undefined,
@@ -165,12 +181,14 @@ export default function ProfilePage() {
 
       setPhotoFile(null);
       setEditing(false);
+      showSuccessToast('Profile updated successfully');
     } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.data?.error) {
-        setError(err.response.data.error);
-      } else {
-        setError('Failed to update profile');
-      }
+      const message =
+        axios.isAxiosError(err) && err.response?.data?.error
+          ? String(err.response.data.error)
+          : 'Failed to update profile';
+      setError(message);
+      showErrorToast(message);
     } finally {
       setSaving(false);
       setUploading(false);
@@ -219,7 +237,8 @@ export default function ProfilePage() {
               </Button>
             </>
           ) : (
-            <Button variant="outline" onClick={() => setEditing(true)}>
+            <Button variant="edit-icon" onClick={() => setEditing(true)}>
+              <Edit className="h-4 w-4" />
               Edit
             </Button>
           )}
@@ -322,15 +341,24 @@ export default function ProfilePage() {
             <Label htmlFor="phoneNumber" className="text-muted-foreground">
               Phone Number
             </Label>
-            <Input
-              id="phoneNumber"
-              type="tel"
-              value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
-              readOnly={!editing}
-              placeholder={editing ? 'e.g. +1 (555) 123-4567' : ''}
-              className={`mt-1.5 ${!editing ? 'bg-muted/50' : ''}`}
-            />
+            {editing ? (
+              <PhoneInput
+                id="phoneNumber"
+                className="mt-1.5"
+                countryCode={phoneCountry}
+                onCountryCodeChange={setPhoneCountry}
+                value={phoneLocal}
+                onValueChange={setPhoneLocal}
+              />
+            ) : (
+              <Input
+                id="phoneNumber"
+                type="tel"
+                value={phoneNumber}
+                readOnly
+                className="mt-1.5 bg-muted/50"
+              />
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

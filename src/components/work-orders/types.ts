@@ -13,6 +13,8 @@ export interface WOStatusHistoryRow {
   toStatusId: string;
   toStatusLabel: string;
   changedBy: string;
+  /** Resolved display name of the user who made the change (detail view). */
+  changedByName?: string;
   changedAt: string;
 }
 
@@ -31,6 +33,8 @@ export interface WorkOrderRow {
   assetId: string;
   assetName: string;
   serviceTaskIds: string[];
+  /** Resolved service-task names keyed by task id (detail view). */
+  serviceTaskNames?: Record<string, string>;
   source?: string;
   defectIds?: string[];
   faultIds?: string[];

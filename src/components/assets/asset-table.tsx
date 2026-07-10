@@ -910,7 +910,7 @@ export function AssetTable() {
       <div className="px-6 pb-1">
         <div className="flex flex-wrap divide-x rounded-xl border bg-card shadow-sm">
           <StatSeg tone="primary" icon={Layers} label="Total assets" value={summary?.total} loading={!summary} />
-          <StatSeg tone="emerald" icon={CheckCircle2} label="In service" value={summary?.inService} loading={!summary} />
+          <StatSeg tone="emerald" icon={CheckCircle2} label="Active" value={summary?.inService} loading={!summary} />
           <StatSeg tone="amber" icon={Wrench} label="Under maintenance" value={summary?.outOfService} loading={!summary} />
           <StatSeg tone="red" icon={ShieldAlert} label="Non-compliant" value={summary?.nonCompliant} loading={!summary} />
         </div>

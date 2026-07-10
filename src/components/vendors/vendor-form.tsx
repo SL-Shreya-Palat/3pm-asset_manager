@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { AddressInput } from '@/components/ui/address-input';
 import { Separator } from '@/components/ui/separator';
 import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
+import { isValidEmail, isValidPhone } from '@/lib/validation/commonValidators';
 import type { VendorRow } from './types';
 
 interface VendorFormProps {
@@ -72,10 +73,13 @@ export function VendorForm({ mode, vendor, onClose, onSaved }: VendorFormProps) 
     setError('');
     setFieldErrors({});
 
-    // Client-side validation
+    // Client-side validation — mirrors the server rules so errors surface
+    // immediately, below the relevant field.
     const errors: Record<string, string> = {};
     if (!name.trim()) errors.name = 'Vendor name is required';
     if (!contactName.trim()) errors.contactName = 'Contact name is required';
+    if (email.trim() && !isValidEmail(email.trim())) errors.email = 'Enter a valid email address';
+    if (phone.trim() && !isValidPhone(phone.trim())) errors.phone = 'Enter a valid phone number';
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -254,9 +258,9 @@ export function VendorForm({ mode, vendor, onClose, onSaved }: VendorFormProps) 
                     type="checkbox"
                     checked={typeParts}
                     onChange={(e) => setTypeParts(e.target.checked)}
-                    className="rounded border-border"
+                    className="rounded border-border accent-primary"
                   />
-                  <span className="text-sm text-foreground">Parts</span>
+                  <span className="text-sm text-foreground">Stock</span>
                   <span className="text-xs text-muted-foreground">- Supplier for purchase orders</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -264,7 +268,7 @@ export function VendorForm({ mode, vendor, onClose, onSaved }: VendorFormProps) 
                     type="checkbox"
                     checked={typeServices}
                     onChange={(e) => setTypeServices(e.target.checked)}
-                    className="rounded border-border"
+                    className="rounded border-border accent-primary"
                   />
                   <span className="text-sm text-foreground">Services</span>
                   <span className="text-xs text-muted-foreground">- Assignable to work orders & defects</span>

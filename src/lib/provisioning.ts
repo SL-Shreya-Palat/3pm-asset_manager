@@ -14,6 +14,7 @@ import {
 } from '@/lib/mongodb';
 import { seedSystemRoles } from '@/lib/system-roles';
 import { seedInspectionForms } from '@/controller/seeding';
+import { seedWorkOrderStatuses } from '@/controller/work-order-statuses';
 
 interface ProvisioningInput {
   user: {
@@ -322,6 +323,33 @@ export async function ensureLocalRecords(
       }
     }
 
+    // ── Backfill the user's phone from their tenant membership ───────────
+    // Invited users have their mobile captured on the tenantMember at invite
+    // time, but the users record is created from the 3pm-auth session (which
+    // carries no phone), so `phoneNumber` starts blank and the Profile shows
+    // nothing. Copy the member's mobile into the users record once, while it's
+    // still empty (never clobbering a phone the user later set). Runs for BOTH
+    // the invitation and normal flows, so it also self-heals users invited
+    // before this fix on their next login. Non-fatal.
+    if (localTenantId) {
+      try {
+        const membersCol = await getTenantMembersCollection();
+        const member = await membersCol.findOne({ userId: localUserId, tenantId: localTenantId });
+        const memberMobile = member?.mobileNumber as string | undefined;
+        if (memberMobile) {
+          await usersCollection.updateOne(
+            {
+              _id: localUserId,
+              $or: [{ phoneNumber: null }, { phoneNumber: '' }, { phoneNumber: { $exists: false } }],
+            },
+            { $set: { phoneNumber: memberMobile, updatedAt: now } },
+          );
+        }
+      } catch (err) {
+        console.error('[provisioning] Phone backfill failed (non-fatal):', err);
+      }
+    }
+
     // ── Seed pre-start inspection forms for the org (self-healing) ────
     // Ensures every org has the standard pre-start forms — including the
     // daily "Driver Wellness Pre-Start Check" the driver fills before
@@ -346,6 +374,20 @@ export async function ensureLocalRecords(
       } catch (seedErr) {
         console.error(
           '[provisioning] Prestart form seeding failed (non-fatal):',
+          seedErr,
+        );
+      }
+
+      // Seed the default work order statuses for a brand-new tenant.
+      // Idempotent (skips when the tenant already has statuses) and non-fatal.
+      try {
+        await seedWorkOrderStatuses(
+          localTenantId.toHexString(),
+          localUserId.toHexString(),
+        );
+      } catch (seedErr) {
+        console.error(
+          '[provisioning] Work order status seeding failed (non-fatal):',
           seedErr,
         );
       }

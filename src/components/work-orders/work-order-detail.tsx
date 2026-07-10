@@ -253,7 +253,7 @@ export function WorkOrderDetail() {
             <div className="space-y-2">
               {order.serviceTaskIds.map((taskId, i) => (
                 <div key={i} className="rounded-md border border-border px-3 py-2">
-                  <span className="text-sm text-foreground">{serviceTaskMap[taskId] || taskId}</span>
+                  <span className="text-sm text-foreground">{order.serviceTaskNames?.[taskId] || serviceTaskMap[taskId] || taskId}</span>
                 </div>
               ))}
             </div>
@@ -328,9 +328,9 @@ export function WorkOrderDetail() {
                       {entry.fromStatusLabel ? `${entry.fromStatusLabel} → ` : ''}
                       {entry.toStatusLabel}
                     </span>
-                    {entry.changedBy && (
+                    {(entry.changedByName || entry.changedBy) && (
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        by {entry.changedBy}
+                        by {entry.changedByName || entry.changedBy}
                       </p>
                     )}
                   </div>

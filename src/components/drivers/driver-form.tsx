@@ -18,38 +18,9 @@ import {
 } from '@/components/ui/select';
 import { BaseForm } from '@/components/ui/base-form';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { PhoneInput } from '@/components/ui/phone-input';
 import type { TeamOption } from './types';
 import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
-
-/** Country codes for the mobile number dropdown. */
-const COUNTRY_CODES = [
-  { key: 'US', code: '+1', name: 'United States', flag: '🇺🇸' },
-  { key: 'CA', code: '+1', name: 'Canada', flag: '🇨🇦' },
-  { key: 'GB', code: '+44', name: 'United Kingdom', flag: '🇬🇧' },
-  { key: 'AU', code: '+61', name: 'Australia', flag: '🇦🇺' },
-  { key: 'NZ', code: '+64', name: 'New Zealand', flag: '🇳🇿' },
-  { key: 'IN', code: '+91', name: 'India', flag: '🇮🇳' },
-  { key: 'CN', code: '+86', name: 'China', flag: '🇨🇳' },
-  { key: 'JP', code: '+81', name: 'Japan', flag: '🇯🇵' },
-  { key: 'DE', code: '+49', name: 'Germany', flag: '🇩🇪' },
-  { key: 'FR', code: '+33', name: 'France', flag: '🇫🇷' },
-  { key: 'BR', code: '+55', name: 'Brazil', flag: '🇧🇷' },
-  { key: 'MX', code: '+52', name: 'Mexico', flag: '🇲🇽' },
-  { key: 'ZA', code: '+27', name: 'South Africa', flag: '🇿🇦' },
-  { key: 'AE', code: '+971', name: 'United Arab Emirates', flag: '🇦🇪' },
-  { key: 'SA', code: '+966', name: 'Saudi Arabia', flag: '🇸🇦' },
-  { key: 'SG', code: '+65', name: 'Singapore', flag: '🇸🇬' },
-  { key: 'KR', code: '+82', name: 'South Korea', flag: '🇰🇷' },
-  { key: 'IT', code: '+39', name: 'Italy', flag: '🇮🇹' },
-  { key: 'ES', code: '+34', name: 'Spain', flag: '🇪🇸' },
-  { key: 'RU', code: '+7', name: 'Russia', flag: '🇷🇺' },
-  { key: 'ID', code: '+62', name: 'Indonesia', flag: '🇮🇩' },
-  { key: 'PH', code: '+63', name: 'Philippines', flag: '🇵🇭' },
-  { key: 'PK', code: '+92', name: 'Pakistan', flag: '🇵🇰' },
-  { key: 'NG', code: '+234', name: 'Nigeria', flag: '🇳🇬' },
-  { key: 'EG', code: '+20', name: 'Egypt', flag: '🇪🇬' },
-  { key: 'MY', code: '+60', name: 'Malaysia', flag: '🇲🇾' },
-];
 
 /** Currencies for the rate dropdown. */
 const CURRENCIES = [
@@ -338,9 +309,6 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
     }
   };
 
-  // Find selected country for display
-  const selectedCountry = COUNTRY_CODES.find((c) => c.key === countryCode) || COUNTRY_CODES[0];
-
   return (
     <BaseForm
       title={mode === 'edit' ? 'Edit Driver' : 'Add Driver'}
@@ -440,36 +408,15 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
               </div>
               <div className="col-span-2">
                 <Label htmlFor="mobileNumber">Mobile Number</Label>
-                <div className="flex gap-2 mt-1.5">
-                  <Select value={countryCode} onValueChange={setCountryCode}>
-                    <SelectTrigger className="w-[80px] shrink-0">
-                      <SelectValue>
-                        <span className="text-base">{selectedCountry.flag}</span>
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[300px]">
-                      {COUNTRY_CODES.map((c) => (
-                        <SelectItem key={c.key} value={c.key}>
-                          <span className="flex items-center gap-2">
-                            <span className="text-base">{c.flag}</span>
-                            <span>{c.name}</span>
-                            <span className="text-muted-foreground">{c.code}</span>
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <div className="flex items-center gap-1 flex-1">
-                    <span className="text-sm text-muted-foreground shrink-0">{selectedCountry.code}</span>
-                    <Input
-                      id="mobileNumber"
-                      value={mobileNumber}
-                      onChange={(e) => { setMobileNumber(e.target.value); clearFieldError('mobileNumber'); }}
-                      placeholder="Phone number"
-                      className={fieldErrors.mobileNumber ? 'border-destructive' : ''}
-                    />
-                  </div>
-                </div>
+                <PhoneInput
+                  id="mobileNumber"
+                  className="mt-1.5"
+                  countryCode={countryCode}
+                  onCountryCodeChange={setCountryCode}
+                  value={mobileNumber}
+                  onValueChange={(v) => { setMobileNumber(v); clearFieldError('mobileNumber'); }}
+                  error={!!fieldErrors.mobileNumber}
+                />
                 {fieldErrors.mobileNumber && (
                   <p className="text-sm text-destructive mt-1">{fieldErrors.mobileNumber}</p>
                 )}

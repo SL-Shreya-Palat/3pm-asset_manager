@@ -162,7 +162,7 @@ export function WorkOrderForm({
         axios.get('/api/assets?limit=100', { withCredentials: true }),
         axios.get('/api/service-tasks?limit=100', { withCredentials: true }),
         axios.get('/api/vendors?limit=100', { withCredentials: true }),
-        axios.get('/api/users?limit=100', { withCredentials: true }),
+        axios.get('/api/users?limit=100&role=mechanic', { withCredentials: true }),
         axios.get('/api/work-order-statuses', { withCredentials: true }),
         axios.get('/api/parts?limit=100', { withCredentials: true }),
       ]);

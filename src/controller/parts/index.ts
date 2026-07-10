@@ -2,7 +2,7 @@
  * Parts controller -- CRUD business logic for the parts (inventory) collection.
  */
 import { ObjectId } from 'mongodb';
-import { getPartsCollection } from '@/lib/mongodb';
+import { getPartsCollection, getCountersCollection } from '@/lib/mongodb';
 import { validateCreatePartInput, serializePart } from './utils';
 import {
   isCommandConnectionEnabled,
@@ -11,6 +11,51 @@ import {
 } from '@/controller/command-connection/guard';
 import { ensureFreshFromCommand } from '@/controller/command-connection/auto-sync';
 import type { CreatePartInput, UpdatePartInput } from './types';
+
+/**
+ * Generate the next system stock number (STK-0001) using an atomic per-tenant
+ * counter. Stock numbers are system-generated and immutable. Skips any value
+ * that already exists (e.g. a legacy manually-entered number) so it stays unique.
+ */
+async function generateStockNumber(tenantOid: ObjectId): Promise<string> {
+  const counters = await getCountersCollection();
+  const parts = await getPartsCollection();
+
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const result = await counters.findOneAndUpdate(
+      { _id: `stk_${tenantOid.toString()}` as unknown as ObjectId, tenantId: tenantOid },
+      { $inc: { seq: 1 } },
+      { upsert: true, returnDocument: 'after' },
+    );
+    const seq = (result?.seq as number) || 1;
+    const candidate = `STK-${String(seq).padStart(4, '0')}`;
+    const exists = await parts.findOne({ tenantId: tenantOid, partNumber: candidate });
+    if (!exists) return candidate;
+  }
+  // Fallback (extremely unlikely): guarantee uniqueness via the counter value.
+  const fallback = await counters.findOneAndUpdate(
+    { _id: `stk_${tenantOid.toString()}` as unknown as ObjectId, tenantId: tenantOid },
+    { $inc: { seq: 1 } },
+    { upsert: true, returnDocument: 'after' },
+  );
+  return `STK-${String((fallback?.seq as number) || 1).padStart(6, '0')}`;
+}
+
+/**
+ * Preview the next stock number WITHOUT consuming it. Used by the create form
+ * to show the projected STK-xxxx before the stock item is saved. The value
+ * actually assigned on save comes from generateStockNumber().
+ */
+export async function peekNextStockNumber(tenantId: string): Promise<string> {
+  const counters = await getCountersCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const doc = await counters.findOne({
+    _id: `stk_${tenantOid.toString()}` as unknown as ObjectId,
+    tenantId: tenantOid,
+  });
+  const next = ((doc?.seq as number) || 0) + 1;
+  return `STK-${String(next).padStart(4, '0')}`;
+}
 
 /** List parts with pagination, search, and optional category filter. */
 export async function getAllParts(
@@ -84,21 +129,14 @@ export async function createPart(tenantId: string, userId: string, input: Create
     return { data: null, error: MASTER_DATA_MANAGED_MESSAGE };
   }
 
-  const validation = validateCreatePartInput(input);
-  if (!validation.valid) return { data: null, error: validation.errors };
-
   const collection = await getPartsCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
 
-  // Check unique stock number within tenant
-  const existing = await collection.findOne({
-    tenantId: tenantOid,
-    partNumber: input.partNumber.trim(),
-    isArchived: { $ne: true },
-  });
-  if (existing) {
-    return { data: null, error: { partNumber: 'Stock number already exists' } };
-  }
+  // Stock number is system-generated and immutable — never user-supplied.
+  const partNumber = await generateStockNumber(tenantOid);
+
+  const validation = validateCreatePartInput({ ...input, partNumber });
+  if (!validation.valid) return { data: null, error: validation.errors };
 
   const now = new Date();
   const userOid = ObjectId.createFromHexString(userId);
@@ -106,7 +144,7 @@ export async function createPart(tenantId: string, userId: string, input: Create
   const doc: Record<string, unknown> = {
     tenantId: tenantOid,
     name: input.name.trim(),
-    partNumber: input.partNumber.trim(),
+    partNumber,
     upc: input.upc?.trim() || undefined,
     description: input.description?.trim() || undefined,
     photoUrl: input.photoUrl || undefined,

@@ -140,6 +140,8 @@ export async function getAllAssets(
     /** Acting user — attributed to any anchors refreshed by the auto-sync. */
     userId?: string;
     createdBy?: string;
+    /** When set (driver logins), restrict to assets whose driverAccessIds grants this driver id. */
+    driverAccessId?: string;
   },
 ) {
   // Fresh on every call: pull the latest Command assets BEFORE reading local, so
@@ -174,6 +176,12 @@ export async function getAllAssets(
   // "OWN" view scope — only show records created by this user
   if (options.createdBy) {
     filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+  }
+
+  // Driver-scoped view: a driver only sees assets they've been granted access
+  // to (asset.driverAccessIds contains their driver id).
+  if (options.driverAccessId && ObjectId.isValid(options.driverAccessId)) {
+    filter.driverAccessIds = ObjectId.createFromHexString(options.driverAccessId);
   }
 
   if (options.search) {

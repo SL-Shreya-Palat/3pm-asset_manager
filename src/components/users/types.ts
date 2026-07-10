@@ -7,6 +7,8 @@ export interface UserRow {
   roleId?: string;
   roleName?: string;
   isActive: boolean;
+  /** 'pending' = invited, awaiting first login; 'active' = has logged in. */
+  status?: string;
   portalUser: boolean;
   createdAt: string;
 }

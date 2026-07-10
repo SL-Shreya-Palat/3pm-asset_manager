@@ -1,5 +1,5 @@
 import { ObjectId } from 'mongodb';
-import { getWorkOrderStatusesCollection, getWorkOrdersCollection } from '@/lib/mongodb';
+import { getWorkOrderStatusesCollection, getWorkOrdersCollection, getTenantsCollection } from '@/lib/mongodb';
 import type { CreateWorkOrderStatusInput, UpdateWorkOrderStatusInput } from './types';
 import { WORK_ORDER_STATUS_TYPES, type WorkOrderStatusType } from './types';
 
@@ -193,6 +193,88 @@ export async function deleteWorkOrderStatus(tenantId: string, id: string) {
     tenantId: ObjectId.createFromHexString(tenantId),
   });
   return result.deletedCount > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Seeding (default statuses for a new tenant)
+// ---------------------------------------------------------------------------
+
+/**
+ * Default work order statuses created for a brand-new tenant — one per
+ * lifecycle phase, covering the standard maintenance work-order flow.
+ */
+const DEFAULT_WORK_ORDER_STATUSES: Array<{ label: string; color: string; type: WorkOrderStatusType }> = [
+  { label: 'Open', color: '#3B82F6', type: 'open' },
+  { label: 'In Progress', color: '#F59E0B', type: 'in_progress' },
+  { label: 'On Hold', color: '#6B7280', type: 'on_hold' },
+  { label: 'Completed', color: '#22C55E', type: 'completed' },
+  { label: 'Cancelled', color: '#EF4444', type: 'cancelled' },
+];
+
+/**
+ * Seed the default work order statuses for a tenant.
+ *
+ * Runs at most ONCE per tenant, guarded by the tenant's `workOrderStatusesSeeded`
+ * flag — so after the first pass a tenant's own edits/deletions are respected
+ * and defaults never reappear. On that first pass it only inserts the default
+ * lifecycle types the tenant is MISSING, so an existing status (e.g. a manually
+ * created 'On Hold') is never duplicated.
+ *
+ * Result:
+ * - brand-new tenant → all five defaults created;
+ * - existing tenant with a few statuses → only the missing types are backfilled;
+ * - already-seeded tenant → no-op.
+ *
+ * Non-fatal by convention (callers wrap in try/catch); safe on every pass.
+ */
+export async function seedWorkOrderStatuses(tenantId: string, userId: string): Promise<void> {
+  if (!ObjectId.isValid(tenantId) || !ObjectId.isValid(userId)) return;
+
+  const tenantsCol = await getTenantsCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+
+  // One-time per tenant: once seeded we never touch statuses again.
+  const tenant = await tenantsCol.findOne(
+    { _id: tenantOid },
+    { projection: { workOrderStatusesSeeded: 1 } },
+  );
+  if (!tenant || tenant.workOrderStatusesSeeded) return;
+
+  const col = await getWorkOrderStatusesCollection();
+
+  // Skip default types the tenant already has (archived included), so we never
+  // duplicate a status the user created or archived.
+  const existingTypes = (await col.distinct('type', { tenantId: tenantOid })) as string[];
+  const existingTypeSet = new Set(existingTypes);
+  const missing = DEFAULT_WORK_ORDER_STATUSES.filter((s) => !existingTypeSet.has(s.type));
+
+  if (missing.length > 0) {
+    const userOid = ObjectId.createFromHexString(userId);
+    const now = new Date();
+
+    // Continue numbering after the tenant's current highest sequence.
+    const last = await col.find({ tenantId: tenantOid }).sort({ sequence: -1 }).limit(1).toArray();
+    let seq = last.length > 0 ? ((last[0].sequence as number) || 0) : 0;
+
+    const docs = missing.map((s) => ({
+      tenantId: tenantOid,
+      label: s.label,
+      color: s.color,
+      description: undefined,
+      type: s.type,
+      sequence: ++seq,
+      createdBy: userOid,
+      updatedBy: userOid,
+      createdAt: now,
+      updatedAt: now,
+      isArchived: false,
+    }));
+
+    await col.insertMany(docs);
+  }
+
+  // Mark seeded so this only ever runs once per tenant.
+  await tenantsCol.updateOne({ _id: tenantOid }, { $set: { workOrderStatusesSeeded: true } });
 }
 
 export async function archiveWorkOrderStatus(tenantId: string, userId: string, id: string, archived: boolean) {

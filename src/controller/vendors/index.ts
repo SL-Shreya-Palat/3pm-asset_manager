@@ -5,6 +5,7 @@
 import { ObjectId } from 'mongodb';
 import { getVendorsCollection } from '@/lib/mongodb';
 import { validateCreateVendorInput, serializeVendor } from './utils';
+import { isValidEmail, isValidPhone } from '@/lib/validation/commonValidators';
 import {
   isCommandConnectionEnabled,
   stripCommandOwnedFields,
@@ -171,8 +172,16 @@ export async function updateVendor(
 
   if (input.address !== undefined) $set.address = input.address?.trim() || undefined;
   if (input.website !== undefined) $set.website = input.website?.trim() || undefined;
-  if (input.phone !== undefined) $set.phone = input.phone?.trim() || undefined;
-  if (input.email !== undefined) $set.email = input.email?.trim().toLowerCase() || undefined;
+  if (input.phone !== undefined) {
+    const trimmed = input.phone?.trim() || '';
+    if (trimmed && !isValidPhone(trimmed)) return { data: null, error: { phone: 'Invalid phone number' } };
+    $set.phone = trimmed || undefined;
+  }
+  if (input.email !== undefined) {
+    const trimmed = input.email?.trim().toLowerCase() || '';
+    if (trimmed && !isValidEmail(trimmed)) return { data: null, error: { email: 'Invalid email address' } };
+    $set.email = trimmed || undefined;
+  }
   if (input.vendorTypes !== undefined) $set.vendorTypes = input.vendorTypes || [];
   if (input.publicEditAccess !== undefined) $set.publicEditAccess = input.publicEditAccess !== false;
   if (input.laborRatePerHour !== undefined) $set.laborRatePerHour = input.laborRatePerHour ?? undefined;

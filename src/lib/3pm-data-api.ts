@@ -54,6 +54,16 @@ export async function create3PMUser(
 ): Promise<ThreePMUserResult> {
   const { idpUrl, apiKey } = getConfig();
 
+  // 3pm-auth only accepts a mobile in strict E.164 format (+countrycode…).
+  // A locally-entered number that isn't E.164 (e.g. "6787678989") would make
+  // the whole user-creation request fail validation — which silently drops the
+  // user from 3pm-auth and forces them through the registration flow on first
+  // login. So only forward the mobile when it's already E.164; otherwise omit
+  // it and still create the user (the local record keeps the number).
+  const trimmedMobile = params.mobile?.trim();
+  const e164Mobile =
+    trimmedMobile && /^\+[1-9]\d{7,14}$/.test(trimmedMobile) ? trimmedMobile : undefined;
+
   const res = await fetch(`${idpUrl}/api/data/users`, {
     method: 'POST',
     headers: {
@@ -64,7 +74,7 @@ export async function create3PMUser(
       email: params.email.toLowerCase().trim(),
       firstName: params.firstName.trim(),
       lastName: params.lastName.trim(),
-      ...(params.mobile?.trim() ? { mobile: params.mobile.trim() } : {}),
+      ...(e164Mobile ? { mobile: e164Mobile } : {}),
     }),
   });
 

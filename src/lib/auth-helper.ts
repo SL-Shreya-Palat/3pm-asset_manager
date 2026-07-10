@@ -480,7 +480,7 @@ export async function getUserTenant(userId: string) {
 export async function getUserRoleForTenant(
   userId: string,
   tenantId: string,
-): Promise<{ nameLower: string; isAdmin: boolean; isManager: boolean; isMechanic: boolean; fullAccess: boolean } | null> {
+): Promise<{ memberId: string; nameLower: string; isAdmin: boolean; isManager: boolean; isMechanic: boolean; isDriver: boolean; fullAccess: boolean } | null> {
   try {
     if (!ObjectId.isValid(userId) || !ObjectId.isValid(tenantId)) return null;
     const tenantMembersCollection = await getTenantMembersCollection();
@@ -500,13 +500,14 @@ export async function getUserRoleForTenant(
     const isAdmin = role.isAdmin === true;
     const isManager = role.isManager === true;
     const isMechanic = role.isMechanic === true;
+    const isDriver = role.isDriver === true || nameLower === 'driver';
     const scopeAll =
       typeof role.permissions === 'object' &&
       role.permissions !== null &&
       Array.isArray((role.permissions as { forms?: unknown }).forms) &&
       (role.permissions as { forms?: unknown[] }).forms?.[0] === '*';
 
-    return { nameLower, isAdmin, isManager, isMechanic, fullAccess: isAdmin || isManager || scopeAll };
+    return { memberId: member._id.toString(), nameLower, isAdmin, isManager, isMechanic, isDriver, fullAccess: isAdmin || isManager || scopeAll };
   } catch (error) {
     console.error('Error resolving user role for tenant:', error);
     return null;

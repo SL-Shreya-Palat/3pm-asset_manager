@@ -210,11 +210,16 @@ export function UsersPage() {
     {
       key: 'status',
       header: 'Status',
-      render: (user) => (
-        <Badge variant={user.isActive ? 'success' : 'secondary'}>
-          {user.isActive ? 'Active' : 'Inactive'}
-        </Badge>
-      ),
+      render: (user) => {
+        if (!user.isActive) {
+          return <Badge variant="secondary">Inactive</Badge>;
+        }
+        // Invited but not yet logged in → 'pending'. Flips to 'active' on first login.
+        if (user.status === 'pending') {
+          return <Badge variant="warning">Invited</Badge>;
+        }
+        return <Badge variant="success">Active</Badge>;
+      },
     },
     {
       key: 'actions',

@@ -166,15 +166,24 @@ export async function updateRole(
     const trimmed = input.name.trim();
     if (!trimmed) return { data: null, error: { name: 'Role name is required' } };
 
-    // Check for duplicate name (excluding current)
-    const duplicate = await collection.findOne({
-      tenantId: tenantOid,
-      _id: { $ne: roleOid },
-      nameLower: trimmed.toLowerCase(),
-      isArchived: { $ne: true },
-    });
-    if (duplicate) {
-      return { data: null, error: { name: 'A role with this name already exists' } };
+    // Only enforce name uniqueness when the name is actually CHANGING. Editing a
+    // role without renaming it (e.g. tweaking permissions on the auto-created
+    // "Driver" role) must never fail on its own existing name — and this also
+    // avoids a false positive if the tenant somehow has a duplicate.
+    const currentNameLower =
+      (existing.nameLower as string | undefined) ??
+      ((existing.name as string | undefined) ?? '').toLowerCase();
+
+    if (trimmed.toLowerCase() !== currentNameLower) {
+      const duplicate = await collection.findOne({
+        tenantId: tenantOid,
+        _id: { $ne: roleOid },
+        nameLower: trimmed.toLowerCase(),
+        isArchived: { $ne: true },
+      });
+      if (duplicate) {
+        return { data: null, error: { name: 'A role with this name already exists' } };
+      }
     }
 
     $set.name = trimmed;

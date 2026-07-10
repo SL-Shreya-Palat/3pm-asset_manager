@@ -1688,15 +1688,15 @@ export function TeamPage() {
           {/* All Teams view - no tabs, just the teams table */}
           {!selectedTeamId && (
             <>
-              <div className="mb-3">
-                <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
-              </div>
               <DataTableToolbar
                 columns={teamColumns}
                 hiddenColumnKeys={teamsTable.hiddenColumnKeys}
                 onHiddenColumnKeysChange={teamsTable.setHiddenColumnKeys}
                 density={teamsTable.density}
                 onDensityChange={teamsTable.setDensity}
+                afterControls={
+                  <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+                }
               />
               <DataTable<TeamRow>
                 columns={teamColumns}

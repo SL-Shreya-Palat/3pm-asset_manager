@@ -506,7 +506,7 @@ export function WorkOrdersPage() {
           </PermissionGuard>
         </PageHeader>
 
-        {/* Dynamic Status Tabs + Archive Toggle */}
+        {/* Dynamic Status Tabs */}
         <div className="px-6 pb-4 flex items-center gap-4">
           <FilterTabs
             value={activeTab}
@@ -519,10 +519,6 @@ export function WorkOrdersPage() {
                 color: tab.color,
               })),
             ]}
-          />
-          <ShowArchivedToggle
-            checked={showArchived}
-            onCheckedChange={setShowArchived}
           />
         </div>
 
@@ -537,6 +533,12 @@ export function WorkOrdersPage() {
             filters={filters}
             onFilterChange={setFilter}
             onFiltersClear={clearFilters}
+            afterControls={
+              <ShowArchivedToggle
+                checked={showArchived}
+                onCheckedChange={setShowArchived}
+              />
+            }
             searchNode={
               <SearchInput
                 value={search}
