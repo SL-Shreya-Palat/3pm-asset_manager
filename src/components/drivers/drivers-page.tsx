@@ -449,10 +449,11 @@ export function DriversPage() {
         )}
       </PageHeader>
 
-      <div className="space-y-3 px-6 pb-3">
-        {connected && <CommandManagedBanner />}
-        <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
-      </div>
+      {connected && (
+        <div className="px-6 pb-3">
+          <CommandManagedBanner />
+        </div>
+      )}
 
       {/* Toolbar + Table */}
       <div className="flex-1 overflow-auto px-6 pb-6">
@@ -462,6 +463,9 @@ export function DriversPage() {
           onHiddenColumnKeysChange={setHiddenColumnKeys}
           density={density}
           onDensityChange={setDensity}
+          afterControls={
+            <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+          }
           searchNode={
             <SearchInput value={search} onChange={setSearch} placeholder="Search drivers..." />
           }

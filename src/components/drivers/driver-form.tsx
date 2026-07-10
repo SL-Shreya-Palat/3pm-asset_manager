@@ -230,6 +230,14 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
       });
   }, [mode]);
 
+  // Mirrors the backend isValidPhone rule: allowed chars + 7–15 digits.
+  const isPhoneValid = (value: string) => {
+    const trimmed = value.trim();
+    if (!/^\+?[0-9 ()-]+$/.test(trimmed)) return false;
+    const digits = trimmed.replace(/\D/g, '').length;
+    return digits >= 7 && digits <= 15;
+  };
+
   const clearFieldError = (field: string) => {
     setFieldErrors((prev) => {
       if (!prev[field]) return prev;
@@ -252,6 +260,9 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
     if (!driverLicense.trim()) errors.driverLicense = 'Driver license is required';
     if (!licenseClass.trim()) errors.licenseClass = 'License class is required';
     if (!licenseNumber.trim()) errors.licenseNumber = 'License number is required';
+    if (mobileNumber.trim() && !isPhoneValid(mobileNumber)) errors.mobileNumber = 'Enter a valid phone number';
+    if (homePhone.trim() && !isPhoneValid(homePhone)) errors.homePhone = 'Enter a valid phone number';
+    if (workPhone.trim() && !isPhoneValid(workPhone)) errors.workPhone = 'Enter a valid phone number';
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);

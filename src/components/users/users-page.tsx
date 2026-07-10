@@ -255,11 +255,6 @@ export function UsersPage() {
         </Button>
       </PageHeader>
 
-      {/* Show Archived Toggle */}
-      <div className="px-6 pb-3">
-        <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
-      </div>
-
       {/* Toolbar + Table */}
       <div className="flex-1 overflow-auto px-6 pb-6">
         <DataTableToolbar
@@ -272,6 +267,9 @@ export function UsersPage() {
           filters={filters}
           onFilterChange={setFilter}
           onFiltersClear={clearFilters}
+          afterControls={
+            <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
+          }
           searchNode={
             <SearchInput value={search} onChange={setSearch} placeholder="Search users..." />
           }

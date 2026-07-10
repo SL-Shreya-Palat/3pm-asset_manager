@@ -12,7 +12,6 @@ import { cn } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -215,23 +214,34 @@ export function Sidebar() {
         collapsed ? 'w-[68px]' : 'w-[240px]',
       )}
     >
-      {/* Logo / brand */}
+      {/* Logo / brand + collapse toggle */}
       <div
         className={cn(
           'flex h-14 items-center border-b border-sidebar-border px-4',
-          collapsed && 'justify-center',
+          collapsed ? 'justify-center' : 'justify-between',
         )}
       >
-        <Link href="/dashboard" className="flex items-center gap-x-3 overflow-hidden">
-          <div className="flex h-8 min-w-8 shrink-0 items-center justify-center rounded-md bg-primary px-1.5 text-[11px] font-bold text-primary-foreground shadow-sm">
-            3PM
-          </div>
-          {!collapsed && (
+        {!collapsed && (
+          <Link href="/dashboard" className="flex items-center gap-x-3 overflow-hidden">
+            <div className="flex h-8 min-w-8 shrink-0 items-center justify-center rounded-md bg-primary px-1.5 text-[11px] font-bold text-primary-foreground shadow-sm">
+              3PM
+            </div>
             <span className="brand-wordmark truncate text-lg font-bold leading-none">
               Drive
             </span>
+          </Link>
+        )}
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="flex shrink-0 items-center justify-center rounded p-2 text-sidebar-foreground transition-colors hover:bg-gray-100"
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {collapsed ? (
+            <ChevronRight className="h-4 w-4" />
+          ) : (
+            <ChevronLeft className="h-4 w-4" />
           )}
-        </Link>
+        </button>
       </div>
 
       {/* Navigation */}
@@ -332,23 +342,6 @@ export function Sidebar() {
 
       {/* Footer — tenant (organization) switcher */}
       <div className="border-t border-sidebar-border p-2">
-        <Separator className="mb-2" />
-
-        {/* Collapse toggle */}
-        <div className={cn('mb-1 flex', collapsed ? 'justify-center' : 'justify-end')}>
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className="flex items-center justify-center rounded p-2 text-sidebar-foreground transition-colors hover:bg-gray-100"
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {collapsed ? (
-              <ChevronRight className="h-4 w-4" />
-            ) : (
-              <ChevronLeft className="h-4 w-4" />
-            )}
-          </button>
-        </div>
-
         {currentTenant && (
           <DropdownMenu>
             {collapsed ? (

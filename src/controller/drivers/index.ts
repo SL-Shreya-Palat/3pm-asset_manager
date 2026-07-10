@@ -12,6 +12,7 @@ import {
   getCountersCollection,
 } from '@/lib/mongodb';
 import { validateCreateDriverInput, serializeDriver } from './utils';
+import { isValidPhone } from '@/lib/validation/commonValidators';
 import { createInvitation } from '@/controller/invitations';
 import { sendInvitationEmail } from '@/lib/email';
 import {
@@ -504,9 +505,21 @@ export async function updateDriver(
     $set.teamId = input.teamId ? ObjectId.createFromHexString(input.teamId) : undefined;
   }
   if (input.countryCode !== undefined) $set.countryCode = input.countryCode?.trim() || undefined;
-  if (input.mobileNumber !== undefined) $set.mobileNumber = input.mobileNumber?.trim() || undefined;
-  if (input.homePhone !== undefined) $set.homePhone = input.homePhone?.trim() || undefined;
-  if (input.workPhone !== undefined) $set.workPhone = input.workPhone?.trim() || undefined;
+  if (input.mobileNumber !== undefined) {
+    const v = input.mobileNumber?.trim() || undefined;
+    if (v && !isValidPhone(v)) return { data: null, error: { mobileNumber: 'Enter a valid phone number' } };
+    $set.mobileNumber = v;
+  }
+  if (input.homePhone !== undefined) {
+    const v = input.homePhone?.trim() || undefined;
+    if (v && !isValidPhone(v)) return { data: null, error: { homePhone: 'Enter a valid phone number' } };
+    $set.homePhone = v;
+  }
+  if (input.workPhone !== undefined) {
+    const v = input.workPhone?.trim() || undefined;
+    if (v && !isValidPhone(v)) return { data: null, error: { workPhone: 'Enter a valid phone number' } };
+    $set.workPhone = v;
+  }
   if (input.dateOfBirth !== undefined) {
     $set.dateOfBirth = input.dateOfBirth ? new Date(input.dateOfBirth) : null;
   }
