@@ -3,20 +3,28 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LogOut,
   ChevronLeft,
   ChevronRight,
   ChevronDown,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { navItems } from '@/constants/navigation';
 import type { NavItem, NavChild } from '@/constants/navigation';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { useConnection } from '@/hooks/use-connection';
+import { useAuth } from '@/hooks/useAuth';
+import { useAuthStore } from '@/store/auth/store';
 
 function useFilteredNavItems() {
   const { loading, isMobileOnly, canAccessModule, canAccessSubModule } = useRoleAccess();
@@ -84,7 +92,99 @@ function NavSkeleton({ collapsed }: { collapsed: boolean }) {
 export function Sidebar() {
   const pathname = usePathname();
   const { loading, items: filteredItems } = useFilteredNavItems();
+  const { user } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
+
+  // Tenant (organization) switcher — mirrors the construction portal footer.
+  const tenants = useAuthStore((s) => s.tenants);
+  const activeTenantId = useAuthStore((s) => s.activeTenantId);
+  const fetchTenants = useAuthStore((s) => s.fetchTenants);
+  const switchTenant = useAuthStore((s) => s.switchTenant);
+
+  useEffect(() => {
+    fetchTenants();
+  }, [fetchTenants]);
+
+  // Normalize the tenant list to a common shape; fall back to the session
+  // tenant when the list endpoint returns nothing (single-tenant users).
+  const displayTenants = useMemo(() => {
+    if (tenants.length > 0) {
+      return tenants.map((t) => ({ id: t.id, name: t.name, role: t.role, logoUrl: null as string | null }));
+    }
+    if (user?.tenant) {
+      return [{
+        id: user.tenant.id,
+        name: user.tenant.name,
+        role: user.tenant.roleName || 'Member',
+        logoUrl: user.tenant.logoUrl,
+      }];
+    }
+    return [];
+  }, [tenants, user?.tenant]);
+
+  const currentTenant =
+    displayTenants.find((t) => t.id === activeTenantId) || displayTenants[0] || null;
+
+  const tenantAvatar = (name: string, logoUrl: string | null, className?: string) => (
+    <div
+      className={cn(
+        'flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded bg-primary text-sm font-semibold text-primary-foreground',
+        className,
+      )}
+    >
+      {logoUrl ? (
+        <img src={logoUrl} alt={name} className="h-full w-full object-contain p-0.5" />
+      ) : (
+        (name.charAt(0) || 'T').toUpperCase()
+      )}
+    </div>
+  );
+
+  // Dropdown listing the available tenants (with a "TENANT" header).
+  const tenantMenu = (
+    <DropdownMenuContent
+      side="top"
+      align="start"
+      sideOffset={8}
+      className="w-64 overflow-hidden p-0"
+    >
+      <div className="border-b border-border px-3 py-2.5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Tenant
+        </p>
+      </div>
+      <div className="max-h-[280px] overflow-y-auto py-1.5">
+        {displayTenants.map((t) => {
+          const isActive = t.id === activeTenantId || (!activeTenantId && t.id === currentTenant?.id);
+          return (
+            <DropdownMenuItem
+              key={t.id}
+              disabled={isActive}
+              onClick={() => { if (!isActive) switchTenant(t.id); }}
+              className={cn(
+                'mx-1.5 cursor-pointer gap-2.5 rounded px-3 py-2.5',
+                isActive
+                  ? 'border border-primary/20 bg-primary/5 focus:bg-primary/5'
+                  : 'border border-transparent',
+              )}
+            >
+              {tenantAvatar(t.name, t.logoUrl)}
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate text-sm font-medium leading-tight text-foreground">
+                  {t.name}
+                </span>
+                {t.role && (
+                  <span className="mt-0.5 truncate text-xs uppercase text-muted-foreground">
+                    {t.role}
+                  </span>
+                )}
+              </div>
+            </DropdownMenuItem>
+          );
+        })}
+      </div>
+    </DropdownMenuContent>
+  );
   const [expandedItems, setExpandedItems] = useState<Set<string>>(() => {
     // Auto-expand parent if a child route is active
     const expanded = new Set<string>();
@@ -230,25 +330,16 @@ export function Sidebar() {
         )}
       </ScrollArea>
 
-      {/* Footer */}
+      {/* Footer — tenant (organization) switcher */}
       <div className="border-t border-sidebar-border p-2">
         <Separator className="mb-2" />
-        <div className="flex items-center justify-between">
-          {!collapsed && (
-            <a
-              href="/api/auth/logout"
-              className="flex items-center gap-2 rounded px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-gray-100 transition-colors flex-1"
-            >
-              <LogOut className="h-4 w-4" />
-              <span>Sign Out</span>
-            </a>
-          )}
+
+        {/* Collapse toggle */}
+        <div className={cn('mb-1 flex', collapsed ? 'justify-center' : 'justify-end')}>
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className={cn(
-              'flex items-center justify-center rounded p-2 text-sidebar-foreground hover:bg-gray-100 transition-colors',
-              collapsed && 'w-full',
-            )}
+            className="flex items-center justify-center rounded p-2 text-sidebar-foreground transition-colors hover:bg-gray-100"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {collapsed ? (
               <ChevronRight className="h-4 w-4" />
@@ -257,6 +348,44 @@ export function Sidebar() {
             )}
           </button>
         </div>
+
+        {currentTenant && (
+          <DropdownMenu>
+            {collapsed ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <button className="flex w-full items-center justify-center rounded p-1 transition-colors hover:bg-primary/5">
+                      {tenantAvatar(currentTenant.name, currentTenant.logoUrl)}
+                    </button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8}>
+                  {currentTenant.name}
+                  {currentTenant.role ? ` · ${currentTenant.role}` : ''}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <DropdownMenuTrigger asChild>
+                <button className="flex w-full items-center gap-2.5 rounded border border-transparent bg-primary/5 px-3 py-2.5 text-left transition-colors hover:border-primary/10 hover:bg-primary/10">
+                  {tenantAvatar(currentTenant.name, currentTenant.logoUrl)}
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-sm font-medium leading-tight text-sidebar-foreground">
+                      {currentTenant.name}
+                    </span>
+                    {currentTenant.role && (
+                      <span className="truncate text-xs uppercase leading-tight text-muted-foreground">
+                        {currentTenant.role}
+                      </span>
+                    )}
+                  </div>
+                  <ChevronsUpDown className="ml-auto h-4 w-4 shrink-0 text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+            )}
+            {tenantMenu}
+          </DropdownMenu>
+        )}
       </div>
     </aside>
   );

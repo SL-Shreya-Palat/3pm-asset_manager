@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
@@ -16,7 +16,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { SearchInput } from '@/components/ui/search-input';
-import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
+import { DataTable, type DataTableColumn, type DataTableFilterDef } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
@@ -31,7 +31,7 @@ import {
 import { PageHeader } from '@/components/ui/page-header';
 import { cn } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
-import { useDataTable } from '@/hooks/use-data-table';
+import { useDataTable, applyTableFilters } from '@/hooks/use-data-table';
 import { isWildcardPermissions } from '@/lib/rbac';
 import type { RoleRow, Pagination } from './types';
 
@@ -49,6 +49,7 @@ export function RolesPage() {
   const {
     hiddenColumnKeys, setHiddenColumnKeys,
     density, setDensity,
+    filters, setFilter, clearFilters,
   } = useDataTable();
 
   // Archive state
@@ -137,6 +138,33 @@ export function RolesPage() {
       : 0;
     return `${moduleCount} module${moduleCount !== 1 ? 's' : ''}`;
   };
+
+  // Filters (Type, Team Scoped) — reuses the shared toolbar Filters control.
+  const roleFilterDefs: DataTableFilterDef[] = useMemo(() => [
+    {
+      columnKey: 'type',
+      label: 'Type',
+      type: 'select',
+      options: [
+        { label: 'System', value: 'system' },
+        { label: 'Custom', value: 'custom' },
+      ],
+    },
+    {
+      columnKey: 'teamScoped',
+      label: 'Team Scoped',
+      type: 'select',
+      options: [
+        { label: 'Yes', value: 'true' },
+        { label: 'No', value: 'false' },
+      ],
+    },
+  ], []);
+
+  const filteredRoles = useMemo(
+    () => applyTableFilters(roles, filters, roleFilterDefs),
+    [roles, filters, roleFilterDefs],
+  );
 
   const roleColumns: DataTableColumn<RoleRow>[] = [
     {
@@ -266,13 +294,17 @@ export function RolesPage() {
           onHiddenColumnKeysChange={setHiddenColumnKeys}
           density={density}
           onDensityChange={setDensity}
+          filterDefs={roleFilterDefs}
+          filters={filters}
+          onFilterChange={setFilter}
+          onFiltersClear={clearFilters}
           searchNode={
             <SearchInput value={search} onChange={setSearch} placeholder="Search roles..." />
           }
         />
         <DataTable<RoleRow>
           columns={roleColumns}
-          data={roles}
+          data={filteredRoles}
           pagination={pagination}
           loading={loading}
           rowsPerPage={rowsPerPage}

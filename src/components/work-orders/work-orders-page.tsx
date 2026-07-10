@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import {
@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SearchInput } from "@/components/ui/search-input";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { DataTable, type DataTableColumn, type DataTableFilterDef } from "@/components/ui/data-table";
 import { DataTableToolbar } from "@/components/ui/data-table-toolbar";
 import {
   Dialog,
@@ -45,7 +45,7 @@ import { RowActions, RowActionButton } from "@/components/ui/row-actions";
 import { MeterTypeSelect } from "@/components/maintenance/service-fields";
 import { cn, formatDate } from "@/lib/utils";
 import { useDebouncedSearch } from "@/hooks/use-debounced-search";
-import { useDataTable } from "@/hooks/use-data-table";
+import { useDataTable, applyTableFilters } from "@/hooks/use-data-table";
 import { useAuth } from '@/hooks/useAuth';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { checkRecordOwnership } from '@/lib/rbac';
@@ -93,8 +93,11 @@ export function WorkOrdersPage() {
   const [userMap, setUserMap] = useState<Record<string, string>>({});
 
   // Table features
-  const { hiddenColumnKeys, setHiddenColumnKeys, density, setDensity } =
-    useDataTable();
+  const {
+    hiddenColumnKeys, setHiddenColumnKeys,
+    density, setDensity,
+    filters, setFilter, clearFilters,
+  } = useDataTable();
 
   // Panel state
   const [panelOpen, setPanelOpen] = useState(false);
@@ -470,6 +473,22 @@ export function WorkOrdersPage() {
     },
   ];
 
+  // Filters (Assignee) — reuses the shared toolbar Filters control. Status is on the tabs above.
+  const woFilterDefs: DataTableFilterDef[] = useMemo(() => {
+    const assigneeOptions = Object.values(userMap)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ label: name, value: name }));
+    return assigneeOptions.length > 0
+      ? [{ columnKey: 'assigneeName', label: 'Assignee', type: 'select' as const, options: assigneeOptions }]
+      : [];
+  }, [userMap]);
+
+  const filteredOrders = useMemo(
+    () => applyTableFilters(orders, filters, woFilterDefs),
+    [orders, filters, woFilterDefs],
+  );
+
   return (
     <div className="relative flex h-full">
       {/* Main content */}
@@ -514,6 +533,10 @@ export function WorkOrdersPage() {
             onHiddenColumnKeysChange={setHiddenColumnKeys}
             density={density}
             onDensityChange={setDensity}
+            filterDefs={woFilterDefs}
+            filters={filters}
+            onFilterChange={setFilter}
+            onFiltersClear={clearFilters}
             searchNode={
               <SearchInput
                 value={search}
@@ -524,7 +547,7 @@ export function WorkOrdersPage() {
           />
           <DataTable<WorkOrderRow>
             columns={woColumns}
-            data={orders}
+            data={filteredOrders}
             pagination={pagination}
             loading={loading}
             rowsPerPage={rowsPerPage}

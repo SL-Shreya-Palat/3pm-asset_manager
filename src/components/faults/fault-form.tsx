@@ -307,6 +307,7 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
                 <SelectContent>
                   <SelectItem value="odometer">Odometer</SelectItem>
                   <SelectItem value="engine_hours">Engine Hours</SelectItem>
+                  <SelectItem value="hubometer">Hubometer</SelectItem>
                 </SelectContent>
               </Select>
             </div>

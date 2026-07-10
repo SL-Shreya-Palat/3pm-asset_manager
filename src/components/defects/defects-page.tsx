@@ -468,7 +468,7 @@ export function DefectsPage() {
             filters={filters}
             onFilterChange={setFilter}
             onFiltersClear={clearFilters}
-            actions={
+            afterControls={
               <Select
                 value=""
                 onValueChange={handleBulkStatusUpdate}

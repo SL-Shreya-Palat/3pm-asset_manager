@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
@@ -15,13 +15,15 @@ import {
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { SearchInput } from '@/components/ui/search-input';
-import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
+import { DataTable, type DataTableColumn, type DataTableFilterDef } from '@/components/ui/data-table';
+import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/ui/page-header';
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
+import { useDataTable, applyTableFilters } from '@/hooks/use-data-table';
 import { useConnection } from '@/hooks/use-connection';
 import { InviteUserDialog } from './invite-user-dialog';
 import { ImportCommandStaffDialog } from './import-command-dialog';
@@ -36,6 +38,13 @@ export function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch, debouncedSearch] = useDebouncedSearch(300);
   const [rowsPerPage, setRowsPerPage] = useState(25);
+
+  // Table features (column visibility, density, filters)
+  const {
+    hiddenColumnKeys, setHiddenColumnKeys,
+    density, setDensity,
+    filters, setFilter, clearFilters,
+  } = useDataTable();
 
   // Invite dialog
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
@@ -126,6 +135,34 @@ export function UsersPage() {
     setInviteDialogOpen(false);
     fetchUsers(1);
   };
+
+  // Filters (Role, Status) — reuses the shared toolbar Filters control.
+  const userFilterDefs: DataTableFilterDef[] = useMemo(() => {
+    const roleOptions = Array.from(
+      new Set(users.map((u) => u.roleName).filter((r): r is string => Boolean(r))),
+    )
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ label: name, value: name }));
+    return [
+      ...(roleOptions.length > 0
+        ? [{ columnKey: 'roleName', label: 'Role', type: 'select' as const, options: roleOptions }]
+        : []),
+      {
+        columnKey: 'isActive',
+        label: 'Status',
+        type: 'select' as const,
+        options: [
+          { label: 'Active', value: 'true' },
+          { label: 'Inactive', value: 'false' },
+        ],
+      },
+    ];
+  }, [users]);
+
+  const filteredUsers = useMemo(
+    () => applyTableFilters(users, filters, userFilterDefs),
+    [users, filters, userFilterDefs],
+  );
 
   // ── Column definitions ──
   const userColumns: DataTableColumn<UserRow>[] = [
@@ -218,22 +255,30 @@ export function UsersPage() {
         </Button>
       </PageHeader>
 
-      {/* Show Archived Toggle + Search */}
-      <div className="px-6 pb-4 flex items-center gap-4">
-        <SearchInput
-          value={search}
-          onChange={setSearch}
-          placeholder="Search users..."
-          className="max-w-sm"
-        />
+      {/* Show Archived Toggle */}
+      <div className="px-6 pb-3">
         <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
       </div>
 
-      {/* Table */}
+      {/* Toolbar + Table */}
       <div className="flex-1 overflow-auto px-6 pb-6">
+        <DataTableToolbar
+          columns={userColumns}
+          hiddenColumnKeys={hiddenColumnKeys}
+          onHiddenColumnKeysChange={setHiddenColumnKeys}
+          density={density}
+          onDensityChange={setDensity}
+          filterDefs={userFilterDefs}
+          filters={filters}
+          onFilterChange={setFilter}
+          onFiltersClear={clearFilters}
+          searchNode={
+            <SearchInput value={search} onChange={setSearch} placeholder="Search users..." />
+          }
+        />
         <DataTable<UserRow>
           columns={userColumns}
-          data={users}
+          data={filteredUsers}
           pagination={pagination}
           loading={loading}
           rowsPerPage={rowsPerPage}
@@ -241,6 +286,8 @@ export function UsersPage() {
           onRowsPerPageChange={setRowsPerPage}
           onRowClick={showArchived ? undefined : (user) => router.push(`/people/users/${user.id}`)}
           rowKey={(u) => u.id}
+          density={density}
+          hiddenColumnKeys={hiddenColumnKeys}
           emptyMessage={
             debouncedSearch
               ? 'No users match your search.'

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
@@ -22,7 +22,7 @@ import { Input } from '@/components/ui/input';
 import { SearchInput } from '@/components/ui/search-input';
 import { PageHeader } from '@/components/ui/page-header';
 import { FilterTabs } from '@/components/ui/filter-tabs';
-import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
+import { DataTable, type DataTableColumn, type DataTableFilterDef } from '@/components/ui/data-table';
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import {
   Dialog,
@@ -39,7 +39,7 @@ import { PermissionGuard } from '@/components/auth/permission-guard';
 import { Permissions } from '@/consts/permissions';
 import { cn, formatDate } from '@/lib/utils';
 import { useDebouncedSearch } from '@/hooks/use-debounced-search';
-import { useDataTable } from '@/hooks/use-data-table';
+import { useDataTable, applyTableFilters } from '@/hooks/use-data-table';
 import { useAuth } from '@/hooks/useAuth';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { useConnection } from '@/hooks/use-connection';
@@ -100,6 +100,7 @@ export function PurchaseOrdersPage() {
   const {
     hiddenColumnKeys, setHiddenColumnKeys,
     density, setDensity,
+    filters, setFilter, clearFilters,
   } = useDataTable();
 
   // Panel state
@@ -295,6 +296,22 @@ export function PurchaseOrdersPage() {
     } finally { setReceiving(false); }
   };
 
+  // Filters (Vendor) — reuses the shared toolbar Filters control. Status is on the tabs above.
+  const poFilterDefs: DataTableFilterDef[] = useMemo(() => {
+    const vendorOptions = Object.values(vendorMap)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({ label: name, value: name }));
+    return vendorOptions.length > 0
+      ? [{ columnKey: 'vendorName', label: 'Vendor', type: 'select' as const, options: vendorOptions }]
+      : [];
+  }, [vendorMap]);
+
+  const filteredOrders = useMemo(
+    () => applyTableFilters(orders, filters, poFilterDefs),
+    [orders, filters, poFilterDefs],
+  );
+
   // Column definitions
   const poColumns: DataTableColumn<PurchaseOrderRow>[] = [
     {
@@ -463,6 +480,10 @@ export function PurchaseOrdersPage() {
             onHiddenColumnKeysChange={setHiddenColumnKeys}
             density={density}
             onDensityChange={setDensity}
+            filterDefs={poFilterDefs}
+            filters={filters}
+            onFilterChange={setFilter}
+            onFiltersClear={clearFilters}
             afterControls={
               <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
             }
@@ -472,7 +493,7 @@ export function PurchaseOrdersPage() {
           />
           <DataTable<PurchaseOrderRow>
             columns={poColumns}
-            data={orders}
+            data={filteredOrders}
             pagination={pagination}
             loading={loading}
             rowsPerPage={rowsPerPage}

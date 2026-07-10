@@ -106,13 +106,13 @@ export function VinLookupDialog({ open, onOpenChange }: VinLookupDialogProps) {
         <DialogHeader>
           <DialogTitle>Look up vehicle</DialogTitle>
           <DialogDescription>
-            Enter a registration plate, VIN or chassis number to auto-fill the vehicle&apos;s details
+            Enter a rego number, VIN or chassis number to auto-fill the vehicle&apos;s details
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           <div>
-            <Label htmlFor="vin-lookup">Plate / VIN / Chassis</Label>
+            <Label htmlFor="vin-lookup">Rego Number / VIN / Chassis</Label>
             <div className="relative mt-1.5">
               <Input
                 id="vin-lookup"
@@ -122,7 +122,7 @@ export function VinLookupDialog({ open, onOpenChange }: VinLookupDialogProps) {
                   if (error) setError('');
                 }}
                 onKeyDown={handleKeyDown}
-                placeholder="e.g. ABC123 or JM0KF4WLA00115724"
+                placeholder="e.g. ABC-123 or JM0KF4WLA00115724"
                 className={`pr-10 font-mono tracking-wider ${error ? 'border-destructive' : ''}`}
                 disabled={loading}
                 autoFocus

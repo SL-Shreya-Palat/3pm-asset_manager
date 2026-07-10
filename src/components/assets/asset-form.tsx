@@ -334,7 +334,7 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
     // Validate required fields
     const errors: Record<string, string> = {};
     if (!name.trim()) errors.name = 'Asset name is required';
-    if (vin.trim() && (vin.trim().length < 5 || vin.trim().length > 17)) errors.vin = 'VIN / chassis number must be between 5 and 17 characters';
+    if (vin.trim() && (vin.trim().length < 5 || vin.trim().length > 17)) errors.vin = 'Rego / chassis number must be between 5 and 17 characters';
     if (year && (parseInt(year, 10) < 1900 || parseInt(year, 10) > 2100)) errors.year = 'Year must be between 1900 and 2100';
 
     if (Object.keys(errors).length > 0) {
@@ -466,7 +466,7 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
           children: (
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="vin">VIN</Label>
+                <Label htmlFor="vin">Rego Number</Label>
                 <div className="relative mt-1.5">
                   <Input
                     id="vin"
@@ -482,7 +482,7 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
                         handleVinDecode();
                       }
                     }}
-                    placeholder="VIN or chassis number"
+                    placeholder="Rego or chassis number"
                     disabled={vinDecoding}
                     className={`pr-20 ${fieldErrors.vin ? 'border-destructive' : ''}`}
                   />
@@ -676,19 +676,15 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
                     Edit Asset Types
                   </button>
                 </div>
-                <Select value={assetTypeId} onValueChange={setAssetTypeId}>
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder="Select type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">None</SelectItem>
-                    {assetTypes.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  className="mt-1.5"
+                  options={assetTypes.map((t) => ({ label: t.name, value: t.id }))}
+                  value={assetTypeId || null}
+                  onValueChange={(val) => setAssetTypeId(val || '')}
+                  placeholder="Select type"
+                  searchPlaceholder="Search asset types..."
+                  emptyMessage="No asset types found"
+                />
               </div>
               <div>
                 <DateField id="lastServiceDate" label="Last Service Date" value={lastServiceDate} onChange={setLastServiceDate} placeholder="Select date" />
