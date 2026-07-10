@@ -6,7 +6,7 @@
  * PATCH  /api/work-order-statuses -- Archive/unarchive a status
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import {
   getAllWorkOrderStatuses,
   getWorkOrderStatusById,
@@ -16,28 +16,21 @@ import {
   archiveWorkOrderStatus,
   seedWorkOrderStatuses,
 } from '@/controller/work-order-statuses';
-import { getFormPermissionLevels } from '@/lib/server-permissions';
 
 const FORM_ID = 'settings.workOrderStatuses.workOrderStatus';
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, FORM_ID, 'view');
+  if (!auth.ok) return auth.res;
+  const { user, scope } = auth.ctx;
 
   const search = request.nextUrl.searchParams.get('search') || undefined;
   const showArchived = request.nextUrl.searchParams.get('showArchived') === 'true';
 
-  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
-  if (perms.view === 'NONE') {
-    return NextResponse.json({ data: null, error: 'You do not have permission to view work order statuses' }, { status: 403 });
-  }
-
   // Lazily backfill the default statuses for tenants that predate default
   // seeding. One-time per tenant (guarded by a tenant flag) and only triggered
   // by users who can manage statuses, so a read-only viewer never causes writes.
-  if (perms.create) {
+  if (auth.ctx.perms.create) {
     try {
       await seedWorkOrderStatuses(user.currentTenantId, user.id);
     } catch (err) {
@@ -45,22 +38,16 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const createdBy = perms.view === 'OWN' ? user.id : undefined;
+  const createdBy = scope === 'OWN' ? user.id : undefined;
 
   const items = await getAllWorkOrderStatuses(user.currentTenantId, search, { showArchived, createdBy });
   return NextResponse.json({ data: items, error: null });
 }
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
-  if (!perms.create) {
-    return NextResponse.json({ data: null, error: 'You do not have permission to create work order statuses' }, { status: 403 });
-  }
+  const auth = await authorize(request, FORM_ID, 'create');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const body = await request.json();
@@ -75,10 +62,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, FORM_ID, 'edit');
+  if (!auth.ok) return auth.res;
+  const { user, scope } = auth.ctx;
 
   try {
     const body = await request.json();
@@ -87,11 +73,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ data: null, error: 'ID is required' }, { status: 400 });
     }
 
-    const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
-    if (perms.edit === false) {
-      return NextResponse.json({ data: null, error: 'You do not have permission to edit work order statuses' }, { status: 403 });
-    }
-    if (perms.edit === 'OWN') {
+    if (scope === 'OWN') {
       const existing = await getWorkOrderStatusById(user.currentTenantId, id);
       if (!existing) {
         return NextResponse.json({ data: null, error: 'Work order status not found' }, { status: 404 });
@@ -112,21 +94,16 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, FORM_ID, 'delete');
+  if (!auth.ok) return auth.res;
+  const { user, scope } = auth.ctx;
 
   const id = request.nextUrl.searchParams.get('id');
   if (!id) {
     return NextResponse.json({ data: null, error: 'ID is required' }, { status: 400 });
   }
 
-  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
-  if (perms.delete === false) {
-    return NextResponse.json({ data: null, error: 'You do not have permission to delete work order statuses' }, { status: 403 });
-  }
-  if (perms.delete === 'OWN') {
+  if (scope === 'OWN') {
     const existing = await getWorkOrderStatusById(user.currentTenantId, id);
     if (!existing) {
       return NextResponse.json({ data: null, error: 'Work order status not found' }, { status: 404 });
@@ -144,10 +121,9 @@ export async function DELETE(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, FORM_ID, 'archive');
+  if (!auth.ok) return auth.res;
+  const { user, scope } = auth.ctx;
 
   try {
     const body = await request.json();
@@ -155,11 +131,7 @@ export async function PATCH(request: NextRequest) {
     if (!id) return NextResponse.json({ data: null, error: 'ID is required' }, { status: 400 });
     if (typeof archived !== 'boolean') return NextResponse.json({ data: null, error: 'archived must be a boolean' }, { status: 400 });
 
-    const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
-    if (perms.archive === false) {
-      return NextResponse.json({ data: null, error: 'You do not have permission to archive work order statuses' }, { status: 403 });
-    }
-    if (perms.archive === 'OWN') {
+    if (scope === 'OWN') {
       const existing = await getWorkOrderStatusById(user.currentTenantId, id);
       if (!existing) {
         return NextResponse.json({ data: null, error: 'Work order status not found' }, { status: 404 });

@@ -119,7 +119,7 @@ export function AssetComplianceTab({ assetId }: { assetId: string }) {
   return (
     <div>
       {/* Compliance summary */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6">
         <StatCard
           icon={<CircleCheck className="h-4 w-4" />}
           label="Valid"

@@ -3,7 +3,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { authorize } from '@/lib/authz';
+import { authorize, inTeamScope } from '@/lib/authz';
 import { getTeamsCollection } from '@/lib/mongodb';
 
 const FORM_ID = 'people.teams.team';
@@ -13,10 +13,13 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function PATCH(request: NextRequest, context: RouteContext) {
   const auth = await authorize(request, FORM_ID, 'archive');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   try {
     const { id } = await context.params;
+    if (!inTeamScope(teamIds, id)) {
+      return NextResponse.json({ data: null, error: 'Team not found' }, { status: 404 });
+    }
     const { archived } = await request.json();
 
     if (typeof archived !== 'boolean') {

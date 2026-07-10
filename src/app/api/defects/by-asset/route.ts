@@ -9,13 +9,14 @@ import { getExceptionsByAsset } from '@/controller/defects';
 export async function GET(request: NextRequest) {
   const auth = await authorize(request, 'maintenance.defects.defect', 'view');
   if (!auth.ok) return auth.res;
-  const { user } = auth.ctx;
+  const { user, teamIds } = auth.ctx;
 
   const { searchParams } = new URL(request.url);
   const result = await getExceptionsByAsset(user.currentTenantId!, {
     status: searchParams.get('status') || undefined,
     severity: searchParams.get('severity') || undefined,
     search: searchParams.get('search') || undefined,
+    teamIds: teamIds ?? undefined,
   });
 
   return NextResponse.json({ data: result, error: null });

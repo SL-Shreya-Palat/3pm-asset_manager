@@ -166,3 +166,59 @@ export async function create3PMInvitation(
 
   return data.data;
 }
+
+/**
+ * Resend a pending invitation's email via 3PM Data API.
+ * Mirrors construction-portal/lib/3pm-data-api.ts.
+ */
+export async function resend3PMInvitation(
+  invitationId: string,
+): Promise<{ message: string; expiresAt: string }> {
+  const { idpUrl, apiKey } = getConfig();
+
+  const res = await fetch(
+    `${idpUrl}/api/data/invitations/${invitationId}/resend`,
+    {
+      method: 'POST',
+      headers: { 'X-API-Key': apiKey },
+    },
+  );
+
+  const data = await res.json();
+
+  if (data.error) {
+    throw new Error(data.error);
+  }
+
+  return data.data;
+}
+
+/**
+ * Force-expire a pending invitation via 3PM Data API.
+ *
+ * Soft-state change: the row is preserved with status="expired" and expiresAt
+ * backdated, so the recipient's email link renders a proper "Invitation
+ * expired" banner instead of a confusing "Invitation not valid".
+ * Mirrors construction-portal/lib/3pm-data-api.ts.
+ */
+export async function expire3PMInvitation(
+  invitationId: string,
+): Promise<{ message: string }> {
+  const { idpUrl, apiKey } = getConfig();
+
+  const res = await fetch(
+    `${idpUrl}/api/data/invitations/${invitationId}/expire`,
+    {
+      method: 'POST',
+      headers: { 'X-API-Key': apiKey },
+    },
+  );
+
+  const data = await res.json();
+
+  if (data.error) {
+    throw new Error(data.error);
+  }
+
+  return data.data;
+}

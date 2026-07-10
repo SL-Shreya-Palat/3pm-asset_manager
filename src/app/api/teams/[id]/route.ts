@@ -9,7 +9,7 @@ import {
   updateTeam,
   deleteTeam,
 } from "@/controller/work-orders/teams";
-import { authorize } from '@/lib/authz';
+import { authorize, inTeamScope } from '@/lib/authz';
 
 const FORM_ID = 'people.teams.team';
 
@@ -18,9 +18,12 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function GET(request: NextRequest, context: RouteContext) {
   const auth = await authorize(request, FORM_ID, 'view');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   const { id } = await context.params;
+  if (!inTeamScope(teamIds, id)) {
+    return NextResponse.json({ data: null, error: 'Team not found' }, { status: 404 });
+  }
   const team = await getTeamById(user.currentTenantId!, id);
 
   if (!team) {
@@ -40,10 +43,13 @@ export async function GET(request: NextRequest, context: RouteContext) {
 export async function PUT(request: NextRequest, context: RouteContext) {
   const auth = await authorize(request, FORM_ID, 'edit');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   try {
     const { id } = await context.params;
+    if (!inTeamScope(teamIds, id)) {
+      return NextResponse.json({ data: null, error: 'Team not found' }, { status: 404 });
+    }
 
     // "OWN" edit: verify the user created this team
     if (scope === 'OWN') {
@@ -73,9 +79,12 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 export async function DELETE(request: NextRequest, context: RouteContext) {
   const auth = await authorize(request, FORM_ID, 'delete');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   const { id } = await context.params;
+  if (!inTeamScope(teamIds, id)) {
+    return NextResponse.json({ data: null, error: 'Team not found' }, { status: 404 });
+  }
 
   // "OWN" delete: verify the user created this team
   if (scope === 'OWN') {

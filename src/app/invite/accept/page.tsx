@@ -1,11 +1,15 @@
 /**
  * /invite/accept?token=xxx
  *
- * Public page (no auth required) that validates an invitation token,
- * marks it as accepted, and redirects the user to 3pm-auth login.
+ * Public page (no auth required) that validates an invitation token and
+ * redirects the user to 3pm-auth login. The invitation is only marked
+ * accepted AFTER the invited user authenticates — the auth callback verifies
+ * the authenticated email matches the invitation before accepting it. This
+ * prevents email-scanner prefetch or a wrong-account visit from consuming
+ * the token.
  */
 import { redirect } from 'next/navigation';
-import { validateInvitationToken, acceptInvitation } from '@/controller/invitations';
+import { validateInvitationToken } from '@/controller/invitations';
 import { getLoginUrl, getSession } from '@/lib/auth-3pm';
 
 interface PageProps {
@@ -17,12 +21,14 @@ export default async function AcceptInvitationPage({ searchParams }: PageProps) 
 
   // Wrong-account error surfaced by the auth callback: the person who
   // authenticated is not the invited user, even after a forced re-login.
+  // The invitation was NOT consumed, so the link can simply be retried.
   if (error === 'account-mismatch') {
     return (
       <InvitationLayout>
         <ErrorCard
           title="Wrong Account"
-          message="This invitation is for a different email address. Please sign out completely, open the invitation link again, and sign in with the invited email."
+          message="This invitation is for a different email address. Please try again and sign in with the email address the invitation was sent to."
+          retryHref={token ? `/invite/accept?token=${encodeURIComponent(token)}` : undefined}
         />
       </InvitationLayout>
     );
@@ -70,27 +76,16 @@ export default async function AcceptInvitationPage({ searchParams }: PageProps) 
     redirect(`/api/auth/switch-account?next=${encodeURIComponent(returnHere)}`);
   }
 
-  // Mark as accepted
-  const accepted = await acceptInvitation(token);
-
-  if (!accepted) {
-    return (
-      <InvitationLayout>
-        <ErrorCard
-          title="Something Went Wrong"
-          message="We couldn't process your invitation. Please try again or contact your administrator."
-        />
-      </InvitationLayout>
-    );
-  }
-
   // Redirect to 3pm-auth login → callback → /dashboard.
   // `expectedEmail` lets the callback verify the invited user is the one who
   // actually authenticated (catches an IdP session the local check couldn't see).
+  // `inviteToken` lets the callback mark the invitation accepted AFTER that
+  // check passes — the invitation stays 'pending' until then.
   const callbackUrl =
     `${appUrl}/api/auth/callback` +
     `?returnUrl=${encodeURIComponent(`${appUrl}/dashboard`)}` +
-    `&expectedEmail=${encodeURIComponent(invitedEmail)}`;
+    `&expectedEmail=${encodeURIComponent(invitedEmail)}` +
+    `&inviteToken=${encodeURIComponent(token)}`;
   const loginUrl = getLoginUrl(callbackUrl);
   redirect(loginUrl);
 }
@@ -103,7 +98,7 @@ function InvitationLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ErrorCard({ title, message }: { title: string; message: string }) {
+function ErrorCard({ title, message, retryHref }: { title: string; message: string; retryHref?: string }) {
   return (
     <div className="rounded-xl border bg-card p-8 text-center shadow-sm">
       <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
@@ -123,6 +118,14 @@ function ErrorCard({ title, message }: { title: string; message: string }) {
       </div>
       <h1 className="mb-2 text-xl font-semibold text-foreground">{title}</h1>
       <p className="text-sm text-muted-foreground">{message}</p>
+      {retryHref && (
+        <a
+          href={retryHref}
+          className="mt-6 inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+        >
+          Try Again
+        </a>
+      )}
     </div>
   );
 }

@@ -47,6 +47,16 @@ function viewCreateGrant(formId: string): SparseFormGrant {
   return { id: formId, v: 'ALL', c: true, e: false };
 }
 
+/** Own records only: view OWN + create (for drivers reporting defects/faults). */
+function ownCreateGrant(formId: string): SparseFormGrant {
+  return { id: formId, v: 'OWN', c: true, e: false };
+}
+
+/** Own records only: view OWN + create + edit OWN (for driver fuel entries). */
+function ownCreateEditGrant(formId: string): SparseFormGrant {
+  return { id: formId, v: 'OWN', c: true, e: 'OWN' };
+}
+
 // ---------------------------------------------------------------------------
 // System role definitions
 // ---------------------------------------------------------------------------
@@ -84,7 +94,7 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
   // ─── Manager ───────────────────────────────────────────────────────────
   {
     name: 'Manager',
-    description: 'Manager — oversees inspections, defects, work orders and inventory.',
+    description: 'Manager — oversees inspections, defects, work orders, inventory and purchasing.',
     permissions: {
       v: 2,
       forms: [
@@ -96,8 +106,10 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
         fullGrant('maintenance.faults.fault'),
         fullGrant('maintenance.serviceTasks.serviceTask'),
         fullGrant('maintenance.servicePlans.servicePlan'),
+        viewOnlyGrant('maintenance.serviceSchedule.serviceSchedule'),
         fullGrant('maintenance.workOrders.workOrder'),
         fullGrant('maintenance.inventory.inventoryItem'),
+        fullGrant('maintenance.purchaseOrders.purchaseOrder'),
         fullGrant('people.teams.team'),
         fullGrant('people.drivers.driver'),
         fullGrant('fuel.fuel.fuelEntry'),
@@ -113,8 +125,10 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
         'maintenance.faults',
         'maintenance.serviceTasks',
         'maintenance.servicePlans',
+        'maintenance.serviceSchedule',
         'maintenance.workOrders',
         'maintenance.inventory',
+        'maintenance.purchaseOrders',
         'people.teams',
         'people.drivers',
         'fuel.fuel',
@@ -131,15 +145,17 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
   // ─── Driver ────────────────────────────────────────────────────────────
   {
     name: 'Driver',
-    description: 'Driver — mobile inspections and defect reporting.',
+    description: 'Driver — mobile inspections and defect reporting for their own work.',
     permissions: {
       v: 2,
       forms: [
+        // Asset visibility is additionally restricted by per-asset Driver Access
+        // grants (driverAccessIds) on the assets list.
         viewOnlyWithOwnInspect('assets.assets.asset'),
-        viewOnlyGrant('inspections.inspectionHistory.inspection'),
-        viewCreateGrant('maintenance.defects.defect'),
-        viewCreateGrant('maintenance.faults.fault'),
-        viewCreateGrant('fuel.fuel.fuelEntry'),
+        { id: 'inspections.inspectionHistory.inspection', v: 'OWN', c: false, e: false },
+        ownCreateGrant('maintenance.defects.defect'),
+        ownCreateGrant('maintenance.faults.fault'),
+        ownCreateEditGrant('fuel.fuel.fuelEntry'),
         viewOnlyGrant('people.drivers.driver'),
       ],
       m: ['assets', 'inspections', 'maintenance', 'people', 'fuel'],
@@ -163,14 +179,16 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
   {
     name: 'Team Manager',
     description:
-      'Team Manager — team-scoped access to assets, drivers, inspections, defects, and work orders.',
+      'Team Manager — team-scoped access to their teams, assets, drivers, inspections, defects, faults, and work orders.',
     permissions: {
       v: 2,
       forms: [
         fullGrantWithInspect('assets.assets.asset'),
         viewOnlyGrant('inspections.inspectionHistory.inspection'),
         fullGrant('maintenance.defects.defect'),
+        fullGrant('maintenance.faults.fault'),
         fullGrant('maintenance.workOrders.workOrder'),
+        viewOnlyGrant('people.teams.team'),
         fullGrant('people.drivers.driver'),
       ],
       m: ['assets', 'inspections', 'maintenance', 'people'],
@@ -178,7 +196,9 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
         'assets.assets',
         'inspections.inspectionHistory',
         'maintenance.defects',
+        'maintenance.faults',
         'maintenance.workOrders',
+        'people.teams',
         'people.drivers',
       ],
     },
@@ -193,19 +213,27 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
   {
     name: 'Mechanic',
     description:
-      'Mechanic — full access to defects, faults, and work orders in the maintenance module.',
+      'Mechanic — works defects, faults and work orders, with visibility of assets, stock and service tasks.',
     permissions: {
       v: 2,
       forms: [
+        viewOnlyGrant('assets.assets.asset'),
         fullGrant('maintenance.defects.defect'),
         fullGrant('maintenance.faults.fault'),
         fullGrant('maintenance.workOrders.workOrder'),
+        viewOnlyGrant('maintenance.inventory.inventoryItem'),
+        viewOnlyGrant('maintenance.serviceTasks.serviceTask'),
+        viewOnlyGrant('maintenance.serviceSchedule.serviceSchedule'),
       ],
-      m: ['maintenance'],
+      m: ['assets', 'maintenance'],
       sm: [
+        'assets.assets',
         'maintenance.defects',
         'maintenance.faults',
         'maintenance.workOrders',
+        'maintenance.inventory',
+        'maintenance.serviceTasks',
+        'maintenance.serviceSchedule',
       ],
     },
     teamScoped: false,
@@ -217,12 +245,107 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Legacy seed permissions (pre business-alignment pass) — used to self-heal
+// roles that are still on the old defaults. A tenant-customized permission
+// set matches neither snapshot and is never touched.
+// ---------------------------------------------------------------------------
+
+const LEGACY_SEED_PERMISSIONS: Record<string, SparsePermissions> = {
+  manager: {
+    v: 2,
+    forms: [
+      fullGrantWithInspect('assets.assets.asset'),
+      viewOnlyGrant('inspections.inspectionHistory.inspection'),
+      viewOnlyGrant('inspections.forms.form'),
+      viewOnlyGrant('inspections.exceptionReport.exceptionReport'),
+      fullGrant('maintenance.defects.defect'),
+      fullGrant('maintenance.faults.fault'),
+      fullGrant('maintenance.serviceTasks.serviceTask'),
+      fullGrant('maintenance.servicePlans.servicePlan'),
+      fullGrant('maintenance.workOrders.workOrder'),
+      fullGrant('maintenance.inventory.inventoryItem'),
+      fullGrant('people.teams.team'),
+      fullGrant('people.drivers.driver'),
+      fullGrant('fuel.fuel.fuelEntry'),
+      fullGrant('vendors.vendors.vendor'),
+    ],
+    m: ['assets', 'inspections', 'maintenance', 'people', 'fuel', 'vendors'],
+    sm: [
+      'assets.assets',
+      'inspections.inspectionHistory',
+      'inspections.forms',
+      'inspections.exceptionReport',
+      'maintenance.defects',
+      'maintenance.faults',
+      'maintenance.serviceTasks',
+      'maintenance.servicePlans',
+      'maintenance.workOrders',
+      'maintenance.inventory',
+      'people.teams',
+      'people.drivers',
+      'fuel.fuel',
+      'vendors.vendors',
+    ],
+  },
+  driver: {
+    v: 2,
+    forms: [
+      viewOnlyWithOwnInspect('assets.assets.asset'),
+      viewOnlyGrant('inspections.inspectionHistory.inspection'),
+      viewCreateGrant('maintenance.defects.defect'),
+      viewCreateGrant('maintenance.faults.fault'),
+      viewCreateGrant('fuel.fuel.fuelEntry'),
+      viewOnlyGrant('people.drivers.driver'),
+    ],
+    m: ['assets', 'inspections', 'maintenance', 'people', 'fuel'],
+    sm: [
+      'assets.assets',
+      'inspections.inspectionHistory',
+      'maintenance.defects',
+      'maintenance.faults',
+      'people.drivers',
+      'fuel.fuel',
+    ],
+  },
+  'team manager': {
+    v: 2,
+    forms: [
+      fullGrantWithInspect('assets.assets.asset'),
+      viewOnlyGrant('inspections.inspectionHistory.inspection'),
+      fullGrant('maintenance.defects.defect'),
+      fullGrant('maintenance.workOrders.workOrder'),
+      fullGrant('people.drivers.driver'),
+    ],
+    m: ['assets', 'inspections', 'maintenance', 'people'],
+    sm: [
+      'assets.assets',
+      'inspections.inspectionHistory',
+      'maintenance.defects',
+      'maintenance.workOrders',
+      'people.drivers',
+    ],
+  },
+  mechanic: {
+    v: 2,
+    forms: [
+      fullGrant('maintenance.defects.defect'),
+      fullGrant('maintenance.faults.fault'),
+      fullGrant('maintenance.workOrders.workOrder'),
+    ],
+    m: ['maintenance'],
+    sm: ['maintenance.defects', 'maintenance.faults', 'maintenance.workOrders'],
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Seed function
 // ---------------------------------------------------------------------------
 
 /**
  * Idempotently seed the canonical system roles for a tenant.
- * Safe to call on every provisioning pass — existing roles are not duplicated.
+ * Safe to call on every provisioning pass — existing roles are not duplicated,
+ * and roles still on the legacy defaults are upgraded in place (customized
+ * permission sets are left alone).
  */
 export async function seedSystemRoles(tenantId: ObjectId, userId: ObjectId): Promise<void> {
   const col = await getRolesCollection();
@@ -266,4 +389,40 @@ export async function seedSystemRoles(tenantId: ObjectId, userId: ObjectId): Pro
   });
 
   await col.bulkWrite(ops);
+
+  // Self-heal: roles still carrying the legacy seed permissions get the new
+  // defaults. Compared as canonical JSON — any tenant customization differs
+  // from the legacy snapshot and is preserved untouched.
+  const defsByName = new Map(SYSTEM_ROLE_DEFS.map((d) => [d.name.toLowerCase(), d]));
+  const existing = await col
+    .find({ tenantId, nameLower: { $in: Array.from(defsByName.keys()) } })
+    .project({ nameLower: 1, permissions: 1 })
+    .toArray();
+
+  const heals = existing.filter((role) => {
+    const nameLower = role.nameLower as string;
+    const legacy = LEGACY_SEED_PERMISSIONS[nameLower];
+    const def = defsByName.get(nameLower);
+    if (!legacy || !def) return false;
+    const current = JSON.stringify(role.permissions);
+    return current === JSON.stringify(legacy) && current !== JSON.stringify(def.permissions);
+  });
+
+  if (heals.length > 0) {
+    await col.bulkWrite(
+      heals.map((role) => ({
+        updateOne: {
+          filter: { _id: role._id },
+          update: {
+            $set: {
+              permissions: defsByName.get(role.nameLower as string)!.permissions,
+              description: defsByName.get(role.nameLower as string)!.description,
+              updatedBy: userId,
+              updatedAt: now,
+            },
+          },
+        },
+      })),
+    );
+  }
 }

@@ -13,7 +13,10 @@ import {
   FileText,
   Archive,
   ArchiveRestore,
+  Send,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { showSuccessToast, showErrorToast } from "@/lib/toastUtils";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -174,6 +177,29 @@ export function DriversPage() {
     }
     loadTeams();
   }, []);
+
+  // Resend invitation (only for drivers whose member is still 'pending')
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const handleResendInvite = async (driver: DriverRow) => {
+    if (!driver.tenantMemberId || resendingId) return;
+    setResendingId(driver.id);
+    try {
+      await axios.post(
+        `/api/users/${driver.tenantMemberId}/resend-invite`,
+        {},
+        { withCredentials: true },
+      );
+      showSuccessToast("Invitation resent");
+    } catch (err: unknown) {
+      const message =
+        axios.isAxiosError(err) && typeof err.response?.data?.error === "string"
+          ? err.response.data.error
+          : "Failed to resend the invitation";
+      showErrorToast(message);
+    } finally {
+      setResendingId(null);
+    }
+  };
 
   // Archive handlers
   const handleOpenArchive = (driver: DriverRow) => {
@@ -444,6 +470,26 @@ export function DriversPage() {
       ),
     },
     {
+      key: "inviteStatus",
+      header: "Status",
+      label: "Status",
+      render: (driver) => {
+        // Driver activation follows the invitation: 'pending' until the
+        // driver accepts their invite email, 'active' afterwards.
+        if (!driver.memberStatus) {
+          return <span className="text-muted-foreground">—</span>;
+        }
+        if (driver.memberStatus === "pending") {
+          return driver.email ? (
+            <Badge variant="warning">Invited</Badge>
+          ) : (
+            <Badge variant="secondary">No email</Badge>
+          );
+        }
+        return <Badge variant="success">Active</Badge>;
+      },
+    },
+    {
       key: "source",
       header: "Source",
       label: "Source",
@@ -471,6 +517,15 @@ export function DriversPage() {
                   icon={<Eye />}
                   onClick={() => handleViewDriver(driver)}
                 />
+                {driver.email &&
+                  driver.tenantMemberId &&
+                  driver.memberStatus === "pending" && (
+                    <RowActionButton
+                      label={resendingId === driver.id ? "Sending…" : "Resend Invite"}
+                      icon={<Send />}
+                      onClick={() => handleResendInvite(driver)}
+                    />
+                  )}
                 {!isCommandRow && (
                   <>
                     {checkRecordOwnership(

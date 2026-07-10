@@ -9,7 +9,7 @@ import { bulkUpdateDefectStatus } from '@/controller/defects';
 export async function PUT(request: NextRequest) {
   const auth = await authorize(request, 'maintenance.defects.defect', 'edit');
   if (!auth.ok) return auth.res;
-  const { user } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   try {
     const body = await request.json();
@@ -28,6 +28,7 @@ export async function PUT(request: NextRequest) {
       user.id,
       ids,
       status,
+      { createdBy: scope === 'OWN' ? user.id : undefined, teamIds: teamIds ?? undefined },
     );
 
     if (result.error) {

@@ -11,15 +11,18 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize, inTeamScope } from '@/lib/authz';
+import { getDriverIdByEmail } from '@/controller/drivers';
 import { getInspectionLaunchesCollection, getAssetsCollection, getDriversCollection } from '@/lib/mongodb';
 
 export async function POST(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.id || !user.currentTenantId) {
-      return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-    }
+    // Launching an inspection is the 'inspect' capability on assets.
+    // Scope semantics: 'OWN' (drivers) = assets assigned to them (or unassigned)
+    // and only their own driver record; team-scoped roles stay within their teams.
+    const auth = await authorize(req, 'assets.assets.asset', 'inspect');
+    if (!auth.ok) return auth.res;
+    const { user, scope, teamIds } = auth.ctx;
 
     const { assetId, driverId, formId } = await req.json();
     if (!formId || !ObjectId.isValid(formId)) {
@@ -43,19 +46,51 @@ export async function POST(req: NextRequest) {
       createdAt: new Date(),
     };
 
+    // Resolve the caller's own driver record once — used for OWN-scope checks.
+    const driversCol = await getDriversCollection();
+    const myDriverId =
+      scope === 'OWN'
+        ? await getDriverIdByEmail(user.currentTenantId, String(user.email || ''))
+        : null;
+
     if (assetId && ObjectId.isValid(assetId)) {
       const assetOid = ObjectId.createFromHexString(assetId);
       const asset = await (await getAssetsCollection()).findOne({ _id: assetOid, tenantId: tenantOid });
       if (!asset) {
         return NextResponse.json({ data: null, error: 'Asset not found' }, { status: 404 });
       }
+      if (!inTeamScope(teamIds, asset.teamIds)) {
+        return NextResponse.json({ data: null, error: 'Asset not found' }, { status: 404 });
+      }
+      // OWN inspect: may inspect assets assigned to them (or unassigned walk-ups),
+      // never an asset assigned to someone else.
+      if (
+        scope === 'OWN' &&
+        asset.assignedDriverId &&
+        asset.assignedDriverId.toString() !== myDriverId
+      ) {
+        return NextResponse.json(
+          { data: null, error: 'This asset is assigned to another driver' },
+          { status: 403 },
+        );
+      }
       launchDoc.assetId = assetOid;
     }
 
     if (driverId && ObjectId.isValid(driverId)) {
       const driverOid = ObjectId.createFromHexString(driverId);
-      const driver = await (await getDriversCollection()).findOne({ _id: driverOid, tenantId: tenantOid });
+      const driver = await driversCol.findOne({ _id: driverOid, tenantId: tenantOid });
       if (!driver) {
+        return NextResponse.json({ data: null, error: 'Driver not found' }, { status: 404 });
+      }
+      // OWN inspect: driver-first launches must target the caller's own record.
+      if (scope === 'OWN' && driverOid.toString() !== myDriverId) {
+        return NextResponse.json(
+          { data: null, error: 'You can only start inspections for yourself' },
+          { status: 403 },
+        );
+      }
+      if (!inTeamScope(teamIds, driver.teamId)) {
         return NextResponse.json({ data: null, error: 'Driver not found' }, { status: 404 });
       }
       launchDoc.driverId = driverOid;

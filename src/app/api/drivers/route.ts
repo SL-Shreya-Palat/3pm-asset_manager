@@ -11,7 +11,7 @@ const FORM_ID = 'people.drivers.driver';
 export async function GET(request: NextRequest) {
   const auth = await authorize(request, FORM_ID, 'view');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   const { searchParams } = request.nextUrl;
   const page = parseInt(searchParams.get('page') || '1', 10);
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
   const createdBy = scope === 'OWN' ? user.id : undefined;
 
-  const result = await getAllDrivers(user.currentTenantId!, { page, limit, search, teamId, showArchived, createdBy, userId: user.id });
+  const result = await getAllDrivers(user.currentTenantId!, { page, limit, search, teamId, showArchived, createdBy, userId: user.id, teamIds: teamIds ?? undefined });
   return NextResponse.json({ data: result, error: null });
 }
 

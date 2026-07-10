@@ -8,8 +8,8 @@ import { getDefectSummary } from '@/controller/defects';
 export async function GET(request: NextRequest) {
   const auth = await authorize(request, 'maintenance.defects.defect', 'view');
   if (!auth.ok) return auth.res;
-  const { user } = auth.ctx;
+  const { user, teamIds } = auth.ctx;
 
-  const result = await getDefectSummary(user.currentTenantId!);
+  const result = await getDefectSummary(user.currentTenantId!, { teamIds: teamIds ?? undefined });
   return NextResponse.json({ data: result, error: null });
 }

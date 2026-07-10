@@ -9,7 +9,7 @@
  *   tz         — caller timezone offset in minutes, from getTimezoneOffset()
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { getExceptionReport } from '@/controller/exception-report';
 
 const csv = (v: string | null): string[] =>
@@ -17,10 +17,9 @@ const csv = (v: string | null): string[] =>
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.currentTenantId) {
-      return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await authorize(req, 'inspections.exceptionReport.exceptionReport', 'view');
+    if (!auth.ok) return auth.res;
+    const { user, teamIds } = auth.ctx;
 
     const sp = req.nextUrl.searchParams;
     const from = sp.get('from');
@@ -35,11 +34,23 @@ export async function GET(req: NextRequest) {
     const tzRaw = sp.get('tz');
     const tzOffsetMinutes = tzRaw != null && !Number.isNaN(Number(tzRaw)) ? Number(tzRaw) : 0;
 
+    // Team-scoped roles: the requested team filter may only narrow their own teams.
+    // An empty list means "all teams" to the controller, so a team-scoped caller
+    // with no (matching) teams gets an impossible id — an empty grid, not a leak.
+    const requestedTeamIds = csv(sp.get('teamIds'));
+    let effectiveTeamIds = requestedTeamIds;
+    if (teamIds !== null) {
+      effectiveTeamIds = requestedTeamIds.length
+        ? requestedTeamIds.filter((id) => teamIds.includes(id))
+        : teamIds;
+      if (effectiveTeamIds.length === 0) effectiveTeamIds = ['000000000000000000000000'];
+    }
+
     const data = await getExceptionReport(user.currentTenantId, {
       from,
       to,
       formIds: csv(sp.get('formIds')),
-      teamIds: csv(sp.get('teamIds')),
+      teamIds: effectiveTeamIds,
       tzOffsetMinutes,
     });
 

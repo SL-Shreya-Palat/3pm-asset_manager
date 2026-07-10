@@ -110,7 +110,7 @@ export function AssetServiceTab({ assetId }: { assetId: string }) {
 
   return (
     <div>
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6">
         <StatCard icon={<AlertTriangle className="h-4 w-4" />} label="Overdue" value={summary.overdue} accent="text-destructive" />
         <StatCard icon={<Clock className="h-4 w-4" />} label="Due" value={summary.due} accent="text-yellow-600" />
         <StatCard icon={<CheckCircle2 className="h-4 w-4" />} label="Upcoming" value={summary.upcoming} accent="text-gray-500" />

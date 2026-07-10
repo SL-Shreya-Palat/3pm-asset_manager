@@ -4,8 +4,9 @@
  * DELETE /api/assets/:id — Archive an asset
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { authorize } from '@/lib/authz';
+import { authorize, inTeamScope } from '@/lib/authz';
 import { getAssetById, updateAsset, deleteAsset } from '@/controller/assets';
+import { getDriverIdByEmail } from '@/controller/drivers';
 
 const FORM_ID = 'assets.assets.asset';
 
@@ -14,7 +15,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function GET(request: NextRequest, context: RouteContext) {
   const auth = await authorize(request, FORM_ID, 'view');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   const { id } = await context.params;
   const asset = await getAssetById(user.currentTenantId!, id, user.id);
@@ -23,7 +24,17 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ data: null, error: 'Asset not found' }, { status: 404 });
   }
 
+  // OWN view scope: records the caller created, or (for driver logins) assets
+  // granted to them via the asset's "Driver Access" list.
   if (scope === 'OWN' && asset.createdBy !== user.id) {
+    const driverId = await getDriverIdByEmail(user.currentTenantId!, String(user.email || ''));
+    const hasDriverAccess =
+      !!driverId && Array.isArray(asset.driverAccessIds) && asset.driverAccessIds.includes(driverId);
+    if (!hasDriverAccess) {
+      return NextResponse.json({ data: null, error: 'Asset not found' }, { status: 404 });
+    }
+  }
+  if (!inTeamScope(teamIds, asset.teamIds)) {
     return NextResponse.json({ data: null, error: 'Asset not found' }, { status: 404 });
   }
 
@@ -33,14 +44,18 @@ export async function GET(request: NextRequest, context: RouteContext) {
 export async function PUT(request: NextRequest, context: RouteContext) {
   const auth = await authorize(request, FORM_ID, 'edit');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   try {
     const { id } = await context.params;
 
-    if (scope === 'OWN') {
+    if (scope === 'OWN' || teamIds) {
       const existing = await getAssetById(user.currentTenantId!, id, user.id);
-      if (!existing || existing.createdBy !== user.id) {
+      if (
+        !existing ||
+        (scope === 'OWN' && existing.createdBy !== user.id) ||
+        !inTeamScope(teamIds, existing.teamIds)
+      ) {
         return NextResponse.json({ data: null, error: 'Asset not found' }, { status: 404 });
       }
     }
@@ -62,13 +77,17 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 export async function DELETE(request: NextRequest, context: RouteContext) {
   const auth = await authorize(request, FORM_ID, 'delete');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   const { id } = await context.params;
 
-  if (scope === 'OWN') {
+  if (scope === 'OWN' || teamIds) {
     const existing = await getAssetById(user.currentTenantId!, id, user.id);
-    if (!existing || existing.createdBy !== user.id) {
+    if (
+      !existing ||
+      (scope === 'OWN' && existing.createdBy !== user.id) ||
+      !inTeamScope(teamIds, existing.teamIds)
+    ) {
       return NextResponse.json({ data: null, error: 'Asset not found' }, { status: 404 });
     }
   }

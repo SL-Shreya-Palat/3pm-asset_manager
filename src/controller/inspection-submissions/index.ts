@@ -474,7 +474,9 @@ function serializeSubmission(
     assetName: (doc.assetName as string) ?? null,
     unitNumber: (doc.unitNumber as string) ?? null,
     driverId: doc.driverId ? (doc.driverId as ObjectId).toString() : null,
+    operatorId: doc.operatorId ? String(doc.operatorId) : null,
     operatorName: (doc.operatorName as string) ?? null,
+    submittedBy: doc.submittedBy ? String(doc.submittedBy) : null,
     result: (doc.result as string) ?? 'pass',
     defectCount: Array.isArray(doc.defects) ? (doc.defects as unknown[]).length : 0,
     submittedAt: doc.submittedAt ? new Date(doc.submittedAt as Date).toISOString() : null,
@@ -498,7 +500,7 @@ function serializeSubmission(
 /** Paginated inspection history for the tenant (newest first). */
 export async function listInspectionSubmissions(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; result?: string; assetId?: string; driverId?: string; teamId?: string; full?: boolean },
+  options: { page?: number; limit?: number; search?: string; result?: string; assetId?: string; driverId?: string; teamId?: string; full?: boolean; ownUserId?: string; teamIds?: string[] },
 ) {
   const col = await getInspectionSubmissionsCollection();
   const page = Math.max(1, options.page || 1);
@@ -514,8 +516,19 @@ export async function listInspectionSubmissions(
   if (options.driverId && ObjectId.isValid(options.driverId)) {
     filter.driverId = ObjectId.createFromHexString(options.driverId);
   }
-  if (options.teamId && ObjectId.isValid(options.teamId)) {
+  // Team restriction (team-scoped roles) composes with the explicit teamId filter.
+  if (options.teamIds) {
+    const allowed = options.teamIds.filter((id) => ObjectId.isValid(id));
+    const effective = options.teamId ? allowed.filter((id) => id === options.teamId) : allowed;
+    filter.teamIds = { $in: effective.map((id) => ObjectId.createFromHexString(id)) };
+  } else if (options.teamId && ObjectId.isValid(options.teamId)) {
     filter.teamIds = ObjectId.createFromHexString(options.teamId);
+  }
+  // "OWN" view scope — only the caller's own submissions (as submitter or operator).
+  // Kept in $and so it composes with the search $or below.
+  if (options.ownUserId && ObjectId.isValid(options.ownUserId)) {
+    const userOid = ObjectId.createFromHexString(options.ownUserId);
+    filter.$and = [{ $or: [{ submittedBy: userOid }, { operatorId: userOid }] }];
   }
   if (options.search) {
     const regex = { $regex: options.search, $options: 'i' };

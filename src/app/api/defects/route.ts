@@ -11,7 +11,7 @@ const FORM_ID = 'maintenance.defects.defect';
 export async function GET(request: NextRequest) {
   const auth = await authorize(request, FORM_ID, 'view');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
   const createdBy = scope === 'OWN' ? user.id : undefined;
 
   const { searchParams } = request.nextUrl;
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   const source = searchParams.get('source') || undefined;
   const showArchived = searchParams.get('showArchived') === 'true';
 
-  const result = await getAllDefects(user.currentTenantId!, { page, limit, search, status, priority, severity, teamId, assetId, source, showArchived, createdBy });
+  const result = await getAllDefects(user.currentTenantId!, { page, limit, search, status, priority, severity, teamId, assetId, source, showArchived, createdBy, teamIds: teamIds ?? undefined });
   return NextResponse.json({ data: result, error: null });
 }
 

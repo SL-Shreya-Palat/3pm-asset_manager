@@ -79,7 +79,7 @@ export async function getDriverIdByEmail(
 /** List drivers with pagination and search. */
 export async function getAllDrivers(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; teamId?: string; showArchived?: boolean; userId?: string; createdBy?: string },
+  options: { page?: number; limit?: number; search?: string; teamId?: string; showArchived?: boolean; userId?: string; createdBy?: string; teamIds?: string[] },
 ) {
   // Fresh on every call: pull the latest Command drivers before reading local,
   // so new/changed records show on this load (no-op when standalone).
@@ -115,7 +115,12 @@ export async function getAllDrivers(
     ];
   }
 
-  if (options.teamId) {
+  // Team restriction (team-scoped roles) composes with the explicit teamId filter.
+  if (options.teamIds) {
+    const allowed = options.teamIds.filter((id) => ObjectId.isValid(id));
+    const effective = options.teamId ? allowed.filter((id) => id === options.teamId) : allowed;
+    filter.teamId = { $in: effective.map((id) => ObjectId.createFromHexString(id)) };
+  } else if (options.teamId) {
     filter.teamId = ObjectId.createFromHexString(options.teamId);
   }
 
@@ -124,7 +129,30 @@ export async function getAllDrivers(
     collection.countDocuments(filter),
   ]);
 
-  const serialized = items.map((item) => serializeDriver(item));
+  // Attach invitation state from the linked tenantMember ('pending' until the
+  // driver accepts their invite email, 'active' afterwards) so the list can
+  // show Invited vs Active.
+  const memberIds = items
+    .map((i) => i.tenantMemberId as ObjectId | undefined)
+    .filter((id): id is ObjectId => !!id);
+  let statusByMemberId = new Map<string, string>();
+  if (memberIds.length > 0) {
+    const tenantMembersCol = await getTenantMembersCollection();
+    const members = await tenantMembersCol
+      .find({ _id: { $in: memberIds } })
+      .project({ status: 1 })
+      .toArray();
+    statusByMemberId = new Map(
+      members.map((m) => [m._id.toString(), (m.status as string) || 'active']),
+    );
+  }
+
+  const serialized = items.map((item) => ({
+    ...serializeDriver(item),
+    memberStatus: item.tenantMemberId
+      ? statusByMemberId.get((item.tenantMemberId as ObjectId).toString()) ?? null
+      : null,
+  }));
 
   return {
     items: serialized,
@@ -182,7 +210,10 @@ export async function getDriverByUserId(
 
 /**
  * Resolve (or auto-create) the "Driver" role for a tenant.
- * Looks up by key first; creates with the driver permission preset if missing.
+ * Looks up by key OR nameLower — seeded system Driver roles only carry
+ * nameLower, and a key-only lookup made the insert below collide with the
+ * unique {tenantId, nameLower} index, silently breaking driver invitations.
+ * Creates with the driver permission preset if missing.
  */
 async function resolveDriverRoleId(tenantOid: ObjectId, createdByOid: ObjectId): Promise<ObjectId> {
   const rolesCol = await getRolesCollection();
@@ -190,7 +221,7 @@ async function resolveDriverRoleId(tenantOid: ObjectId, createdByOid: ObjectId):
 
   const existing = await rolesCol.findOne({
     tenantId: tenantOid,
-    key: 'driver',
+    $or: [{ key: 'driver' }, { nameLower: 'driver' }],
     isArchived: { $ne: true },
   });
 
@@ -297,7 +328,7 @@ export async function createDriver(tenantId: string, userId: string, input: Crea
 
   // 2. Create user + tenantMember and link back
   try {
-    const { tenantMemberId, roleId } = await createTenantMemberForDriver(
+    const { tenantMemberId, roleId, alreadyActive } = await createTenantMemberForDriver(
       tenantOid, userOid, now,
       { firstName: input.firstName.trim(), lastName: input.lastName.trim(), email: normalizedEmail },
     );
@@ -306,8 +337,9 @@ export async function createDriver(tenantId: string, userId: string, input: Crea
     await collection.updateOne({ _id: driverId }, { $set: { tenantMemberId } });
     doc.tenantMemberId = tenantMemberId;
 
-    // 4. Send invitation email if driver has an email
-    if (normalizedEmail) {
+    // 4. Send invitation email if driver has an email and isn't already an
+    //    active member (an existing user needs no invitation).
+    if (normalizedEmail && !alreadyActive) {
       try {
         const { rawToken } = await createInvitation(tenantId, {
           email: normalizedEmail,
@@ -363,7 +395,7 @@ async function createTenantMemberForDriver(
   createdByOid: ObjectId,
   now: Date,
   driver: { firstName: string; lastName: string; email?: string },
-): Promise<{ tenantMemberId: ObjectId; roleId: ObjectId }> {
+): Promise<{ tenantMemberId: ObjectId; roleId: ObjectId; alreadyActive: boolean }> {
   const usersCol = await getUsersCollection();
   const tenantMembersCol = await getTenantMembersCollection();
 
@@ -405,7 +437,28 @@ async function createTenantMemberForDriver(
     localUserId = userResult.insertedId;
   }
 
-  // 3. Upsert tenantMember — unique on (userId, tenantId)
+  // 3. Upsert tenantMember — unique on (userId, tenantId).
+  // If this user is ALREADY an active/portal member of the tenant (e.g. an
+  // admin also being added as a driver), do NOT downgrade their role, portal
+  // access, or status to the pending Driver framing — just refresh names and
+  // link the driver to the existing membership. The caller skips the
+  // invitation email in that case (they already have an account).
+  const existingMember = await tenantMembersCol.findOne({
+    userId: localUserId,
+    tenantId: tenantOid,
+  });
+  if (existingMember && (existingMember.status === 'active' || existingMember.portalUser === true)) {
+    await tenantMembersCol.updateOne(
+      { _id: existingMember._id },
+      { $set: { firstName: driver.firstName, lastName: driver.lastName, updatedAt: now } },
+    );
+    return {
+      tenantMemberId: existingMember._id as ObjectId,
+      roleId: (existingMember.roleId as ObjectId) ?? driverRoleId,
+      alreadyActive: true,
+    };
+  }
+
   const tmResult = await tenantMembersCol.findOneAndUpdate(
     { userId: localUserId, tenantId: tenantOid },
     {
@@ -428,7 +481,7 @@ async function createTenantMemberForDriver(
     { upsert: true, returnDocument: 'after' },
   );
 
-  return { tenantMemberId: tmResult!._id as ObjectId, roleId: driverRoleId };
+  return { tenantMemberId: tmResult!._id as ObjectId, roleId: driverRoleId, alreadyActive: false };
 }
 
 /**

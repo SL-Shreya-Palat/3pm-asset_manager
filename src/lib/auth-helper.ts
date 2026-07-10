@@ -22,6 +22,20 @@ import { ObjectId } from 'mongodb';
 export const CURRENT_TENANT_ID_COOKIE = 'current_tenant_id';
 
 /**
+ * Filter fragment for tenant memberships that actually grant portal access.
+ * Excludes archived members (archive must revoke access, matching
+ * construction-portal) and members still in the invited/'pending' stage —
+ * an invitation only grants access once it has been accepted (the auth
+ * callback flips status to 'active' at that point).
+ */
+export const ACTIVE_MEMBER_FILTER = {
+  isActive: true,
+  portalUser: { $ne: false },
+  isArchived: { $ne: true },
+  status: { $ne: 'pending' },
+} as const;
+
+/**
  * Resolve current tenant for 3PM web users.
  * Cookie (current_tenant_id) takes precedence over JWT tenant.
  */
@@ -45,8 +59,7 @@ export async function resolveCurrentTenantFor3PM(
     const member = await tenantMembersCollection.findOne({
       userId: userObjectId,
       tenantId: tenantObjectId,
-      isActive: true,
-      portalUser: { $ne: false },
+      ...ACTIVE_MEMBER_FILTER,
     });
     if (member) {
       const tenant = await tenantsCollection.findOne({ _id: tenantObjectId, isActive: { $ne: false } });
@@ -77,8 +90,7 @@ export async function resolveCurrentTenantFor3PM(
       const member = await tenantMembersCollection.findOne({
         userId: userObjectId,
         tenantId: tenant._id,
-        isActive: true,
-        portalUser: { $ne: false },
+        ...ACTIVE_MEMBER_FILTER,
       });
       if (member) {
         const authTenantId = (tenant as { authTenantId?: ObjectId | string }).authTenantId;
@@ -93,7 +105,7 @@ export async function resolveCurrentTenantFor3PM(
 
   // 3. Fallback: first active tenant membership
   const activeMemberships = await tenantMembersCollection
-    .find({ userId: userObjectId, isActive: true, portalUser: { $ne: false } }, { sort: { createdAt: 1 } })
+    .find({ userId: userObjectId, ...ACTIVE_MEMBER_FILTER }, { sort: { createdAt: 1 } })
     .toArray();
 
   if (activeMemberships.length > 0) {
@@ -277,6 +289,8 @@ export async function getAuthenticatedUser(req?: NextRequest) {
           userId: session.userId,
           portalUser: true,
           isActive: true,
+          isArchived: { $ne: true },
+          status: { $ne: 'pending' },
         });
 
         if (!activeTenantMember) {
@@ -412,7 +426,12 @@ export async function getUserTenant(userId: string) {
     const rolesCollection = await getRolesCollection();
     const userObjectId = ObjectId.createFromHexString(userId);
 
-    const tenantMember = await tenantMembersCollection.findOne({ userId: userObjectId, isActive: true });
+    const tenantMember = await tenantMembersCollection.findOne({
+      userId: userObjectId,
+      isActive: true,
+      isArchived: { $ne: true },
+      status: { $ne: 'pending' },
+    });
     if (!tenantMember) return null;
 
     const tenant = await tenantsCollection.findOne({ _id: tenantMember.tenantId });
@@ -490,6 +509,8 @@ export async function getUserRoleForTenant(
       userId: ObjectId.createFromHexString(userId),
       tenantId: ObjectId.createFromHexString(tenantId),
       isActive: true,
+      isArchived: { $ne: true },
+      status: { $ne: 'pending' },
     });
     if (!member?.roleId) return null;
 

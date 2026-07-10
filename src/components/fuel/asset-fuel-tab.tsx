@@ -223,7 +223,7 @@ export function AssetFuelTab({ assetId }: AssetFuelTabProps) {
     <div>
       {/* Summary cards */}
       {analytics && analytics.totalTransactions > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4 mb-6">
           <StatCard icon={<DollarSign className="h-4 w-4" />} label="Total Cost" value={formatCurrency(analytics.totalCost)} />
           <StatCard icon={<Droplets className="h-4 w-4" />} label="Total Volume" value={`${formatNumber(analytics.totalVolume)} gal`} />
           <StatCard icon={<Gauge className="h-4 w-4" />} label="Avg Economy" value={analytics.avgEconomy ? `${formatNumber(analytics.avgEconomy)} km/L` : '—'} />

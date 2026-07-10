@@ -142,6 +142,8 @@ export async function getAllAssets(
     createdBy?: string;
     /** When set (driver logins), restrict to assets whose driverAccessIds grants this driver id. */
     driverAccessId?: string;
+    /** Team-scoped roles: restrict to assets belonging to any of these teams. */
+    teamIds?: string[];
   },
 ) {
   // Fresh on every call: pull the latest Command assets BEFORE reading local, so
@@ -169,7 +171,13 @@ export async function getAllAssets(
     filter.status = options.status;
   }
 
-  if (options.teamId) {
+  // Team restriction (team-scoped roles) composes with the explicit teamId
+  // filter: an out-of-scope teamId request yields no results, never a leak.
+  if (options.teamIds) {
+    const allowed = options.teamIds.filter((id) => ObjectId.isValid(id));
+    const effective = options.teamId ? allowed.filter((id) => id === options.teamId) : allowed;
+    filter.teamIds = { $in: effective.map((id) => ObjectId.createFromHexString(id)) };
+  } else if (options.teamId) {
     filter.teamIds = ObjectId.createFromHexString(options.teamId);
   }
 

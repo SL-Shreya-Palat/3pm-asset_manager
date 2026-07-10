@@ -9,7 +9,7 @@ import {
   updateFault,
   deleteFault,
 } from '@/controller/faults';
-import { authorize } from '@/lib/authz';
+import { authorize, inTeamScope } from '@/lib/authz';
 
 const FORM_ID = 'maintenance.faults.fault';
 
@@ -18,14 +18,14 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function GET(request: NextRequest, context: RouteContext) {
   const auth = await authorize(request, FORM_ID, 'view');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   const { id } = await context.params;
   const fault = await getFaultById(user.currentTenantId!, id);
   if (!fault) {
     return NextResponse.json({ data: null, error: 'Fault not found' }, { status: 404 });
   }
-  if (scope === 'OWN' && fault.createdBy !== user.id) {
+  if ((scope === 'OWN' && fault.createdBy !== user.id) || !inTeamScope(teamIds, fault.teamIds)) {
     return NextResponse.json({ data: null, error: 'Fault not found' }, { status: 404 });
   }
 
@@ -35,15 +35,19 @@ export async function GET(request: NextRequest, context: RouteContext) {
 export async function PUT(request: NextRequest, context: RouteContext) {
   const auth = await authorize(request, FORM_ID, 'edit');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   try {
     const { id } = await context.params;
 
-    if (scope === 'OWN') {
+    if (scope === 'OWN' || teamIds) {
       const existing = await getFaultById(user.currentTenantId!, id);
-      if (!existing || existing.createdBy !== user.id) {
-        return NextResponse.json({ data: null, error: 'You can only edit faults you created' }, { status: 403 });
+      if (
+        !existing ||
+        (scope === 'OWN' && existing.createdBy !== user.id) ||
+        !inTeamScope(teamIds, existing.teamIds)
+      ) {
+        return NextResponse.json({ data: null, error: 'Fault not found' }, { status: 404 });
       }
     }
 
@@ -64,14 +68,18 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 export async function DELETE(request: NextRequest, context: RouteContext) {
   const auth = await authorize(request, FORM_ID, 'delete');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   const { id } = await context.params;
 
-  if (scope === 'OWN') {
+  if (scope === 'OWN' || teamIds) {
     const existing = await getFaultById(user.currentTenantId!, id);
-    if (!existing || existing.createdBy !== user.id) {
-      return NextResponse.json({ data: null, error: 'You can only delete faults you created' }, { status: 403 });
+    if (
+      !existing ||
+      (scope === 'OWN' && existing.createdBy !== user.id) ||
+      !inTeamScope(teamIds, existing.teamIds)
+    ) {
+      return NextResponse.json({ data: null, error: 'Fault not found' }, { status: 404 });
     }
   }
 

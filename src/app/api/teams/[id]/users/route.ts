@@ -4,18 +4,21 @@
  * PATCH  /api/teams/:id/users  — Update a user's team role (managing / following)
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { authorize } from '@/lib/authz';
+import { authorize, inTeamScope } from '@/lib/authz';
 import { addUsersToTeam, removeUserFromTeam, updateUserTeamRole } from '@/controller/users';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const auth = await authorize(request, 'people.teams.team', 'view');
+  const auth = await authorize(request, 'people.teams.team', 'edit');
   if (!auth.ok) return auth.res;
-  const { user } = auth.ctx;
+  const { user, teamIds } = auth.ctx;
 
   try {
     const { id: teamId } = await context.params;
+    if (!inTeamScope(teamIds, teamId)) {
+      return NextResponse.json({ data: null, error: 'Team not found' }, { status: 404 });
+    }
     const body = await request.json();
     const memberIds: string[] = body.memberIds;
     const role: 'managing' | 'following' = body.role || 'following';
@@ -32,12 +35,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
-  const auth = await authorize(request, 'people.teams.team', 'view');
+  const auth = await authorize(request, 'people.teams.team', 'edit');
   if (!auth.ok) return auth.res;
-  const { user } = auth.ctx;
+  const { user, teamIds } = auth.ctx;
 
   try {
     const { id: teamId } = await context.params;
+    if (!inTeamScope(teamIds, teamId)) {
+      return NextResponse.json({ data: null, error: 'Team not found' }, { status: 404 });
+    }
     const { searchParams } = request.nextUrl;
     const memberId = searchParams.get('memberId');
 
@@ -57,12 +63,15 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const auth = await authorize(request, 'people.teams.team', 'view');
+  const auth = await authorize(request, 'people.teams.team', 'edit');
   if (!auth.ok) return auth.res;
-  const { user } = auth.ctx;
+  const { user, teamIds } = auth.ctx;
 
   try {
     const { id: teamId } = await context.params;
+    if (!inTeamScope(teamIds, teamId)) {
+      return NextResponse.json({ data: null, error: 'Team not found' }, { status: 404 });
+    }
     const body = await request.json();
     const { memberId, role } = body;
 

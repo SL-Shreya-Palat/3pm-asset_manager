@@ -24,6 +24,29 @@ export interface AuthzContext {
   user: { id: string; currentTenantId: string; [key: string]: unknown };
   scope: AuthzScope;
   perms: FormPermissionLevels;
+  /**
+   * Team restriction for team-scoped roles: `null` = unrestricted,
+   * an array = the caller may only touch records in these teams.
+   * Routes/controllers must apply this on top of `scope`.
+   */
+  teamIds: string[] | null;
+}
+
+/**
+ * Check a single record against the caller's team restriction.
+ * `recordTeamIds` accepts the document's team linkage in any stored shape
+ * (ObjectId[] `teamIds`, single ObjectId `teamId`, or strings).
+ * Unrestricted callers (teamIds === null) always pass.
+ */
+export function inTeamScope(
+  teamIds: string[] | null,
+  recordTeamIds: unknown,
+): boolean {
+  if (teamIds === null) return true;
+  const record = (Array.isArray(recordTeamIds) ? recordTeamIds : [recordTeamIds])
+    .filter(Boolean)
+    .map((id) => String(id));
+  return record.some((id) => teamIds.includes(id));
 }
 
 type AuthzOk = { ok: true; ctx: AuthzContext };
@@ -85,35 +108,37 @@ export async function authorize(
     }
   }
 
+  const teamIds = perms.teamIds;
+
   switch (action) {
     case 'view':
       if (perms.view === 'NONE')
         return { ok: false, res: NextResponse.json({ data: null, error: 'Forbidden' }, { status: 403 }) };
-      return { ok: true, ctx: { user: authedUser, scope: perms.view, perms } };
+      return { ok: true, ctx: { user: authedUser, scope: perms.view, perms, teamIds } };
 
     case 'create':
       if (!perms.create)
         return { ok: false, res: NextResponse.json({ data: null, error: 'Forbidden' }, { status: 403 }) };
-      return { ok: true, ctx: { user: authedUser, scope: 'ALL', perms } };
+      return { ok: true, ctx: { user: authedUser, scope: 'ALL', perms, teamIds } };
 
     case 'edit':
       if (perms.edit === false)
         return { ok: false, res: NextResponse.json({ data: null, error: 'Forbidden' }, { status: 403 }) };
-      return { ok: true, ctx: { user: authedUser, scope: perms.edit, perms } };
+      return { ok: true, ctx: { user: authedUser, scope: perms.edit, perms, teamIds } };
 
     case 'delete':
       if (perms.delete === false)
         return { ok: false, res: NextResponse.json({ data: null, error: 'Forbidden' }, { status: 403 }) };
-      return { ok: true, ctx: { user: authedUser, scope: perms.delete, perms } };
+      return { ok: true, ctx: { user: authedUser, scope: perms.delete, perms, teamIds } };
 
     case 'archive':
       if (perms.archive === false)
         return { ok: false, res: NextResponse.json({ data: null, error: 'Forbidden' }, { status: 403 }) };
-      return { ok: true, ctx: { user: authedUser, scope: perms.archive, perms } };
+      return { ok: true, ctx: { user: authedUser, scope: perms.archive, perms, teamIds } };
 
     case 'inspect':
       if (perms.inspect === false)
         return { ok: false, res: NextResponse.json({ data: null, error: 'Forbidden' }, { status: 403 }) };
-      return { ok: true, ctx: { user: authedUser, scope: perms.inspect, perms } };
+      return { ok: true, ctx: { user: authedUser, scope: perms.inspect, perms, teamIds } };
   }
 }

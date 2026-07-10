@@ -11,7 +11,7 @@ const FORM_ID = 'people.teams.team';
 export async function GET(request: NextRequest) {
   const auth = await authorize(request, FORM_ID, 'view');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   const { searchParams } = request.nextUrl;
   const page = parseInt(searchParams.get("page") || "1", 10);
@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
     search,
     showArchived,
     createdBy,
+    teamIds: teamIds ?? undefined,
   });
   return NextResponse.json({ data: result, error: null });
 }

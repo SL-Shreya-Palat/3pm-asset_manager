@@ -1,35 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { getAllAssetTypes, createAssetType, updateAssetType, deleteAssetType, archiveAssetType, getAssetTypeById } from '@/controller/assetTypes';
-import { getFormPermissionLevels } from '@/lib/server-permissions';
 
 const FORM_ID = 'settings.assetTypes.assetType';
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
+  const auth = await authorize(request, FORM_ID, 'view');
+  if (!auth.ok) return auth.res;
+  const { user, scope } = auth.ctx;
 
   const search = request.nextUrl.searchParams.get('search') || undefined;
   const showArchived = request.nextUrl.searchParams.get('showArchived') === 'true';
 
-  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
-  if (perms.view === 'NONE') {
-    return NextResponse.json({ data: null, error: 'You do not have permission to view asset types' }, { status: 403 });
-  }
-  const createdBy = perms.view === 'OWN' ? user.id : undefined;
+  const createdBy = scope === 'OWN' ? user.id : undefined;
 
   const items = await getAllAssetTypes(user.currentTenantId, search, { showArchived, createdBy });
   return NextResponse.json({ data: items, error: null });
 }
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-
-  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
-  if (!perms.create) {
-    return NextResponse.json({ data: null, error: 'You do not have permission to create asset types' }, { status: 403 });
-  }
+  const auth = await authorize(request, FORM_ID, 'create');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const body = await request.json();
@@ -42,19 +34,16 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
+  const auth = await authorize(request, FORM_ID, 'edit');
+  if (!auth.ok) return auth.res;
+  const { user, scope } = auth.ctx;
 
   try {
     const body = await request.json();
     const { id, ...input } = body;
     if (!id) return NextResponse.json({ data: null, error: 'ID is required' }, { status: 400 });
 
-    const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
-    if (perms.edit === false) {
-      return NextResponse.json({ data: null, error: 'You do not have permission to edit asset types' }, { status: 403 });
-    }
-    if (perms.edit === 'OWN') {
+    if (scope === 'OWN') {
       const existing = await getAssetTypeById(user.currentTenantId, id);
       if (!existing) {
         return NextResponse.json({ data: null, error: 'Asset type not found' }, { status: 404 });
@@ -73,17 +62,14 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
+  const auth = await authorize(request, FORM_ID, 'delete');
+  if (!auth.ok) return auth.res;
+  const { user, scope } = auth.ctx;
 
   const id = request.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ data: null, error: 'ID is required' }, { status: 400 });
 
-  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
-  if (perms.delete === false) {
-    return NextResponse.json({ data: null, error: 'You do not have permission to delete asset types' }, { status: 403 });
-  }
-  if (perms.delete === 'OWN') {
+  if (scope === 'OWN') {
     const existing = await getAssetTypeById(user.currentTenantId, id);
     if (!existing) {
       return NextResponse.json({ data: null, error: 'Asset type not found' }, { status: 404 });
@@ -99,8 +85,9 @@ export async function DELETE(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
+  const auth = await authorize(request, FORM_ID, 'archive');
+  if (!auth.ok) return auth.res;
+  const { user, scope } = auth.ctx;
 
   try {
     const body = await request.json();
@@ -108,11 +95,7 @@ export async function PATCH(request: NextRequest) {
     if (!id) return NextResponse.json({ data: null, error: 'ID is required' }, { status: 400 });
     if (typeof archived !== 'boolean') return NextResponse.json({ data: null, error: 'archived must be a boolean' }, { status: 400 });
 
-    const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
-    if (perms.archive === false) {
-      return NextResponse.json({ data: null, error: 'You do not have permission to archive asset types' }, { status: 403 });
-    }
-    if (perms.archive === 'OWN') {
+    if (scope === 'OWN') {
       const existing = await getAssetTypeById(user.currentTenantId, id);
       if (!existing) {
         return NextResponse.json({ data: null, error: 'Asset type not found' }, { status: 404 });

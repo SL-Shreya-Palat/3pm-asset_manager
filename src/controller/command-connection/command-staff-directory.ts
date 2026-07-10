@@ -304,7 +304,7 @@ export async function importCommandStaffAsDrivers(
       // 3. Create tenantMember + user if not already linked
       if (!driverDoc.tenantMemberId) {
         try {
-          const { tenantMemberId, roleId } = await createTenantMemberForDriverImport(
+          const { tenantMemberId, roleId, alreadyActive } = await createTenantMemberForDriverImport(
             tenantOid,
             userOid,
             now,
@@ -317,8 +317,9 @@ export async function importCommandStaffAsDrivers(
             { $set: { tenantMemberId } },
           );
 
-          // 4. Send invitation email if driver has email
-          if (s.email) {
+          // 4. Send invitation email if driver has email and isn't already
+          //    an active member (an existing user needs no invitation).
+          if (s.email && !alreadyActive) {
             try {
               const { rawToken } = await createInvitation(tenantId, {
                 email: s.email,
@@ -389,7 +390,7 @@ async function createTenantMemberForDriverImport(
   createdByOid: ObjectId,
   now: Date,
   driver: { firstName: string; lastName: string; email?: string },
-): Promise<{ tenantMemberId: ObjectId; roleId: ObjectId }> {
+): Promise<{ tenantMemberId: ObjectId; roleId: ObjectId; alreadyActive: boolean }> {
   const usersCol = await getUsersCollection();
   const tenantMembersCol = await getTenantMembersCollection();
 
@@ -430,7 +431,25 @@ async function createTenantMemberForDriverImport(
     localUserId = userResult.insertedId;
   }
 
-  // 3. Upsert tenantMember — unique on (userId, tenantId)
+  // 3. Upsert tenantMember — unique on (userId, tenantId).
+  // Never downgrade an existing active/portal member to the pending Driver
+  // framing — just refresh names and reuse the membership (no invite email).
+  const existingMember = await tenantMembersCol.findOne({
+    userId: localUserId,
+    tenantId: tenantOid,
+  });
+  if (existingMember && (existingMember.status === 'active' || existingMember.portalUser === true)) {
+    await tenantMembersCol.updateOne(
+      { _id: existingMember._id },
+      { $set: { firstName: driver.firstName, lastName: driver.lastName, updatedAt: now } },
+    );
+    return {
+      tenantMemberId: existingMember._id as ObjectId,
+      roleId: (existingMember.roleId as ObjectId) ?? driverRoleId,
+      alreadyActive: true,
+    };
+  }
+
   const tmResult = await tenantMembersCol.findOneAndUpdate(
     { userId: localUserId, tenantId: tenantOid },
     {
@@ -453,7 +472,7 @@ async function createTenantMemberForDriverImport(
     { upsert: true, returnDocument: 'after' },
   );
 
-  return { tenantMemberId: tmResult!._id as ObjectId, roleId: driverRoleId };
+  return { tenantMemberId: tmResult!._id as ObjectId, roleId: driverRoleId, alreadyActive: false };
 }
 
 /**
@@ -467,9 +486,12 @@ async function resolveDriverRoleIdForImport(
   const rolesCol = await getRolesCollection();
   const now = new Date();
 
+  // Match by key OR nameLower — seeded system Driver roles only carry
+  // nameLower; a key-only miss would collide with the unique
+  // {tenantId, nameLower} index on insert.
   const existing = await rolesCol.findOne({
     tenantId: tenantOid,
-    key: 'driver',
+    $or: [{ key: 'driver' }, { nameLower: 'driver' }],
     isArchived: { $ne: true },
   });
 

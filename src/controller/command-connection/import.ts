@@ -345,13 +345,14 @@ async function importDrivers(
     const driverDoc = await drivers.findOne({ tenantId, $or: match });
     if (driverDoc && !driverDoc.tenantMemberId) {
       try {
-        const { tenantMemberId, roleId } = await linkDriverToTenantMember(
+        const { tenantMemberId, roleId, alreadyActive } = await linkDriverToTenantMember(
           tenantId, userId, now, { firstName, lastName, email: s.email || undefined },
         );
         await drivers.updateOne({ _id: driverDoc._id }, { $set: { tenantMemberId } });
 
-        // Send invitation email if driver has email
-        if (s.email) {
+        // Send invitation email if driver has email and isn't already an
+        // active member (an existing user needs no invitation).
+        if (s.email && !alreadyActive) {
           try {
             const { rawToken } = await createInvitation(tenantId.toString(), {
               email: s.email,
@@ -404,16 +405,19 @@ async function linkDriverToTenantMember(
   createdBy: ObjectId,
   now: Date,
   driver: { firstName: string; lastName: string; email?: string },
-): Promise<{ tenantMemberId: ObjectId; roleId: ObjectId }> {
+): Promise<{ tenantMemberId: ObjectId; roleId: ObjectId; alreadyActive: boolean }> {
   const usersCol = await getUsersCollection();
   const tenantMembersCol = await getTenantMembersCollection();
   const rolesCol = await getRolesCollection();
 
   // Resolve (or auto-create) Driver role
   let driverRoleId: ObjectId;
+  // Match by key OR nameLower — seeded system Driver roles only carry
+  // nameLower; a key-only miss would collide with the unique
+  // {tenantId, nameLower} index on insert.
   const existingRole = await rolesCol.findOne({
     tenantId,
-    key: 'driver',
+    $or: [{ key: 'driver' }, { nameLower: 'driver' }],
     isArchived: { $ne: true },
   });
   if (existingRole) {
@@ -482,7 +486,25 @@ async function linkDriverToTenantMember(
     localUserId = userResult.insertedId;
   }
 
-  // Upsert tenantMember
+  // Upsert tenantMember. Never downgrade an existing active/portal member to
+  // the pending Driver framing — just refresh names and reuse the membership
+  // (no invite email).
+  const existingMember = await tenantMembersCol.findOne({
+    userId: localUserId,
+    tenantId,
+  });
+  if (existingMember && (existingMember.status === 'active' || existingMember.portalUser === true)) {
+    await tenantMembersCol.updateOne(
+      { _id: existingMember._id },
+      { $set: { firstName: driver.firstName, lastName: driver.lastName, updatedAt: now } },
+    );
+    return {
+      tenantMemberId: existingMember._id as ObjectId,
+      roleId: (existingMember.roleId as ObjectId) ?? driverRoleId,
+      alreadyActive: true,
+    };
+  }
+
   const tmResult = await tenantMembersCol.findOneAndUpdate(
     { userId: localUserId, tenantId },
     {
@@ -505,7 +527,7 @@ async function linkDriverToTenantMember(
     { upsert: true, returnDocument: 'after' },
   );
 
-  return { tenantMemberId: tmResult!._id as ObjectId, roleId: driverRoleId };
+  return { tenantMemberId: tmResult!._id as ObjectId, roleId: driverRoleId, alreadyActive: false };
 }
 
 /** Suppliers → vendors (business contacts with the supplier role). */

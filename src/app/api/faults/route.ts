@@ -11,7 +11,7 @@ const FORM_ID = 'maintenance.faults.fault';
 export async function GET(request: NextRequest) {
   const auth = await authorize(request, FORM_ID, 'view');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
   const createdBy = scope === 'OWN' ? user.id : undefined;
 
   const { searchParams } = request.nextUrl;
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   const showArchived = searchParams.get('showArchived') === 'true';
 
   const result = await getAllFaults(user.currentTenantId!, {
-    page, limit, search, status, category, priority, severity, teamId, assetId, showArchived, createdBy,
+    page, limit, search, status, category, priority, severity, teamId, assetId, showArchived, createdBy, teamIds: teamIds ?? undefined,
   });
   return NextResponse.json({ data: result, error: null });
 }
