@@ -207,7 +207,7 @@ export default function ProfilePage() {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   return (
-    <div className="p-6 max-w-2xl">
+    <div className="p-4 sm:p-6 max-w-2xl">
       {/* Header with Edit / Save+Cancel */}
       <div className="mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">

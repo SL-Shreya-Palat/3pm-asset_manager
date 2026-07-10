@@ -146,6 +146,41 @@ export async function getDriverById(tenantId: string, driverId: string) {
 }
 
 /**
+ * Resolve the driver record for a logged-in user, if any. Drivers link to app
+ * users via `driver.tenantMemberId → tenantMember.userId`, so we hop user →
+ * tenantMember → driver. Returns null when the user isn't a driver in this
+ * tenant (or the linkage was never created). Never throws.
+ */
+export async function getDriverByUserId(
+  tenantId: string,
+  userId: string,
+): Promise<{ id: string; firstName: string; lastName: string } | null> {
+  if (!ObjectId.isValid(tenantId) || !ObjectId.isValid(userId)) return null;
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const userOid = ObjectId.createFromHexString(userId);
+
+  const membersCol = await getTenantMembersCollection();
+  const member = await membersCol.findOne(
+    { userId: userOid, tenantId: tenantOid },
+    { projection: { _id: 1 } },
+  );
+  if (!member?._id) return null;
+
+  const driversCol = await getDriversCollection();
+  const driver = await driversCol.findOne(
+    { tenantMemberId: member._id as ObjectId, tenantId: tenantOid, isArchived: { $ne: true } },
+    { projection: { firstName: 1, lastName: 1 } },
+  );
+  if (!driver) return null;
+
+  return {
+    id: (driver._id as ObjectId).toHexString(),
+    firstName: (driver.firstName as string) ?? '',
+    lastName: (driver.lastName as string) ?? '',
+  };
+}
+
+/**
  * Resolve (or auto-create) the "Driver" role for a tenant.
  * Looks up by key first; creates with the driver permission preset if missing.
  */

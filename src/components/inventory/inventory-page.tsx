@@ -403,12 +403,12 @@ export function InventoryPage() {
           )}
         </PageHeader>
 
-        <div className="space-y-3 px-6 pb-3">
+        <div className="space-y-3 px-4 pb-3 sm:px-6">
           {connected && <CommandManagedBanner />}
           <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
         </div>
 
-        <div className="flex-1 overflow-auto px-6 pb-6">
+        <div className="flex-1 overflow-auto px-4 pb-6 sm:px-6">
           <DataTableToolbar
             columns={columns}
             hiddenColumnKeys={hiddenColumnKeys}

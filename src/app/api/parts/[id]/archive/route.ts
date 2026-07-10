@@ -5,6 +5,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { authorize } from '@/lib/authz';
 import { getPartsCollection } from '@/lib/mongodb';
+import {
+  isCommandConnectionEnabled,
+  MASTER_DATA_MANAGED_MESSAGE,
+} from '@/controller/command-connection/guard';
 
 const FORM_ID = 'maintenance.inventory.inventoryItem';
 
@@ -29,11 +33,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const tenantOid = ObjectId.createFromHexString(user.currentTenantId!);
     const docOid = ObjectId.createFromHexString(id);
 
-    if (scope === 'OWN') {
-      const existing = await collection.findOne({ _id: docOid, tenantId: tenantOid });
-      if (!existing || existing.createdBy?.toString() !== user.id) {
-        return NextResponse.json({ data: null, error: 'You can only archive records you created' }, { status: 403 });
-      }
+    const existing = await collection.findOne({ _id: docOid, tenantId: tenantOid });
+    if (!existing) {
+      return NextResponse.json({ data: null, error: 'Not found' }, { status: 404 });
+    }
+    if (scope === 'OWN' && existing.createdBy?.toString() !== user.id) {
+      return NextResponse.json({ data: null, error: 'You can only archive records you created' }, { status: 403 });
+    }
+
+    // Command-sourced stock is master data — archived/restored in Command, not
+    // here (an AM archive would silently diverge from Command's register).
+    if (existing.source === 'command' && (await isCommandConnectionEnabled(user.currentTenantId!))) {
+      return NextResponse.json({ data: null, error: MASTER_DATA_MANAGED_MESSAGE }, { status: 400 });
     }
 
     const result = await collection.updateOne(

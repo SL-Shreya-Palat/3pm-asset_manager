@@ -465,7 +465,7 @@ export function PurchaseOrdersPage() {
         </PageHeader>
 
         {/* Status Tabs */}
-        <div className="px-6 pb-4 flex items-center gap-4">
+        <div className="px-4 pb-4 flex flex-wrap items-center gap-4 sm:px-6">
           <FilterTabs
             value={activeTab}
             onChange={setActiveTab}
@@ -473,7 +473,7 @@ export function PurchaseOrdersPage() {
           />
         </div>
 
-        <div className="flex-1 overflow-auto px-6 pb-6">
+        <div className="flex-1 overflow-auto px-4 pb-6 sm:px-6">
           <DataTableToolbar
             columns={poColumns}
             hiddenColumnKeys={hiddenColumnKeys}

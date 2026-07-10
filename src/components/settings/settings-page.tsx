@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ChevronDown, ChevronRight, Ruler, Tag, MapPin, Wrench, CircleDot, Box, Layers, Bell, Cable, Radio, Gauge } from 'lucide-react';
+import { ChevronDown, ChevronRight, Ruler, Tag, MapPin, Wrench, CircleDot, Box, Layers, Bell, Cable, Radio, Gauge, ClipboardCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useConnection } from '@/hooks/use-connection';
 import { InventorySettingsList, type SettingsFieldConfig } from './inventory-settings-list';
@@ -13,6 +13,7 @@ import { CommandConnectionPanel } from './command-connection-panel';
 import { IoTSettingsPanel } from './iot-settings-panel';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { MeterSettingsPanel } from './meter-settings-panel';
+import { DriverInspectionSettingsPanel } from './driver-inspection-settings-panel';
 
 /** Settings tabs. */
 const TABS = [
@@ -55,6 +56,14 @@ const ADMIN_SIDEBAR: SidebarItem[] = [
     children: [
       { key: 'work-order-statuses', label: 'Work Order Statuses' },
       { key: 'meter-settings', label: 'Meter Readings' },
+    ],
+  },
+  {
+    key: 'inspections',
+    label: 'Inspections',
+    icon: ClipboardCheck,
+    children: [
+      { key: 'driver-inspections', label: 'Driver Inspections' },
     ],
   },
   {
@@ -111,7 +120,7 @@ const ASSET_TYPE_FIELDS: SettingsFieldConfig[] = [
   { key: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional description' },
 ];
 
-const VALID_SIDEBAR_KEYS = new Set(['asset-types', 'measurement-units', 'part-categories', 'part-locations', 'work-order-statuses', 'meter-settings', 'notification-routing', 'command-connection', 'iot-hub']);
+const VALID_SIDEBAR_KEYS = new Set(['asset-types', 'measurement-units', 'part-categories', 'part-locations', 'work-order-statuses', 'meter-settings', 'driver-inspections', 'notification-routing', 'command-connection', 'iot-hub']);
 
 /**
  * Maps sidebar child keys to their [module, subModule, formId] tuple for
@@ -163,15 +172,19 @@ export function SettingsPage() {
   }, [hasFullAccess, canAccessSubModule, permissionIndex]);
 
   // Auto-select the first visible sidebar item when the list changes or on
-  // initial render.
+  // initial render. Deferred so setState isn't called synchronously in the
+  // effect body.
   useEffect(() => {
-    const firstChild = visibleSidebar.flatMap((g) => g.children ?? []);
-    if (firstChild.length > 0 && !firstChild.some((c) => c.key === activeSidebarKey)) {
-      setActiveSidebarKey(firstChild[0].key);
-      // expand the parent group
-      const parentGroup = visibleSidebar.find((g) => g.children?.some((c) => c.key === firstChild[0].key));
-      if (parentGroup) setExpandedKeys((prev) => new Set([...prev, parentGroup.key]));
-    }
+    const t = setTimeout(() => {
+      const firstChild = visibleSidebar.flatMap((g) => g.children ?? []);
+      if (firstChild.length > 0 && !firstChild.some((c) => c.key === activeSidebarKey)) {
+        setActiveSidebarKey(firstChild[0].key);
+        // expand the parent group
+        const parentGroup = visibleSidebar.find((g) => g.children?.some((c) => c.key === firstChild[0].key));
+        if (parentGroup) setExpandedKeys((prev) => new Set([...prev, parentGroup.key]));
+      }
+    }, 0);
+    return () => clearTimeout(t);
   }, [visibleSidebar]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Support deep-linking via ?section= query param.
@@ -188,6 +201,8 @@ export function SettingsPage() {
         setExpandedKeys((prev) => new Set([...prev, 'inventory']));
       } else if (['work-order-statuses', 'meter-settings'].includes(section)) {
         setExpandedKeys((prev) => new Set([...prev, 'work-orders']));
+      } else if (['driver-inspections'].includes(section)) {
+        setExpandedKeys((prev) => new Set([...prev, 'inspections']));
       } else if (['notification-routing'].includes(section)) {
         setExpandedKeys((prev) => new Set([...prev, 'notifications']));
       } else if (['command-connection'].includes(section)) {
@@ -277,6 +292,8 @@ export function SettingsPage() {
         return <WorkOrderStatusesList />;
       case 'meter-settings':
         return <MeterSettingsPanel />;
+      case 'driver-inspections':
+        return <DriverInspectionSettingsPanel />;
       case 'notification-routing':
         return <NotificationSettingsPage />;
       case 'command-connection':
@@ -296,6 +313,7 @@ export function SettingsPage() {
       case 'part-locations': return MapPin;
       case 'work-order-statuses': return CircleDot;
       case 'meter-settings': return Gauge;
+      case 'driver-inspections': return ClipboardCheck;
       case 'notification-routing': return Bell;
       case 'command-connection': return Cable;
       case 'iot-hub': return Radio;
@@ -306,19 +324,19 @@ export function SettingsPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Page header */}
-      <div className="px-6 pt-6 pb-4">
-        <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
+      <div className="px-4 pt-6 pb-4 sm:px-6">
+        <h1 className="text-xl font-semibold text-foreground sm:text-2xl">Settings</h1>
       </div>
 
       {/* Tabs */}
-      <div className="px-6 border-b border-border">
-        <div className="flex gap-6">
+      <div className="px-4 border-b border-border sm:px-6">
+        <div className="flex gap-6 overflow-x-auto">
           {TABS.map((tab) => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
               className={cn(
-                'pb-3 text-sm font-medium border-b-2 transition-colors',
+                'pb-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0',
                 activeTab === tab.key
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground',
@@ -333,7 +351,7 @@ export function SettingsPage() {
       {/* Content area */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Left sidebar */}
-        <div className="w-[240px] border-r border-border bg-muted/30 overflow-y-auto py-4">
+        <div className="w-40 shrink-0 border-r border-border bg-muted/30 overflow-y-auto py-4 sm:w-[240px]">
           <nav className="px-3 space-y-1">
             {visibleSidebar.map((item) => {
               const isExpanded = expandedKeys.has(item.key);
@@ -382,7 +400,7 @@ export function SettingsPage() {
         </div>
 
         {/* Main content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 min-w-0 overflow-y-auto p-4 sm:p-6">
           {renderSettingsContent()}
         </div>
       </div>

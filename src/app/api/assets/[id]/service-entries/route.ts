@@ -10,7 +10,9 @@ import { logServiceEntry } from '@/controller/service-history';
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const auth = await authorize(request, 'assets.assets.asset', 'view');
+  // Writes a financial service record and resets the service schedule — edit
+  // rights on the asset, not view.
+  const auth = await authorize(request, 'assets.assets.asset', 'edit');
   if (!auth.ok) return auth.res;
   const { user } = auth.ctx;
 

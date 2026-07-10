@@ -7,11 +7,13 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronsUpDown,
+  LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,6 +24,7 @@ import { navItems } from '@/constants/navigation';
 import type { NavItem, NavChild } from '@/constants/navigation';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { useConnection } from '@/hooks/use-connection';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { useAuth } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/auth/store';
 
@@ -91,8 +94,11 @@ function NavSkeleton({ collapsed }: { collapsed: boolean }) {
 export function Sidebar() {
   const pathname = usePathname();
   const { loading, items: filteredItems } = useFilteredNavItems();
+  const [manualCollapsed, setManualCollapsed] = useState(false);
+  const isMobile = useIsMobile();
+  // On phones the sidebar is always the icon rail — screen space goes to content.
+  const collapsed = isMobile || manualCollapsed;
   const { user } = useAuth();
-  const [collapsed, setCollapsed] = useState(false);
 
   // Tenant (organization) switcher — mirrors the construction portal footer.
   const tenants = useAuthStore((s) => s.tenants);
@@ -214,34 +220,23 @@ export function Sidebar() {
         collapsed ? 'w-[68px]' : 'w-[240px]',
       )}
     >
-      {/* Logo / brand + collapse toggle */}
+      {/* Logo / brand */}
       <div
         className={cn(
           'flex h-14 items-center border-b border-sidebar-border px-4',
-          collapsed ? 'justify-center' : 'justify-between',
+          collapsed && 'justify-center',
         )}
       >
-        {!collapsed && (
-          <Link href="/dashboard" className="flex items-center gap-x-3 overflow-hidden">
-            <div className="flex h-8 min-w-8 shrink-0 items-center justify-center rounded-md bg-primary px-1.5 text-[11px] font-bold text-primary-foreground shadow-sm">
-              3PM
-            </div>
+        <Link href="/dashboard" className="flex items-center gap-x-3 overflow-hidden">
+          <div className="flex h-8 min-w-8 shrink-0 items-center justify-center rounded-md bg-primary px-1.5 text-[11px] font-bold text-primary-foreground shadow-sm">
+            3PM
+          </div>
+          {!collapsed && (
             <span className="brand-wordmark truncate text-lg font-bold leading-none">
               Drive
             </span>
-          </Link>
-        )}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="flex shrink-0 items-center justify-center rounded p-2 text-sidebar-foreground transition-colors hover:bg-gray-100"
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed ? (
-            <ChevronRight className="h-4 w-4" />
-          ) : (
-            <ChevronLeft className="h-4 w-4" />
           )}
-        </button>
+        </Link>
       </div>
 
       {/* Navigation */}
@@ -342,6 +337,34 @@ export function Sidebar() {
 
       {/* Footer — tenant (organization) switcher */}
       <div className="border-t border-sidebar-border p-2">
+        <Separator className="mb-2" />
+        <div className="flex items-center justify-between">
+          {!collapsed && (
+            <a
+              href="/api/auth/logout"
+              className="flex items-center gap-2 rounded px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-gray-100 transition-colors flex-1"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Sign Out</span>
+            </a>
+          )}
+          {!isMobile && (
+            <button
+              onClick={() => setManualCollapsed(!manualCollapsed)}
+              className={cn(
+                'flex items-center justify-center rounded p-2 text-sidebar-foreground hover:bg-gray-100 transition-colors',
+                collapsed && 'w-full',
+              )}
+            >
+              {collapsed ? (
+                <ChevronRight className="h-4 w-4" />
+              ) : (
+                <ChevronLeft className="h-4 w-4" />
+              )}
+            </button>
+          )}
+        </div>
+
         {currentTenant && (
           <DropdownMenu>
             {collapsed ? (

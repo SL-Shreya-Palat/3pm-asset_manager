@@ -22,8 +22,37 @@ import { getEnabledConnectionAuthTenantId } from './guard';
 import { importFromCommand, syncOneAssetFromCommand, type ImportEntity } from './import';
 
 /**
+ * On-read auto-sync throttle.
+ *
+ * A LIST read previously ran a FULL fetch-all + upsert from Command on every
+ * single request — including every debounced search keystroke and every
+ * pagination click — so a page of local data was gated behind a network
+ * round-trip each time. That is the dominant cost of the connected-tenant
+ * lists.
+ *
+ * We keep the "auto-fresh, no manual import" behaviour but coalesce those
+ * bursts: a given (tenant, entity) syncs at most once per TTL window, and the
+ * requests in between are served straight from the already-fresh local
+ * snapshot. Command changes still surface automatically, just within the TTL
+ * rather than on literally every request. The manual "Import from Command"
+ * button calls `importFromCommand` directly (not this path), so a forced full
+ * sync is always available and never throttled.
+ *
+ * Stored on `globalThis` so the throttle survives dev HMR (same pattern as the
+ * Mongo client singleton).
+ */
+const SYNC_TTL_MS = Number(process.env.COMMAND_SYNC_TTL_MS) || 30_000;
+
+const g = globalThis as typeof globalThis & {
+  _amCommandSyncAt?: Map<string, number>;
+};
+const lastSyncAt: Map<string, number> = (g._amCommandSyncAt ??= new Map());
+
+/**
  * Refresh one master entity from Command, then return. Awaited at LIST read
- * entrypoints so the freshest Command data is displayed on every request.
+ * entrypoints so the freshest Command data is displayed. Coalesced to at most
+ * one sync per (tenant, entity) per `SYNC_TTL_MS` so pagination/search bursts
+ * don't each pay for a full import.
  * No-ops when standalone; fails fast via the circuit breaker when Command is
  * unreachable (the caller then serves the local snapshot).
  */
@@ -32,10 +61,41 @@ export async function ensureFreshFromCommand(
   userId: string | undefined,
   entity: ImportEntity,
 ): Promise<void> {
+  // Within the TTL window this (tenant, entity) is already fresh — skip the
+  // Command round-trip AND the connection-check DB read entirely.
+  const key = `${tenantId}:${entity}`;
+  const last = lastSyncAt.get(key);
+  if (last !== undefined && Date.now() - last < SYNC_TTL_MS) return;
+  // Mark now so concurrent/rapid callers in this window also skip (both a
+  // success and a failure throttle equally — avoids hammering a down Command).
+  lastSyncAt.set(key, Date.now());
+
   try {
     const authTenantId = await getEnabledConnectionAuthTenantId(tenantId);
     if (!authTenantId) return; // standalone / not configured / disabled
-    await importFromCommand(tenantId, userId ?? '', authTenantId, [entity]);
+    const { summary, errors } = await importFromCommand(
+      tenantId,
+      userId ?? '',
+      authTenantId,
+      [entity],
+    );
+    // importFromCommand catches per-entity failures INTERNALLY and returns them
+    // here — surface them, otherwise a failed suppliers/stock sync silently
+    // leaves the list empty with no trace (the exact "records not importing"
+    // symptom is invisible without this log).
+    if (errors[entity]) {
+      console.error(`[command-auto-sync] ${entity} import failed:`, errors[entity]);
+    } else {
+      const c = summary[entity];
+      if (c && c.created === 0 && c.updated === 0 && c.skipped === 0) {
+        // Fetched OK but nothing landed — e.g. no contacts flagged
+        // roles.isSupplier, or an empty Command list. Flag it so this doesn't
+        // read as a silent success.
+        console.warn(
+          `[command-auto-sync] ${entity}: Command returned no importable records (check roles/filters/connection).`,
+        );
+      }
+    }
   } catch (e) {
     console.error('[command-auto-sync] refresh failed for', entity, e);
   }

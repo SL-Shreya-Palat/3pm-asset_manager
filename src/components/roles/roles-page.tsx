@@ -283,7 +283,7 @@ export function RolesPage() {
       </PageHeader>
 
       {/* Toolbar + Table */}
-      <div className="flex-1 overflow-auto px-6 pb-6">
+      <div className="flex-1 overflow-auto px-4 pb-6 sm:px-6">
         <DataTableToolbar
           columns={roleColumns}
           hiddenColumnKeys={hiddenColumnKeys}

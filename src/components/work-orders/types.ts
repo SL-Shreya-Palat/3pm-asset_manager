@@ -19,12 +19,18 @@ export interface WOStatusHistoryRow {
 }
 
 export interface WOPartRow {
-  partId: string;
+  /** Local part id; null for lines resolved directly from Command stock. */
+  partId: string | null;
   partName: string;
   partNumber: string;
   quantity: number;
   unitCost: number;
   lineTotal: number;
+  /** 'command' when the line consumes Command's ledger, else 'local'. */
+  source?: string;
+  commandStockId?: string | null;
+  /** True once the RECEIPTED_OUT was applied in Command — the line is frozen. */
+  pushedToCommand?: boolean;
 }
 
 export interface WorkOrderRow {
@@ -96,6 +102,9 @@ export interface PartLookup {
   partNumber: string;
   unitCost: number;
   stock: number;
+  /** 'command' for Command-imported stock (cost comes from commandUnitCost). */
+  source?: string;
+  commandStockId?: string | null;
 }
 
 export interface Pagination {

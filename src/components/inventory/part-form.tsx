@@ -227,12 +227,20 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
 
     try {
       setSaving(true);
+      let warning: string | undefined;
       if (mode === 'edit' && part) {
-        await axios.put(`/api/parts/${part.id}`, payload, { withCredentials: true });
+        const res = await axios.put(`/api/parts/${part.id}`, payload, { withCredentials: true });
+        warning = res.data?.warning as string | undefined;
       } else {
         await axios.post('/api/parts', payload, { withCredentials: true });
       }
-      showSuccessToast(mode === 'edit' ? 'Stock updated successfully' : 'Stock created successfully');
+      // A stripped edit (Command-owned fields) must not read as a clean save —
+      // the stock count the user typed did NOT change anything.
+      if (warning) {
+        showErrorToast(warning);
+      } else {
+        showSuccessToast(mode === 'edit' ? 'Stock updated successfully' : 'Stock created successfully');
+      }
       onSaved();
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {

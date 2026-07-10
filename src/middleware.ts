@@ -42,7 +42,9 @@ export function middleware(request: NextRequest) {
       ? process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
       : process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
 
-    const returnUrl = `${appUrl}${pathname}`;
+    // Keep the query string so deep links (e.g. QR-scanned
+    // /inspections/fill?assetId=X&formId=Y) survive the login round-trip.
+    const returnUrl = `${appUrl}${pathname}${request.nextUrl.search}`;
     const callbackUrl = `${appUrl}/api/auth/callback?returnUrl=${encodeURIComponent(returnUrl)}`;
 
     const loginUrl = new URL('/authorize', idpUrl);

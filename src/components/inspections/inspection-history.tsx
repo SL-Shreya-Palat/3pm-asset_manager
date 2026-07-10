@@ -117,7 +117,7 @@ export function InspectionHistory() {
     <div className="flex flex-col h-full">
       <PageHeader title="Inspection History" description="Browse completed inspection submissions and their results" count={pagination.total} />
 
-      <div className="px-6 pb-4">
+      <div className="px-4 pb-4 sm:px-6">
         <FilterTabs
           value={result}
           onChange={setResult}
@@ -125,7 +125,7 @@ export function InspectionHistory() {
         />
       </div>
 
-      <div className="flex-1 overflow-auto px-6 pb-6">
+      <div className="flex-1 overflow-auto px-4 pb-6 sm:px-6">
         <DataTableToolbar
           columns={columns}
           hiddenColumnKeys={hiddenColumnKeys}

@@ -334,13 +334,13 @@ export function VendorsPage() {
         </PageHeader>
 
         {connected && (
-          <div className="px-6 pb-3">
+          <div className="px-4 pb-3 sm:px-6">
             <CommandManagedBanner />
           </div>
         )}
 
         {/* Toolbar + Table */}
-        <div className="flex-1 overflow-auto px-6 pb-6">
+        <div className="flex-1 overflow-auto px-4 pb-6 sm:px-6">
           <DataTableToolbar
             columns={columns}
             hiddenColumnKeys={hiddenColumnKeys}

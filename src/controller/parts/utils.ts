@@ -115,7 +115,11 @@ export function serializePart(doc: Record<string, unknown>): Record<string, unkn
     createdAt: doc.createdAt ? (doc.createdAt as Date).toISOString() : null,
     updatedAt: doc.updatedAt ? (doc.updatedAt as Date).toISOString() : null,
     // Command linkage — 'command'-sourced stock badges as read-only master data.
+    // commandUnitCost is Command's costPrice snapshot (refreshed every sync) —
+    // the cost basis WO lines must use for imported stock (vendors[] is empty).
     source: doc.source || 'local',
+    commandStockId: doc.commandStockId ? String(doc.commandStockId) : null,
+    commandUnitCost: typeof doc.commandUnitCost === 'number' ? doc.commandUnitCost : null,
     commandSyncedAt: doc.commandSyncedAt ? (doc.commandSyncedAt as Date).toISOString() : null,
     createdBy: doc.createdBy ? (doc.createdBy as { toString(): string }).toString() : null,
   };

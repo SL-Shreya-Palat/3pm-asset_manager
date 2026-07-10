@@ -35,12 +35,21 @@ import type {
 } from './types';
 
 interface PartLine {
-  partId: string;
+  partId: string | null;
   partName: string;
   partNumber: string;
   quantity: number;
   unitCost: number;
+  /** 'command' lines consume Command's ledger; their cost is Command's. */
+  source?: string;
+  commandStockId?: string | null;
+  /** Frozen once the consumption was applied in Command. */
+  pushedToCommand?: boolean;
 }
+
+/** Stable row key — direct Command lines have no local partId. */
+const partLineKey = (p: { partId: string | null; commandStockId?: string | null }) =>
+  p.partId || p.commandStockId || '';
 
 /** An open defect that this WO can be created to correct. */
 interface DefectLookup {
@@ -209,12 +218,19 @@ export function WorkOrderForm({
       setAvailableParts(partItems.map((i: Record<string, unknown>) => {
         const vendors = (i.vendors as Array<{ unitCost: number }>) || [];
         const stockLocations = (i.stockLocations as Array<{ quantity: number }>) || [];
+        const isCommand = i.source === 'command';
         return {
           id: i.id as string,
           name: i.name as string,
           partNumber: (i.partNumber as string) || '',
-          unitCost: vendors[0]?.unitCost ?? 0,
+          // Command-imported stock has no vendors[] — its cost basis is
+          // Command's costPrice snapshot (commandUnitCost), never 0.
+          unitCost: isCommand
+            ? Number(i.commandUnitCost ?? 0)
+            : vendors[0]?.unitCost ?? 0,
           stock: stockLocations.reduce((sum, s) => sum + (s.quantity || 0), 0),
+          source: (i.source as string) || 'local',
+          commandStockId: (i.commandStockId as string) || null,
         };
       }));
     } catch {
@@ -311,6 +327,11 @@ export function WorkOrderForm({
           partNumber: p.partNumber,
           quantity: p.quantity,
           unitCost: p.unitCost,
+          // Round-trip the Command linkage — losing these fields would make an
+          // already-consumed line look like a fresh one on save.
+          source: p.source,
+          commandStockId: p.commandStockId ?? null,
+          pushedToCommand: p.pushedToCommand ?? false,
         })),
       );
     }
@@ -395,9 +416,10 @@ export function WorkOrderForm({
     if (!part) return;
     const qty = Math.max(1, parseInt(qtyToAdd, 10) || 1);
     setParts((prev) => {
-      const existing = prev.find((p) => p.partId === part.id);
+      const existing = prev.find((p) => partLineKey(p) === part.id || (part.commandStockId && p.commandStockId === part.commandStockId));
       if (existing) {
-        return prev.map((p) => (p.partId === part.id ? { ...p, quantity: p.quantity + qty } : p));
+        if (existing.pushedToCommand) return prev; // consumed lines are frozen
+        return prev.map((p) => (p === existing ? { ...p, quantity: p.quantity + qty } : p));
       }
       return [...prev, {
         partId: part.id,
@@ -405,17 +427,24 @@ export function WorkOrderForm({
         partNumber: part.partNumber,
         quantity: qty,
         unitCost: part.unitCost,
+        source: part.source,
+        commandStockId: part.commandStockId ?? null,
+        pushedToCommand: false,
       }];
     });
     setPartToAdd('');
     setQtyToAdd('1');
   };
 
-  const updatePartQty = (partId: string, qty: number) =>
-    setParts((prev) => prev.map((p) => (p.partId === partId ? { ...p, quantity: Math.max(1, qty || 1) } : p)));
+  const updatePartQty = (key: string, qty: number) =>
+    setParts((prev) =>
+      prev.map((p) =>
+        partLineKey(p) === key && !p.pushedToCommand ? { ...p, quantity: Math.max(1, qty || 1) } : p,
+      ),
+    );
 
-  const removePart = (partId: string) =>
-    setParts((prev) => prev.filter((p) => p.partId !== partId));
+  const removePart = (key: string) =>
+    setParts((prev) => prev.filter((p) => partLineKey(p) !== key || p.pushedToCommand));
 
   const partsCost = parts.reduce((sum, p) => sum + p.unitCost * p.quantity, 0);
 
@@ -449,7 +478,13 @@ export function WorkOrderForm({
         ? (selectedFaultIds.length > 0 ? 'fault' : selectedDefectIds.length > 0 ? 'defect' : source)
         : source,
       ...(mode === 'create' ? { defectIds: selectedDefectIds, faultIds: selectedFaultIds } : {}),
-      parts: parts.map((p) => ({ partId: p.partId, quantity: p.quantity, unitCost: p.unitCost })),
+      // Command lines are sent by commandStockId so the server preserves their
+      // pushed state; their cost is Command's (any client value is ignored).
+      parts: parts.map((p) =>
+        p.commandStockId
+          ? { commandStockId: p.commandStockId, quantity: p.quantity }
+          : { partId: p.partId, quantity: p.quantity, unitCost: p.unitCost },
+      ),
       assigneeType: assigneeTab,
       statusId,
       dueDate: dueDate || undefined,
@@ -472,12 +507,18 @@ export function WorkOrderForm({
 
     try {
       setSaving(true);
+      let warning: string | undefined;
       if (mode === 'edit' && workOrder) {
-        await axios.put(`/api/work-orders/${workOrder.id}`, payload, { withCredentials: true });
+        const res = await axios.put(`/api/work-orders/${workOrder.id}`, payload, { withCredentials: true });
+        warning = res.data?.warning as string | undefined;
       } else {
         await axios.post('/api/work-orders', payload, { withCredentials: true });
       }
-      showSuccessToast(mode === 'edit' ? 'Work order updated successfully' : 'Work order created successfully');
+      if (warning) {
+        showErrorToast(warning);
+      } else {
+        showSuccessToast(mode === 'edit' ? 'Work order updated successfully' : 'Work order created successfully');
+      }
       onSaved();
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.data?.error) {
@@ -996,10 +1037,12 @@ export function WorkOrderForm({
             {parts.length > 0 && (
               <div className="mt-4 rounded-lg border border-border bg-card shadow-sm divide-y divide-border overflow-hidden">
                 {parts.map((p) => {
+                  const key = partLineKey(p);
                   const stock = availableParts.find((a) => a.id === p.partId)?.stock ?? null;
                   const low = stock != null && p.quantity > stock;
+                  const frozen = p.pushedToCommand === true;
                   return (
-                    <div key={p.partId} className="flex items-center gap-3 px-3 py-2.5">
+                    <div key={key} className="flex items-center gap-3 px-3 py-2.5">
                       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
                         <Package className="h-4 w-4" />
                       </span>
@@ -1010,27 +1053,31 @@ export function WorkOrderForm({
                           {stock != null && (
                             <span className={low ? 'text-destructive font-medium' : ''}> · {stock} in stock</span>
                           )}
+                          {frozen && <span> · consumed in Command</span>}
                         </p>
                       </div>
                       <Input
                         type="number"
                         min={1}
                         value={p.quantity}
-                        onChange={(e) => updatePartQty(p.partId, parseInt(e.target.value, 10))}
+                        disabled={frozen}
+                        onChange={(e) => updatePartQty(key, parseInt(e.target.value, 10))}
                         className="w-16 h-8 text-center"
                       />
                       <span className="text-sm font-semibold text-foreground w-24 text-right tabular-nums">
                         ${(p.unitCost * p.quantity).toFixed(2)}
                       </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => removePart(p.partId)}
-                        className="text-muted-foreground hover:text-destructive shrink-0"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      {!frozen && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={() => removePart(key)}
+                          className="text-muted-foreground hover:text-destructive shrink-0"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                     </div>
                   );
                 })}

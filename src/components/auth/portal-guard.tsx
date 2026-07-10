@@ -6,6 +6,7 @@ import { useRoleAccess } from '@/hooks/use-role-access';
 import { getFlatNavItems } from '@/constants/navigation';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ShieldOff } from 'lucide-react';
+import { DriverInspectionGate } from '@/components/inspections/driver-inspection-gate';
 
 /**
  * Layout-level route guard for the portal.
@@ -43,7 +44,14 @@ export function PortalGuard({ children }: { children: React.ReactNode }) {
     }
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      {/* Driver-inspection hard gate — overlays everything when the current
+          driver owes an inspection this period. Renders null otherwise. */}
+      <DriverInspectionGate />
+    </>
+  );
 }
 
 // ---------------------------------------------------------------------------

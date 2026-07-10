@@ -185,9 +185,9 @@ export function Header() {
   }
 
   return (
-    <header className="flex h-14 items-center border-b border-border bg-card px-6">
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-1 text-sm flex-1 min-w-0">
+    <header className="flex h-14 items-center border-b border-border bg-card px-3 md:px-6">
+      {/* Breadcrumb (hidden on phones — search takes the space) */}
+      <nav className="hidden md:flex items-center gap-1 text-sm flex-1 min-w-0">
         {breadcrumbs.map((crumb, i) => (
           <span key={crumb.href} className="flex items-center gap-1">
             {i > 0 && (

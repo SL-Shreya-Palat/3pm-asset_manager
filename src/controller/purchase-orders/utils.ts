@@ -97,6 +97,76 @@ export function validateCreatePOInput(input: Record<string, unknown>): Validatio
   return { valid: Object.keys(errors).length === 0, errors };
 }
 
+/**
+ * Validate a PARTIAL update payload with the same money rules as create —
+ * the update path must never accept values the create path would reject
+ * (negative quantities, non-integer quantities, 5000% tax, ...).
+ */
+export function validateUpdatePOInput(input: Record<string, unknown>): ValidationResult {
+  const errors: Record<string, string> = {};
+
+  if (input.vendorId !== undefined) {
+    if (typeof input.vendorId !== 'string' || !isValidObjectId(input.vendorId)) {
+      errors.vendorId = 'Valid vendor is required';
+    }
+  }
+  if (input.deliveryLocationId !== undefined) {
+    if (typeof input.deliveryLocationId !== 'string' || !isValidObjectId(input.deliveryLocationId)) {
+      errors.deliveryLocationId = 'Valid delivery location is required';
+    }
+  }
+  if (input.approverId !== undefined) {
+    if (typeof input.approverId !== 'string' || !isValidObjectId(input.approverId)) {
+      errors.approverId = 'Valid approver is required';
+    }
+  }
+
+  if (input.lineItems !== undefined) {
+    if (!Array.isArray(input.lineItems) || input.lineItems.length === 0) {
+      errors.lineItems = 'At least one line item is required';
+    } else if (input.lineItems.length > 30) {
+      errors.lineItems = 'Maximum 30 line items allowed';
+    } else {
+      for (let i = 0; i < input.lineItems.length; i++) {
+        const item = input.lineItems[i] as Record<string, unknown>;
+        if (!item.partId || typeof item.partId !== 'string' || !isValidObjectId(item.partId)) {
+          errors[`lineItems.${i}.partId`] = 'Valid part is required';
+        }
+        if (typeof item.quantity !== 'number' || item.quantity <= 0 || !Number.isInteger(item.quantity)) {
+          errors[`lineItems.${i}.quantity`] = 'Quantity must be a positive integer';
+        }
+        if (typeof item.unitCost !== 'number' || !Number.isFinite(item.unitCost) || item.unitCost < 0) {
+          errors[`lineItems.${i}.unitCost`] = 'Unit cost must be non-negative';
+        }
+      }
+    }
+  }
+
+  if (input.shipping !== undefined && input.shipping !== null) {
+    if (typeof input.shipping !== 'number' || !Number.isFinite(input.shipping) || input.shipping < 0) {
+      errors.shipping = 'Shipping must be a non-negative number';
+    }
+  }
+  if (input.taxType !== undefined && input.taxType !== null) {
+    if (!TAX_TYPES.includes(input.taxType as TaxType)) {
+      errors.taxType = 'Tax type must be "percentage" or "fixed"';
+    }
+  }
+  if (input.taxValue !== undefined && input.taxValue !== null) {
+    if (typeof input.taxValue !== 'number' || !Number.isFinite(input.taxValue) || input.taxValue < 0) {
+      errors.taxValue = 'Tax value must be non-negative';
+    }
+    if (input.taxType === 'percentage' && typeof input.taxValue === 'number' && input.taxValue > 100) {
+      errors.taxValue = 'Tax percentage must be between 0 and 100';
+    }
+  }
+  if (input.description && typeof input.description === 'string' && input.description.length > 2000) {
+    errors.description = 'Description must be at most 2000 characters';
+  }
+
+  return { valid: Object.keys(errors).length === 0, errors };
+}
+
 // ---------------------------------------------------------------------------
 // Cost calculation
 // ---------------------------------------------------------------------------
@@ -182,7 +252,9 @@ export const VALID_TRANSITIONS: Record<POStatus, POStatus[]> = {
   pending_approval: ['approved', 'rejected'],
   rejected: ['pending_approval'],
   approved: ['purchased', 'closed'],
-  purchased: ['received', 'received_partial'],
+  // 'closed' from purchased = order cancelled by the vendor / never delivered —
+  // without it a purchased PO that will never arrive has no exit state.
+  purchased: ['received', 'received_partial', 'closed'],
   received_partial: ['received', 'closed'],
   received: ['closed'],
   closed: [],

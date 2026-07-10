@@ -106,5 +106,102 @@ export async function setupIndexes(): Promise<void> {
   await faults.createIndex({ tenantId: 1, isArchived: 1 });
   await faults.createIndex({ tenantId: 1, faultNumber: 1 }, { unique: true, sparse: true });
 
+  // -------------------------------------------------------------------------
+  // List sort-covering indexes.
+  //
+  // Every paginated list does `find({ tenantId, isArchived: { $ne: true } })
+  // .sort({ createdAt: -1 })` (or date/submittedAt/performedAt). Without an
+  // index whose trailing key matches the sort, Mongo scans the tenant's whole
+  // collection and sorts in memory — the dominant cost as data grows.
+  //
+  // The default list is `{ tenantId, isArchived: { $ne: true } }` sorted by the
+  // date key. `isArchived: { $ne: true }` is a RANGE, so putting it before the
+  // sort key would break the index ordering and force an in-memory sort anyway
+  // (verified via explain). The right shape is EQUALITY-prefix then sort key:
+  // `{ tenantId, <sortKey> }`. Mongo walks it in sorted order for the tenant and
+  // applies `isArchived` as a cheap residual filter — IXSCAN, no COLLSCAN, no
+  // blocking SORT, for both the default and the "show archived" views. Common
+  // asset-detail-tab filters (equality on assetId) get their own sort-covering
+  // `{ tenantId, assetId, <sortKey> }` index; selective status filters get a
+  // plain `{ tenantId, status }`.
+  // -------------------------------------------------------------------------
+
+  // assets — default list sorts by createdAt (filter indexes already exist above)
+  await assets.createIndex({ tenantId: 1, createdAt: -1 });
+
+  // drivers — default list sort
+  await drivers.createIndex({ tenantId: 1, createdAt: -1 });
+
+  // faults — default list sort + asset-detail tab
+  await faults.createIndex({ tenantId: 1, createdAt: -1 });
+  await faults.createIndex({ tenantId: 1, assetId: 1, createdAt: -1 });
+
+  // defects
+  const defects = db.collection('defects');
+  await defects.createIndex({ tenantId: 1, createdAt: -1 });
+  await defects.createIndex({ tenantId: 1, assetId: 1, createdAt: -1 });
+  await defects.createIndex({ tenantId: 1, status: 1 });
+
+  // workOrders
+  const workOrders = db.collection('workOrders');
+  await workOrders.createIndex({ tenantId: 1, createdAt: -1 });
+  await workOrders.createIndex({ tenantId: 1, assetId: 1, createdAt: -1 });
+  await workOrders.createIndex({ tenantId: 1, statusId: 1 });
+
+  // workOrderStatuses — ordered by sequence
+  const workOrderStatuses = db.collection('workOrderStatuses');
+  await workOrderStatuses.createIndex({ tenantId: 1, sequence: 1 });
+
+  // purchaseOrders
+  const purchaseOrders = db.collection('purchaseOrders');
+  await purchaseOrders.createIndex({ tenantId: 1, createdAt: -1 });
+  await purchaseOrders.createIndex({ tenantId: 1, status: 1 });
+
+  // parts
+  const parts = db.collection('parts');
+  await parts.createIndex({ tenantId: 1, createdAt: -1 });
+  await parts.createIndex({ tenantId: 1, categoryId: 1 });
+
+  // vendors
+  const vendors = db.collection('vendors');
+  await vendors.createIndex({ tenantId: 1, createdAt: -1 });
+
+  // servicePlans
+  const servicePlans = db.collection('servicePlans');
+  await servicePlans.createIndex({ tenantId: 1, createdAt: -1 });
+
+  // serviceTasks
+  const serviceTasks = db.collection('serviceTasks');
+  await serviceTasks.createIndex({ tenantId: 1, createdAt: -1 });
+
+  // serviceHistory — per-asset, newest first
+  const serviceHistory = db.collection('serviceHistory');
+  await serviceHistory.createIndex({ tenantId: 1, assetId: 1, performedAt: -1 });
+
+  // fuelTransactions — sorted by date
+  const fuelTransactions = db.collection('fuelTransactions');
+  await fuelTransactions.createIndex({ tenantId: 1, date: -1 });
+  await fuelTransactions.createIndex({ tenantId: 1, assetId: 1, date: -1 });
+
+  // inspectionSubmissions — sorted by submittedAt
+  const inspectionSubmissions = db.collection('inspectionSubmissions');
+  await inspectionSubmissions.createIndex({ tenantId: 1, submittedAt: -1 });
+  await inspectionSubmissions.createIndex({ tenantId: 1, assetId: 1, submittedAt: -1 });
+
+  // notifications — per-recipient feed + unread count
+  const notifications = db.collection('notifications');
+  await notifications.createIndex({ tenantId: 1, recipientId: 1, createdAt: -1 });
+  await notifications.createIndex({ tenantId: 1, recipientId: 1, isRead: 1 });
+
+  // tenantMembers (Users list) — default sort by createdAt
+  await tenantMembers.createIndex({ tenantId: 1, createdAt: -1 });
+
+  // roles — list sorts by isSystem then createdAt
+  await roles.createIndex({ tenantId: 1, isSystem: -1, createdAt: -1 });
+
+  // forms — keyed by organizationId, sorted by createdAt
+  const forms = db.collection('forms');
+  await forms.createIndex({ organizationId: 1, createdAt: -1 });
+
   console.log('All indexes created successfully');
 }

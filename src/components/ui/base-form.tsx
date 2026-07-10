@@ -26,7 +26,7 @@ export function BaseForm({
 }: BaseFormProps) {
   return (
     <>
-      <div className="p-6 w-full">
+      <div className="p-4 sm:p-6 w-full">
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
           <PageBackButton onClick={onBack} className="mt-0.5" />

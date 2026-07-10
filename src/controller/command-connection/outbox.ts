@@ -16,13 +16,16 @@ import {
   pushAssetAvailability,
   pushAssetActivity,
 } from '@/lib/command/writeback';
+import { isCommandConnectionEnabled } from './guard';
 import type { CommandResult } from '@/lib/command/types';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 export type WritebackKind = 'meters' | 'compliance' | 'availability' | 'activity';
 
-const MAX_ATTEMPTS = 10;
+// At a 5–15 min cron cadence this covers a ~5–15 hour Command outage. The old
+// value (10) silently dropped queued meters/compliance after ~1–2.5h down.
+const MAX_ATTEMPTS = 60;
 
 function pushByKind(
   kind: WritebackKind,
@@ -116,7 +119,33 @@ export async function processCommandOutbox(
   let failed = 0;
   let dead = 0;
 
+  // The panel promises "write-backs to Command stop" on manual disconnect —
+  // replaying rows queued before the disconnect would break that. Cache the
+  // per-tenant answer for this pass.
+  const connectionByTenant = new Map<string, boolean>();
+
   for (const row of rows) {
+    const tenantKey = String(row.tenantId);
+    let connectionOn = connectionByTenant.get(tenantKey);
+    if (connectionOn === undefined) {
+      connectionOn = await isCommandConnectionEnabled(tenantKey);
+      connectionByTenant.set(tenantKey, connectionOn);
+    }
+    if (!connectionOn) {
+      await outbox.updateOne(
+        { _id: row._id },
+        {
+          $set: {
+            status: 'dead',
+            lastError: 'connection disabled before replay',
+            updatedAt: new Date(),
+          },
+        },
+      );
+      dead++;
+      continue;
+    }
+
     const res = await pushByKind(
       row.kind as WritebackKind,
       String(row.commandAssetId),

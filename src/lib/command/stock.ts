@@ -56,19 +56,23 @@ export interface CommandStockItem {
   name: string;
   code: string;
   costPrice: number;
+  /** Command's root cached on-hand — what the OUT endpoint actually validates. */
+  quantity: number;
 }
 
 /**
  * One Command stock item's display fields + cost basis
- * (`financialInfo.costPrice` — Command owns cost). Used to denormalize WO part
- * lines and to value the OUT transaction.
+ * (`financialInfo.costPrice` — Command owns cost) + root on-hand quantity.
+ * Used to denormalize WO part lines and to pre-flight completion: Command's
+ * OUT endpoint validates the root quantity, not per-location balances, so a
+ * location-less line must be checked against the same measure.
  */
 export async function getCommandStockItem(
   stockId: string,
   authTenantId: string,
 ): Promise<CommandResult<CommandStockItem>> {
   const res = await commandRequest<{
-    data?: { name?: string; code?: string; financialInfo?: { costPrice?: number } };
+    data?: { name?: string; code?: string; quantity?: number; financialInfo?: { costPrice?: number } };
   }>(`/api/stock/${encodeURIComponent(stockId)}`, authTenantId);
   if (!res.ok) return res;
   const d = res.data?.data ?? {};
@@ -78,6 +82,7 @@ export async function getCommandStockItem(
       name: String(d.name ?? '').trim(),
       code: String(d.code ?? '').trim(),
       costPrice: Number(d.financialInfo?.costPrice ?? 0),
+      quantity: Number(d.quantity ?? 0),
     },
   };
 }
@@ -86,20 +91,33 @@ export async function getCommandStockItem(
  * Decrease Command stock (RECEIPTED_OUT + stockTransaction). Rejects with
  * `bad_request` when Command reports insufficient stock. NOT retried — the
  * endpoint is non-idempotent; callers mark the WO line pushed immediately.
+ *
+ * Valuation: `unitCost` is deliberately NOT sent — Command values the OUT at
+ * its own authoritative costPrice (finance lives in Command). The response
+ * echoes the applied unitCost/totalCost so callers can mirror the ledger's
+ * valuation onto their local line. `sourceRef` is a caller-stable idempotency
+ * key — Command returns the existing transaction instead of consuming twice
+ * when the same ref is replayed (crash-retry safety).
  */
 export async function pushStockOut(
   stockId: string,
   authTenantId: string,
-  input: { quantity: number; stockLocationId?: string; unitCost?: number; notes?: string },
+  input: { quantity: number; stockLocationId?: string; notes?: string; sourceRef?: string },
   actorEmail?: string,
-): Promise<CommandResult<{ transactionId: string | null }>> {
-  const res = await commandWrite<{ data?: { transaction?: { _id?: string } } }>(
-    `/api/stock/${encodeURIComponent(stockId)}/out`,
-    authTenantId,
-    'POST',
-    input,
-    { actorEmail },
-  );
+): Promise<
+  CommandResult<{ transactionId: string | null; unitCost: number | null; totalCost: number | null }>
+> {
+  const res = await commandWrite<{
+    data?: { transaction?: { _id?: string; unitCost?: number; totalCost?: number } };
+  }>(`/api/stock/${encodeURIComponent(stockId)}/out`, authTenantId, 'POST', input, { actorEmail });
   if (!res.ok) return res;
-  return { ok: true, data: { transactionId: res.data?.data?.transaction?._id ?? null } };
+  const tx = res.data?.data?.transaction;
+  return {
+    ok: true,
+    data: {
+      transactionId: tx?._id ?? null,
+      unitCost: typeof tx?.unitCost === 'number' ? tx.unitCost : null,
+      totalCost: typeof tx?.totalCost === 'number' ? tx.totalCost : null,
+    },
+  };
 }

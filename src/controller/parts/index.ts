@@ -74,10 +74,19 @@ export async function getAllParts(
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
   };
+  const and: Record<string, unknown>[] = [];
 
-  // "OWN" view scope — only show records created by this user
+  // "OWN" view scope — only show records created by this user, BUT always
+  // include Command-imported master data. Imported stock isn't "owned" by any
+  // single AM user (its createdBy is whoever first triggered the auto-sync), so
+  // scoping it by createdBy would hide all Command stock from OWN-scoped users.
   if (options.createdBy) {
-    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+    and.push({
+      $or: [
+        { createdBy: ObjectId.createFromHexString(options.createdBy) },
+        { source: 'command' },
+      ],
+    });
   }
 
   if (options.showArchived) {
@@ -88,16 +97,20 @@ export async function getAllParts(
 
   if (options.search) {
     const regex = { $regex: options.search, $options: 'i' };
-    filter.$or = [
-      { name: regex },
-      { partNumber: regex },
-      { description: regex },
-    ];
+    and.push({
+      $or: [
+        { name: regex },
+        { partNumber: regex },
+        { description: regex },
+      ],
+    });
   }
 
   if (options.categoryId) {
     filter.categoryId = ObjectId.createFromHexString(options.categoryId);
   }
+
+  if (and.length > 0) filter.$and = and;
 
   const [items, total] = await Promise.all([
     collection.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray(),
@@ -192,11 +205,16 @@ export async function updatePart(
   if (!existing) return { data: null, error: 'Part not found' };
 
   // Command-sourced stock: identity + quantities are owned by Command —
-  // strip them from local edits (AM-only fields still save).
+  // strip them from local edits (AM-only fields still save). The caller gets
+  // an explicit warning: a silent "saved successfully" for a write that
+  // changed nothing (e.g. a stock-count correction) is a lie.
+  let strippedWarning: string | undefined;
   if (existing.source === 'command') {
     const guarded = stripCommandOwnedFields(input as Record<string, unknown>, 'parts');
     input = guarded.input as UpdatePartInput;
     if (guarded.stripped.length > 0) {
+      strippedWarning =
+        'This stock item is managed in Command — name, number, description and stock levels were not changed. Update them in Command.';
       console.warn(
         `[parts] Ignored Command-owned field edit on ${partId}: ${guarded.stripped.join(', ')}`,
       );
@@ -250,15 +268,36 @@ export async function updatePart(
 
   await collection.updateOne({ _id: partOid, tenantId: tenantOid }, { $set });
   const updated = await collection.findOne({ _id: partOid });
-  return { data: updated ? serializePart(updated) : null, error: null };
+  return {
+    data: updated ? serializePart(updated) : null,
+    error: null,
+    ...(strippedWarning ? { warning: strippedWarning } : {}),
+  };
 }
 
-/** Permanently delete a part. */
-export async function deletePart(tenantId: string, userId: string, partId: string) {
+/**
+ * Permanently delete a part. Command-sourced stock can't be deleted while
+ * connected: the next sync would recreate it under a NEW _id, orphaning every
+ * WO/PO line that references the old one.
+ */
+export async function deletePart(
+  tenantId: string,
+  userId: string,
+  partId: string,
+): Promise<{ deleted: boolean; error: string | null }> {
   const collection = await getPartsCollection();
   const docOid = ObjectId.createFromHexString(partId);
   const tenantOid = ObjectId.createFromHexString(tenantId);
 
+  const existing = await collection.findOne(
+    { _id: docOid, tenantId: tenantOid },
+    { projection: { source: 1 } },
+  );
+  if (!existing) return { deleted: false, error: 'Part not found' };
+  if (existing.source === 'command' && (await isCommandConnectionEnabled(tenantId))) {
+    return { deleted: false, error: MASTER_DATA_MANAGED_MESSAGE };
+  }
+
   const result = await collection.deleteOne({ _id: docOid, tenantId: tenantOid });
-  return result.deletedCount > 0;
+  return { deleted: result.deletedCount > 0, error: result.deletedCount > 0 ? null : 'Part not found' };
 }

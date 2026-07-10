@@ -438,7 +438,7 @@ export function FuelPage() {
         </PageHeader>
 
         {/* Analytics summary cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-6 pb-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 px-4 pb-4 sm:px-6">
           <StatCard
             icon={<DollarSign className="h-4 w-4" />}
             label="Total Fuel Cost"
@@ -466,7 +466,7 @@ export function FuelPage() {
         </div>
 
         {/* Toolbar + Table */}
-        <div className="flex-1 overflow-auto px-6 pb-6">
+        <div className="flex-1 overflow-auto px-4 pb-6 sm:px-6">
           <DataTableToolbar
             columns={fuelColumns}
             hiddenColumnKeys={hiddenColumnKeys}

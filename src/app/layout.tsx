@@ -1,7 +1,8 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { AuthInitializer } from '@/components/providers/auth-initializer';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { PwaProvider } from '@/components/pwa/pwa-provider';
 import { Toaster } from 'sonner';
 import './globals.css';
 
@@ -18,6 +19,22 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: '3PM Drive',
   description: 'Fleet management platform',
+  applicationName: '3PM Drive',
+  appleWebApp: {
+    capable: true,
+    title: '3PM Drive',
+    statusBarStyle: 'default',
+  },
+  icons: {
+    apple: '/icons/apple-touch-icon.png',
+  },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#ea580c',
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({
@@ -35,6 +52,7 @@ export default function RootLayout({
             {children}
           </TooltipProvider>
           <Toaster position="top-right" />
+          <PwaProvider />
         </AuthInitializer>
       </body>
     </html>

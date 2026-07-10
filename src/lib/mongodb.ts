@@ -121,6 +121,12 @@ export async function getMeterSettingsCollection(): Promise<Collection> {
   return db.collection('meterSettings');
 }
 
+/** Per-tenant driver-inspection schedule (singleton per tenant) — enable + frequency + which driver form drivers must complete each period. */
+export async function getDriverInspectionSettingsCollection(): Promise<Collection> {
+  const db = await getDb();
+  return db.collection('driverInspectionSettings');
+}
+
 export async function getAssetTypesCollection(): Promise<Collection> {
   const db = await getDb();
   return db.collection('assetTypes');

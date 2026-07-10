@@ -16,10 +16,15 @@ interface PageHeaderProps {
 /** Standard list-page header: title + optional count/description on the left, actions on the right. */
 export function PageHeader({ title, count, description, children, className }: PageHeaderProps) {
   return (
-    <div className={cn('flex items-center justify-between gap-4 px-6 pt-6 pb-4', className)}>
-      <div className="min-w-0">
+    <div
+      className={cn(
+        'flex flex-col items-start gap-3 px-4 pt-6 pb-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6',
+        className,
+      )}
+    >
+      <div className="min-w-0 max-w-full">
         <div className="flex items-center gap-2.5">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground truncate">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground truncate sm:text-2xl">
             {title}
           </h1>
           {count !== undefined && (
@@ -28,7 +33,9 @@ export function PageHeader({ title, count, description, children, className }: P
         </div>
         {description && <p className="text-sm text-muted-foreground mt-0.5 truncate">{description}</p>}
       </div>
-      {children && <div className="flex items-center gap-2 shrink-0">{children}</div>}
+      {children && (
+        <div className="flex flex-wrap items-center gap-2 shrink-0 max-sm:w-full">{children}</div>
+      )}
     </div>
   );
 }

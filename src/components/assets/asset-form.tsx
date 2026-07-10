@@ -210,7 +210,10 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
       const items = res.data.data?.items || [];
       setFormsList(
         items
-          .filter((f: Record<string, unknown>) => !(f.title as string)?.toLowerCase().includes('driver wellness'))
+          // Only ASSET inspection forms can be linked to an asset. Driver-type
+          // forms (fitness/wellness checks) are assigned via the Driver
+          // Inspection policy, not per-asset. Untyped forms default to asset.
+          .filter((f: Record<string, unknown>) => f.inspectionType !== 'driver')
           .map((f: Record<string, unknown>) => ({
             id: f.id as string,
             formId: (f.formId as string) || (f.id as string),

@@ -1,6 +1,6 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
+import { useState } from "react";
 import {
   Filter,
   Columns3,
@@ -10,14 +10,22 @@ import {
   X,
   Check,
   ChevronDown,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Separator } from '@/components/ui/separator';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,8 +33,12 @@ import {
   DropdownMenuTrigger,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
-import type { DataTableColumn, DataTableDensity, DataTableFilterDef } from './data-table.types';
+} from "@/components/ui/dropdown-menu";
+import type {
+  DataTableColumn,
+  DataTableDensity,
+  DataTableFilterDef,
+} from "./data-table.types";
 
 /* ── Props ─────────────────────────────────────────────────────────── */
 
@@ -68,16 +80,17 @@ export function DataTableToolbar<T>({
   const hasFilters = filterDefs && filterDefs.length > 0;
 
   // Active-filter chips shown below the toolbar (one per selected value).
-  const filterChips: { key: string; label: string; onRemove: () => void }[] = [];
+  const filterChips: { key: string; label: string; onRemove: () => void }[] =
+    [];
   if (hasFilters && onFilterChange && filters) {
     for (const def of filterDefs) {
       const raw = filters[def.columnKey];
-      if (def.type === 'text') {
-        if (typeof raw === 'string' && raw.trim()) {
+      if (def.type === "text") {
+        if (typeof raw === "string" && raw.trim()) {
           filterChips.push({
             key: `${def.columnKey}:text`,
             label: `${def.label}: ${raw}`,
-            onRemove: () => onFilterChange(def.columnKey, ''),
+            onRemove: () => onFilterChange(def.columnKey, ""),
           });
         }
       } else if (Array.isArray(raw)) {
@@ -86,7 +99,11 @@ export function DataTableToolbar<T>({
           filterChips.push({
             key: `${def.columnKey}:${val}`,
             label: `${def.label}: ${opt?.label ?? val}`,
-            onRemove: () => onFilterChange(def.columnKey, raw.filter((v) => v !== val)),
+            onRemove: () =>
+              onFilterChange(
+                def.columnKey,
+                raw.filter((v) => v !== val),
+              ),
           });
         }
       }
@@ -95,7 +112,7 @@ export function DataTableToolbar<T>({
 
   return (
     <div className="pt-1 mb-3">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {/* Extra actions */}
         {actions}
 
@@ -129,7 +146,9 @@ export function DataTableToolbar<T>({
         {afterControls}
 
         {/* Search (right-aligned) */}
-        {searchNode && <div className="ml-auto min-w-0 flex-1 max-w-lg">{searchNode}</div>}
+        {searchNode && (
+          <div className="ml-auto min-w-0 flex-1 max-w-lg">{searchNode}</div>
+        )}
       </div>
 
       {/* Active filter chips (below the toolbar) */}
@@ -188,8 +207,8 @@ function FiltersControl({
         <button
           type="button"
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-md py-1 pl-1 pr-2 text-xs font-semibold text-foreground transition-colors hover:bg-blue-50 dark:hover:bg-blue-950/40',
-            activeCount > 0 && 'bg-blue-50 dark:bg-blue-950/40',
+            "inline-flex items-center gap-1.5 rounded-md py-1 pl-1 pr-2 text-xs font-semibold text-foreground transition-colors hover:bg-blue-50 dark:hover:bg-blue-950/40",
+            activeCount > 0 && "bg-blue-50 dark:bg-blue-950/40",
           )}
         >
           <span className="flex h-5 w-5 items-center justify-center rounded-md bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
@@ -207,7 +226,12 @@ function FiltersControl({
         <div className="flex items-center justify-between px-4 py-3 border-b">
           <p className="text-sm font-medium">Filters</p>
           {activeCount > 0 && onFiltersClear && (
-            <Button variant="ghost" size="sm" className="h-7 text-xs text-primary hover:text-primary" onClick={onFiltersClear}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs text-primary hover:text-primary"
+              onClick={onFiltersClear}
+            >
               Clear all
             </Button>
           )}
@@ -240,7 +264,7 @@ function FilterGroup({
 }) {
   const raw = filters[def.columnKey];
   const selected = Array.isArray(raw) ? raw : [];
-  const activeCount = def.type === 'text' ? (raw ? 1 : 0) : selected.length;
+  const activeCount = def.type === "text" ? (raw ? 1 : 0) : selected.length;
   // Open by default only when this group already has an active selection.
   const [open, setOpen] = useState(activeCount > 0);
 
@@ -261,20 +285,23 @@ function FilterGroup({
           )}
         </span>
         <ChevronDown
-          className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')}
+          className={cn(
+            "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+            open && "rotate-180",
+          )}
         />
       </button>
       {open && (
         <div className="border-t border-border p-2">
-          {def.type === 'text' && (
+          {def.type === "text" && (
             <Input
               placeholder={`Filter by ${def.label.toLowerCase()}...`}
-              value={(raw as string) ?? ''}
+              value={(raw as string) ?? ""}
               onChange={(e) => onFilterChange(def.columnKey, e.target.value)}
               className="h-8"
             />
           )}
-          {def.type === 'select' && def.options && (
+          {def.type === "select" && def.options && (
             <div className="space-y-0.5">
               {def.options.map((opt) => {
                 const isChecked = selected.includes(opt.value);
@@ -315,18 +342,21 @@ function ColumnsControl<T>({
   hiddenColumnKeys: Set<string>;
   onHiddenColumnKeysChange: (keys: Set<string>) => void;
 }) {
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
 
-  const listColumns = columns.filter((col) => col.key !== 'actions');
+  const listColumns = columns.filter((col) => col.key !== "actions");
   const toggleableColumns = listColumns.filter((col) => !col.pinned);
   const filtered = search
     ? listColumns.filter((col) => {
-        const text = col.label ?? (typeof col.header === 'string' ? col.header : col.key);
+        const text =
+          col.label ?? (typeof col.header === "string" ? col.header : col.key);
         return text.toLowerCase().includes(search.toLowerCase());
       })
     : listColumns;
 
-  const visibleCount = toggleableColumns.filter((col) => !hiddenColumnKeys.has(col.key)).length;
+  const visibleCount = toggleableColumns.filter(
+    (col) => !hiddenColumnKeys.has(col.key),
+  ).length;
 
   const handleToggle = (key: string, checked: boolean) => {
     const next = new Set(hiddenColumnKeys);
@@ -350,9 +380,9 @@ function ColumnsControl<T>({
             <button
               type="button"
               className={cn(
-                'inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-                'text-muted-foreground hover:text-foreground hover:bg-background/80',
-                hiddenColumnKeys.size > 0 && 'text-primary hover:text-primary',
+                "inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+                "text-muted-foreground hover:text-foreground hover:bg-background/80",
+                hiddenColumnKeys.size > 0 && "text-primary hover:text-primary",
               )}
             >
               <span className="flex h-5 w-5 items-center justify-center rounded-md bg-violet-100 text-violet-600 dark:bg-violet-950/60 dark:text-violet-400">
@@ -381,7 +411,7 @@ function ColumnsControl<T>({
             {search && (
               <button
                 type="button"
-                onClick={() => setSearch('')}
+                onClick={() => setSearch("")}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
               >
                 <X className="h-3.5 w-3.5" />
@@ -390,37 +420,57 @@ function ColumnsControl<T>({
           </div>
         </div>
         <div className="flex items-center justify-between px-2.5 py-1.5 border-b">
-          <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2" onClick={handleShowAll}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-[11px] px-2"
+            onClick={handleShowAll}
+          >
             Show all
           </Button>
-          <Button variant="ghost" size="sm" className="h-6 text-[11px] px-2" onClick={handleHideAll}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-[11px] px-2"
+            onClick={handleHideAll}
+          >
             Hide all
           </Button>
         </div>
         <div className="max-h-64 overflow-y-auto p-1">
           {filtered.map((col) => {
-            const isVisible = col.pinned ? true : !hiddenColumnKeys.has(col.key);
+            const isVisible = col.pinned
+              ? true
+              : !hiddenColumnKeys.has(col.key);
             return (
               <label
                 key={col.key}
                 className={cn(
-                  'flex items-center gap-2 text-sm rounded-md px-2 py-1.5',
+                  "flex items-center gap-2 text-sm rounded-md px-2 py-1.5",
                   col.pinned
-                    ? 'opacity-40 cursor-not-allowed'
-                    : 'cursor-pointer hover:bg-muted/60',
+                    ? "opacity-40 cursor-not-allowed"
+                    : "cursor-pointer hover:bg-muted/60",
                 )}
               >
                 <Checkbox
                   checked={isVisible}
                   disabled={col.pinned}
-                  onCheckedChange={col.pinned ? undefined : (checked) => handleToggle(col.key, !!checked)}
+                  onCheckedChange={
+                    col.pinned
+                      ? undefined
+                      : (checked) => handleToggle(col.key, !!checked)
+                  }
                 />
-                <span className="flex-1 truncate">{col.label ?? col.header}</span>
+                <span className="flex-1 truncate">
+                  {col.label ?? col.header}
+                </span>
               </label>
             );
           })}
           {filtered.length === 0 && (
-            <p className="text-xs text-muted-foreground text-center py-3">No columns match</p>
+            <p className="text-xs text-muted-foreground text-center py-3">
+              No columns match
+            </p>
           )}
         </div>
       </PopoverContent>
@@ -430,10 +480,14 @@ function ColumnsControl<T>({
 
 /* ── Density Control ───────────────────────────────────────────────── */
 
-const DENSITY_OPTIONS: { value: DataTableDensity; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { value: 'compact', label: 'Compact', icon: AlignStartVertical },
-  { value: 'default', label: 'Default', icon: AlignCenter },
-  { value: 'comfortable', label: 'Comfortable', icon: AlignJustify },
+const DENSITY_OPTIONS: {
+  value: DataTableDensity;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  { value: "compact", label: "Compact", icon: AlignStartVertical },
+  { value: "default", label: "Default", icon: AlignCenter },
+  { value: "comfortable", label: "Comfortable", icon: AlignJustify },
 ];
 
 function DensityControl({
@@ -443,7 +497,8 @@ function DensityControl({
   density: DataTableDensity;
   onDensityChange: (d: DataTableDensity) => void;
 }) {
-  const currentOption = DENSITY_OPTIONS.find((o) => o.value === density) ?? DENSITY_OPTIONS[1];
+  const currentOption =
+    DENSITY_OPTIONS.find((o) => o.value === density) ?? DENSITY_OPTIONS[1];
 
   return (
     <DropdownMenu>
@@ -453,8 +508,8 @@ function DensityControl({
             <button
               type="button"
               className={cn(
-                'inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors',
-                'text-muted-foreground hover:text-foreground hover:bg-background/80',
+                "inline-flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+                "text-muted-foreground hover:text-foreground hover:bg-background/80",
               )}
             >
               <span className="flex h-5 w-5 items-center justify-center rounded-md bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
@@ -467,7 +522,9 @@ function DensityControl({
         <TooltipContent side="bottom">Adjust row density</TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="start" className="w-44">
-        <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">Row Density</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-xs text-muted-foreground font-normal">
+          Row Density
+        </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {DENSITY_OPTIONS.map((opt) => {
           const Icon = opt.icon;
@@ -476,7 +533,7 @@ function DensityControl({
             <DropdownMenuItem
               key={opt.value}
               onClick={() => onDensityChange(opt.value)}
-              className={cn('gap-2', isActive && 'bg-primary/10 text-primary')}
+              className={cn("gap-2", isActive && "bg-primary/10 text-primary")}
             >
               <Icon className="h-3.5 w-3.5" />
               <span className="flex-1">{opt.label}</span>

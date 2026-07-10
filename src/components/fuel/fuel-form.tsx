@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { X } from 'lucide-react';
 import { Button, LoadingButton } from '@/components/ui/button';
@@ -114,12 +114,17 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
     }
   }, [transaction, mode]);
 
-  // Auto-calculate total cost from volume * unitCost
+  // Auto-calculate total cost from volume * unitCost. Tracks a flag so a
+  // previously auto-filled total keeps following volume/unit-cost edits —
+  // without it, correcting the volume left the stale total in place and the
+  // record self-contradicted (unitCost × volume ≠ totalCost).
+  const totalAutoFilled = useRef(false);
   useEffect(() => {
-    if (volume && unitCost && !totalCost) {
+    if (volume && unitCost && (!totalCost || totalAutoFilled.current)) {
       const computed = parseFloat(volume) * parseFloat(unitCost);
       if (!isNaN(computed)) {
         setTotalCost(computed.toFixed(2));
+        totalAutoFilled.current = true;
       }
     }
   }, [volume, unitCost]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -157,7 +162,9 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
 
     const payload = {
       assetId,
-      driverId: driverId || undefined,
+      // 'none' is the select's explicit no-driver option — the server rejects
+      // it as an invalid ObjectId if sent through.
+      driverId: driverId && driverId !== 'none' ? driverId : undefined,
       date,
       fuelType,
       volume: parseFloat(volume),
@@ -347,7 +354,7 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
                     step="0.01"
                     min="0"
                     value={totalCost}
-                    onChange={(e) => { setTotalCost(e.target.value); clearFieldError('totalCost'); }}
+                    onChange={(e) => { setTotalCost(e.target.value); totalAutoFilled.current = false; clearFieldError('totalCost'); }}
                     placeholder="0.00"
                     className={`mt-1.5 ${fieldErrors.totalCost ? 'border-destructive' : ''}`}
                   />
