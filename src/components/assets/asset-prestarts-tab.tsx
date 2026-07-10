@@ -10,6 +10,7 @@ import axios from 'axios';
 import { CheckCircle2, XCircle, ClipboardCheck, User, Calendar } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { FormattedDate } from '@/components/ui/formatted-date';
 
 interface PrestartRow {
   id: string;
@@ -107,7 +108,7 @@ export function AssetPrestartsTab({ assetId }: { assetId: string }) {
                 {row.submittedAt && (
                   <span className="inline-flex items-center gap-1">
                     <Calendar className="h-3 w-3" />
-                    {new Date(row.submittedAt).toLocaleDateString()}
+                    <FormattedDate value={row.submittedAt} />
                   </span>
                 )}
               </div>

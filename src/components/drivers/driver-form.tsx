@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { BaseForm } from '@/components/ui/base-form';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import type { TeamOption } from './types';
 import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 
@@ -88,7 +89,6 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
 
   // Form fields — Employment & License Details
   const [employeeNumber, setEmployeeNumber] = useState('');
-  const [jobPosition, setJobPosition] = useState('');
   const [rateCurrency, setRateCurrency] = useState('USD');
   const [ratePerUnit, setRatePerUnit] = useState('');
   const [driverLicense, setDriverLicense] = useState('');
@@ -187,7 +187,6 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
       );
       setNotes((initialData.notes as string) || '');
       setEmployeeNumber((initialData.employeeNumber as string) || '');
-      setJobPosition((initialData.jobPosition as string) || '');
       setRateCurrency((initialData.rateCurrency as string) || 'USD');
       setRatePerUnit(
         initialData.ratePerUnit != null ? String(initialData.ratePerUnit) : '',
@@ -217,6 +216,37 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
     fetchTeams();
   }, [fetchTeams]);
 
+  // Preview the projected employee number on the create form (read-only).
+  useEffect(() => {
+    if (mode !== 'create') return;
+    axios
+      .get('/api/drivers/next-employee-number', { withCredentials: true })
+      .then((res) => {
+        const next = res.data?.data?.employeeNumber;
+        if (next) setEmployeeNumber(next);
+      })
+      .catch(() => {
+        // Non-critical: field simply shows the fallback placeholder.
+      });
+  }, [mode]);
+
+  // Mirrors the backend isValidPhone rule: allowed chars + 7–15 digits.
+  const isPhoneValid = (value: string) => {
+    const trimmed = value.trim();
+    if (!/^\+?[0-9 ()-]+$/.test(trimmed)) return false;
+    const digits = trimmed.replace(/\D/g, '').length;
+    return digits >= 7 && digits <= 15;
+  };
+
+  const clearFieldError = (field: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -226,6 +256,13 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
     const errors: Record<string, string> = {};
     if (!firstName.trim()) errors.firstName = 'First name is required';
     if (!lastName.trim()) errors.lastName = 'Last name is required';
+    if (!email.trim()) errors.email = 'Email is required';
+    if (!driverLicense.trim()) errors.driverLicense = 'Driver license is required';
+    if (!licenseClass.trim()) errors.licenseClass = 'License class is required';
+    if (!licenseNumber.trim()) errors.licenseNumber = 'License number is required';
+    if (mobileNumber.trim() && !isPhoneValid(mobileNumber)) errors.mobileNumber = 'Enter a valid phone number';
+    if (homePhone.trim() && !isPhoneValid(homePhone)) errors.homePhone = 'Enter a valid phone number';
+    if (workPhone.trim() && !isPhoneValid(workPhone)) errors.workPhone = 'Enter a valid phone number';
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -265,8 +302,6 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
       homePhone: homePhone.trim() || undefined,
       workPhone: workPhone.trim() || undefined,
       dateOfBirth: dateOfBirth || undefined,
-      employeeNumber: employeeNumber.trim() || undefined,
-      jobPosition: jobPosition.trim() || undefined,
       rateCurrency: rateCurrency || undefined,
       ratePerUnit: ratePerUnit ? parseFloat(ratePerUnit) : undefined,
       otherNotes: otherNotes.trim() || undefined,
@@ -374,15 +409,12 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
           children: (
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">Email <span className="text-destructive">*</span></Label>
                 <Input
                   id="email"
                   type="email"
                   value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value);
-                    if (fieldErrors.email) setFieldErrors((prev) => { const { email: _, ...rest } = prev; return rest; });
-                  }}
+                  onChange={(e) => { setEmail(e.target.value); clearFieldError('email'); }}
                   placeholder="Email address"
                   className={`mt-1.5 ${fieldErrors.email ? 'border-destructive' : ''}`}
                 />
@@ -392,19 +424,16 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
               </div>
               <div>
                 <Label htmlFor="teamId">Team</Label>
-                <Select value={teamId} onValueChange={setTeamId}>
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder="Select team" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">No Team</SelectItem>
-                    {teams.map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableSelect
+                  className="mt-1.5"
+                  options={teams.map((t) => ({ label: t.name, value: t.id }))}
+                  value={teamId || null}
+                  onValueChange={(val) => setTeamId(val || '')}
+                  placeholder="Select team"
+                  searchPlaceholder="Search teams..."
+                  emptyMessage="No teams found"
+                  isClearable
+                />
               </div>
               <div>
                 <DateField id="dateOfBirth" label="Date of Birth" value={dateOfBirth} onChange={setDateOfBirth} placeholder="Select date" />
@@ -435,42 +464,55 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
                     <Input
                       id="mobileNumber"
                       value={mobileNumber}
-                      onChange={(e) => setMobileNumber(e.target.value)}
+                      onChange={(e) => { setMobileNumber(e.target.value); clearFieldError('mobileNumber'); }}
                       placeholder="Phone number"
+                      className={fieldErrors.mobileNumber ? 'border-destructive' : ''}
                     />
                   </div>
                 </div>
+                {fieldErrors.mobileNumber && (
+                  <p className="text-sm text-destructive mt-1">{fieldErrors.mobileNumber}</p>
+                )}
               </div>
               <div>
                 <Label htmlFor="homePhone">Home Phone</Label>
                 <Input
                   id="homePhone"
                   value={homePhone}
-                  onChange={(e) => setHomePhone(e.target.value)}
+                  onChange={(e) => { setHomePhone(e.target.value); clearFieldError('homePhone'); }}
                   placeholder="Home phone"
-                  className="mt-1.5"
+                  className={`mt-1.5 ${fieldErrors.homePhone ? 'border-destructive' : ''}`}
                 />
+                {fieldErrors.homePhone && (
+                  <p className="text-sm text-destructive mt-1">{fieldErrors.homePhone}</p>
+                )}
               </div>
               <div>
                 <Label htmlFor="workPhone">Work Phone</Label>
                 <Input
                   id="workPhone"
                   value={workPhone}
-                  onChange={(e) => setWorkPhone(e.target.value)}
+                  onChange={(e) => { setWorkPhone(e.target.value); clearFieldError('workPhone'); }}
                   placeholder="Work phone"
-                  className="mt-1.5"
+                  className={`mt-1.5 ${fieldErrors.workPhone ? 'border-destructive' : ''}`}
                 />
+                {fieldErrors.workPhone && (
+                  <p className="text-sm text-destructive mt-1">{fieldErrors.workPhone}</p>
+                )}
               </div>
               <div className="col-span-2">
                 <Label htmlFor="notes">Notes</Label>
                 <Textarea
                   id="notes"
                   value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
+                  onChange={(e) => { setNotes(e.target.value); clearFieldError('notes'); }}
                   placeholder="Additional notes..."
                   rows={3}
-                  className="mt-1.5"
+                  className={`mt-1.5 ${fieldErrors.notes ? 'border-destructive' : ''}`}
                 />
+                {fieldErrors.notes && (
+                  <p className="text-sm text-destructive mt-1">{fieldErrors.notes}</p>
+                )}
               </div>
             </div>
           ),
@@ -503,25 +545,19 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
           ),
           children: (
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="employeeNumber">Employee Number</Label>
+              <div className="col-span-2">
+                <Label htmlFor="employeeNumber">Employee Number <span className="text-destructive">*</span></Label>
                 <Input
                   id="employeeNumber"
                   value={employeeNumber}
-                  onChange={(e) => setEmployeeNumber(e.target.value)}
-                  placeholder="Employee #"
-                  className="mt-1.5"
+                  readOnly
+                  disabled
+                  placeholder={mode === 'edit' ? '' : 'Auto-generated on save'}
+                  className="mt-1.5 bg-muted/50 text-muted-foreground"
                 />
-              </div>
-              <div>
-                <Label htmlFor="jobPosition">Job Position</Label>
-                <Input
-                  id="jobPosition"
-                  value={jobPosition}
-                  onChange={(e) => setJobPosition(e.target.value)}
-                  placeholder="Position"
-                  className="mt-1.5"
-                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Automatically generated by the system.
+                </p>
               </div>
               <div className="col-span-2">
                 <Label htmlFor="ratePerUnit">Rate per mi/hr</Label>
@@ -544,62 +580,80 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
                     step="0.01"
                     min="0"
                     value={ratePerUnit}
-                    onChange={(e) => setRatePerUnit(e.target.value)}
+                    onChange={(e) => { setRatePerUnit(e.target.value); clearFieldError('ratePerUnit'); }}
                     placeholder="0.00"
-                    className="flex-1"
+                    className={`flex-1 ${fieldErrors.ratePerUnit ? 'border-destructive' : ''}`}
                   />
                 </div>
+                {fieldErrors.ratePerUnit && (
+                  <p className="text-sm text-destructive mt-1">{fieldErrors.ratePerUnit}</p>
+                )}
               </div>
               <div>
-                <Label htmlFor="driverLicense">Driver License</Label>
+                <Label htmlFor="driverLicense">Driver License <span className="text-destructive">*</span></Label>
                 <Input
                   id="driverLicense"
                   value={driverLicense}
-                  onChange={(e) => setDriverLicense(e.target.value)}
+                  onChange={(e) => { setDriverLicense(e.target.value); clearFieldError('driverLicense'); }}
                   placeholder="License"
-                  className="mt-1.5"
+                  className={`mt-1.5 ${fieldErrors.driverLicense ? 'border-destructive' : ''}`}
                 />
+                {fieldErrors.driverLicense && (
+                  <p className="text-sm text-destructive mt-1">{fieldErrors.driverLicense}</p>
+                )}
               </div>
               <div>
-                <Label htmlFor="licenseClass">License Class</Label>
+                <Label htmlFor="licenseClass">License Class <span className="text-destructive">*</span></Label>
                 <Input
                   id="licenseClass"
                   value={licenseClass}
-                  onChange={(e) => setLicenseClass(e.target.value)}
+                  onChange={(e) => { setLicenseClass(e.target.value); clearFieldError('licenseClass'); }}
                   placeholder="Class"
-                  className="mt-1.5"
+                  className={`mt-1.5 ${fieldErrors.licenseClass ? 'border-destructive' : ''}`}
                 />
+                {fieldErrors.licenseClass && (
+                  <p className="text-sm text-destructive mt-1">{fieldErrors.licenseClass}</p>
+                )}
               </div>
               <div>
-                <Label htmlFor="licenseNumber">License Number</Label>
+                <Label htmlFor="licenseNumber">License Number <span className="text-destructive">*</span></Label>
                 <Input
                   id="licenseNumber"
                   value={licenseNumber}
-                  onChange={(e) => setLicenseNumber(e.target.value)}
+                  onChange={(e) => { setLicenseNumber(e.target.value); clearFieldError('licenseNumber'); }}
                   placeholder="License #"
-                  className="mt-1.5"
+                  className={`mt-1.5 ${fieldErrors.licenseNumber ? 'border-destructive' : ''}`}
                 />
+                {fieldErrors.licenseNumber && (
+                  <p className="text-sm text-destructive mt-1">{fieldErrors.licenseNumber}</p>
+                )}
               </div>
               <div>
                 <Label htmlFor="healthCertificate">Health Certificate</Label>
                 <Input
                   id="healthCertificate"
                   value={healthCertificate}
-                  onChange={(e) => setHealthCertificate(e.target.value)}
+                  onChange={(e) => { setHealthCertificate(e.target.value); clearFieldError('healthCertificate'); }}
                   placeholder="Certificate info"
-                  className="mt-1.5"
+                  className={`mt-1.5 ${fieldErrors.healthCertificate ? 'border-destructive' : ''}`}
                 />
+                {fieldErrors.healthCertificate && (
+                  <p className="text-sm text-destructive mt-1">{fieldErrors.healthCertificate}</p>
+                )}
               </div>
               <div className="col-span-2">
                 <Label htmlFor="otherNotes">Other Notes</Label>
                 <Textarea
                   id="otherNotes"
                   value={otherNotes}
-                  onChange={(e) => setOtherNotes(e.target.value)}
+                  onChange={(e) => { setOtherNotes(e.target.value); clearFieldError('otherNotes'); }}
                   placeholder="Additional notes..."
                   rows={3}
-                  className="mt-1.5"
+                  className={`mt-1.5 ${fieldErrors.otherNotes ? 'border-destructive' : ''}`}
                 />
+                {fieldErrors.otherNotes && (
+                  <p className="text-sm text-destructive mt-1">{fieldErrors.otherNotes}</p>
+                )}
               </div>
             </div>
           ),

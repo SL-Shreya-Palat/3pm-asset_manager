@@ -12,7 +12,6 @@ export interface DriverRow {
   workPhone?: string;
   dateOfBirth?: string | null;
   employeeNumber?: string;
-  jobPosition?: string;
   rateCurrency?: string;
   ratePerUnit?: number;
   otherNotes?: string;

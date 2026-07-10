@@ -6,14 +6,27 @@
  */
 import { redirect } from 'next/navigation';
 import { validateInvitationToken, acceptInvitation } from '@/controller/invitations';
-import { getLoginUrl } from '@/lib/auth-3pm';
+import { getLoginUrl, getSession } from '@/lib/auth-3pm';
 
 interface PageProps {
-  searchParams: Promise<{ token?: string }>;
+  searchParams: Promise<{ token?: string; error?: string }>;
 }
 
 export default async function AcceptInvitationPage({ searchParams }: PageProps) {
-  const { token } = await searchParams;
+  const { token, error } = await searchParams;
+
+  // Wrong-account error surfaced by the auth callback: the person who
+  // authenticated is not the invited user, even after a forced re-login.
+  if (error === 'account-mismatch') {
+    return (
+      <InvitationLayout>
+        <ErrorCard
+          title="Wrong Account"
+          message="This invitation is for a different email address. Please sign out completely, open the invitation link again, and sign in with the invited email."
+        />
+      </InvitationLayout>
+    );
+  }
 
   // No token provided
   if (!token) {
@@ -41,6 +54,22 @@ export default async function AcceptInvitationPage({ searchParams }: PageProps) 
     );
   }
 
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const invitedEmail = invitation.email.toLowerCase().trim();
+
+  // Guard against session bleed-through. If a DIFFERENT user is already signed
+  // in, the IdP's /authorize page would silently reuse their session instead of
+  // authenticating the invited user. Force a full sign-out (local + IdP) and
+  // re-enter this page with no active session so the invited user is prompted
+  // to log in. The invitation is left 'pending' so this re-runs cleanly.
+  const session = await getSession();
+  const activeEmail = session?.email?.toLowerCase().trim();
+
+  if (activeEmail && activeEmail !== invitedEmail) {
+    const returnHere = `${appUrl}/invite/accept?token=${encodeURIComponent(token)}`;
+    redirect(`/api/auth/switch-account?next=${encodeURIComponent(returnHere)}`);
+  }
+
   // Mark as accepted
   const accepted = await acceptInvitation(token);
 
@@ -55,9 +84,13 @@ export default async function AcceptInvitationPage({ searchParams }: PageProps) 
     );
   }
 
-  // Redirect to 3pm-auth login → callback → /dashboard
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  const callbackUrl = `${appUrl}/api/auth/callback?returnUrl=${encodeURIComponent(`${appUrl}/dashboard`)}`;
+  // Redirect to 3pm-auth login → callback → /dashboard.
+  // `expectedEmail` lets the callback verify the invited user is the one who
+  // actually authenticated (catches an IdP session the local check couldn't see).
+  const callbackUrl =
+    `${appUrl}/api/auth/callback` +
+    `?returnUrl=${encodeURIComponent(`${appUrl}/dashboard`)}` +
+    `&expectedEmail=${encodeURIComponent(invitedEmail)}`;
   const loginUrl = getLoginUrl(callbackUrl);
   redirect(loginUrl);
 }

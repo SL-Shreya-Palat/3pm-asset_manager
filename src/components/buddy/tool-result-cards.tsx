@@ -218,7 +218,6 @@ function mapItem(name: string, item: Item): Mapped {
         meta: [
           str(item.email),
           item.employeeNumber ? `Emp · ${str(item.employeeNumber)}` : "",
-          item.jobPosition ? str(item.jobPosition) : "",
         ].filter(Boolean),
       };
     case "list_parts":

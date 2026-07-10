@@ -30,15 +30,15 @@ export function validateCreateDriverInput(input: CreateDriverInput): ValidationR
   }
 
   if (input.mobileNumber && !isValidPhone(input.mobileNumber)) {
-    errors.mobileNumber = 'Invalid phone number';
+    errors.mobileNumber = 'Enter a valid phone number';
   }
 
   if (input.homePhone && !isValidPhone(input.homePhone)) {
-    errors.homePhone = 'Invalid phone number';
+    errors.homePhone = 'Enter a valid phone number';
   }
 
   if (input.workPhone && !isValidPhone(input.workPhone)) {
-    errors.workPhone = 'Invalid phone number';
+    errors.workPhone = 'Enter a valid phone number';
   }
 
   if (input.ratePerUnit !== undefined && input.ratePerUnit !== null) {
@@ -67,7 +67,6 @@ export function serializeDriver(doc: Record<string, unknown>): Record<string, un
     dateOfBirth: doc.dateOfBirth ? (doc.dateOfBirth as Date).toISOString() : null,
 
     employeeNumber: doc.employeeNumber || undefined,
-    jobPosition: doc.jobPosition || undefined,
     rateCurrency: doc.rateCurrency || undefined,
     ratePerUnit: doc.ratePerUnit ?? undefined,
     otherNotes: doc.otherNotes || undefined,

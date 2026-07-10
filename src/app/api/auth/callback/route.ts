@@ -12,7 +12,7 @@
  *   getAcceptedInvitationByEmail(). Kept for backward compatibility.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { exchangeToken, SESSION_COOKIE, TENANT_COOKIE } from '@/lib/auth-3pm';
+import { exchangeToken, getLoginUrl, SESSION_COOKIE, TENANT_COOKIE } from '@/lib/auth-3pm';
 import { ensureLocalRecords } from '@/lib/provisioning';
 import {
   getAcceptedInvitationByEmail,
@@ -25,6 +25,10 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const guid = searchParams.get('guid');
   const returnUrl = searchParams.get('returnUrl') || '/dashboard';
+  // Set by the invitation flow: the email the invited user is expected to
+  // authenticate as. Used to detect IdP session bleed-through (see guard below).
+  const expectedEmail = searchParams.get('expectedEmail');
+  const reauthTried = searchParams.get('reauthTried') === '1';
 
   if (!guid) {
     return NextResponse.redirect(new URL('/dashboard', request.url));
@@ -32,6 +36,37 @@ export async function GET(request: NextRequest) {
 
   try {
     const { jwt, user, tenant } = await exchangeToken(guid);
+
+    // ── Guard: enforce the invited user is the one who authenticated ─────
+    // When an invite link is opened while another user is still signed in on
+    // the IdP, /authorize silently reuses that session and returns the WRONG
+    // user. Detect the mismatch and force a fresh login as the invited user
+    // instead of signing the wrong account into the invited tenant.
+    if (
+      expectedEmail &&
+      user.email.toLowerCase().trim() !== expectedEmail.toLowerCase().trim()
+    ) {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+
+      if (!reauthTried) {
+        // Re-initiate the invited login once, after clearing local + IdP
+        // sessions. NOTE: do NOT set session cookies for the wrong user here.
+        const retryCallback =
+          `${appUrl}/api/auth/callback` +
+          `?returnUrl=${encodeURIComponent(returnUrl)}` +
+          `&expectedEmail=${encodeURIComponent(expectedEmail)}` +
+          `&reauthTried=1`;
+        const loginUrl = getLoginUrl(retryCallback);
+        const switchUrl = `${appUrl}/api/auth/switch-account?next=${encodeURIComponent(loginUrl)}`;
+        return NextResponse.redirect(switchUrl);
+      }
+
+      // Already retried once and still the wrong account — surface a clear
+      // message rather than looping or logging in the wrong person.
+      return NextResponse.redirect(
+        new URL('/invite/accept?error=account-mismatch', appUrl),
+      );
+    }
 
     // ── Check for pending invitations ────────────────────────────────
     // 3PM flow: invitation created via Data API (status: 'invited')

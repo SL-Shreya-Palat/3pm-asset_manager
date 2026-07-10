@@ -7,7 +7,8 @@
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const OBJECT_ID_REGEX = /^[0-9a-fA-F]{24}$/;
-const PHONE_REGEX = /^\+?[0-9 ()-]{6,20}$/;
+// Allowed characters: digits, spaces, parentheses, dashes, and a leading "+".
+const PHONE_CHARS_REGEX = /^\+?[0-9 ()-]+$/;
 
 /** True when the value is a valid email address. */
 export function isValidEmail(value: unknown): value is string {
@@ -40,9 +41,17 @@ export function ensureRequiredString(
   return trimmed;
 }
 
-/** True when the value matches a phone number pattern. */
+/**
+ * True when the value looks like a real phone number: only allowed characters,
+ * and between 7 and 15 digits (E.164 caps at 15). Rejects too-short inputs
+ * like "325345".
+ */
 export function isValidPhone(value: unknown): value is string {
-  return typeof value === 'string' && PHONE_REGEX.test(value);
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!PHONE_CHARS_REGEX.test(trimmed)) return false;
+  const digitCount = trimmed.replace(/\D/g, '').length;
+  return digitCount >= 7 && digitCount <= 15;
 }
 
 /** True when the value is a member of the given `as const` array. */

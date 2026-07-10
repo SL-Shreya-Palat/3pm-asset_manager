@@ -14,9 +14,16 @@ export interface UseDataTableReturn {
 
 /**
  * Manages column visibility, density, and filter state for a DataTable.
+ *
+ * Pass `initialHiddenColumnKeys` to start with certain columns hidden — they
+ * still appear (toggleable) in the Columns control, just off by default.
  */
-export function useDataTable(): UseDataTableReturn {
-  const [hiddenColumnKeys, setHiddenColumnKeys] = useState<Set<string>>(new Set());
+export function useDataTable(
+  options?: { initialHiddenColumnKeys?: Iterable<string> },
+): UseDataTableReturn {
+  const [hiddenColumnKeys, setHiddenColumnKeys] = useState<Set<string>>(
+    () => new Set(options?.initialHiddenColumnKeys ?? []),
+  );
   const [density, setDensity] = useState<DataTableDensity>('default');
   const [filters, setFilters] = useState<Record<string, string | string[]>>({});
 

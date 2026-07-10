@@ -26,7 +26,6 @@ export interface Asset {
   notes?: string;
 
   // Other details
-  assetSubtype?: string;
   teamIds: ObjectId[];
   currentOdometer?: number;
   currentEngineHours?: number;
@@ -85,7 +84,6 @@ export interface CreateAssetInput {
   notes?: string;
 
   // Other details
-  assetSubtype?: string;
   teamIds?: string[];
   currentOdometer?: number;
   currentEngineHours?: number;
@@ -142,7 +140,6 @@ export interface AssetResponse {
   color?: string;
   tireSize?: string;
   notes?: string;
-  assetSubtype?: string;
   teamIds: string[];
   currentOdometer?: number;
   currentEngineHours?: number;

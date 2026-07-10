@@ -21,6 +21,7 @@ import {
   SEVERITY_DISPLAY_NAME,
 } from '@/components/faults/types';
 import { cn } from '@/lib/utils';
+import { FormattedDate } from '@/components/ui/formatted-date';
 
 interface IssueRow {
   id: string;
@@ -141,7 +142,7 @@ export function AssetFaultsTab({ assetId }: { assetId: string }) {
                 {when && (
                   <span className="inline-flex items-center gap-1">
                     <Calendar className="h-3 w-3" />
-                    {new Date(when).toLocaleDateString()}
+                    <FormattedDate value={when} />
                   </span>
                 )}
                 {row.workOrderNumber && (

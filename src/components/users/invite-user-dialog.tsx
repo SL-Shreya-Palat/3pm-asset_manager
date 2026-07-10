@@ -13,13 +13,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
+import { isValidEmail, isValidPhone } from '@/lib/validation/commonValidators';
 import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 import type { RoleOption } from './types';
 
@@ -77,7 +72,34 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
     }
   };
 
+  // Client-side validation — mirrors the server rules in validateInviteUserInput
+  // so the user gets immediate feedback (required fields + email/phone format).
+  // Duplicate-email prevention is enforced server-side and surfaced via errors.email.
+  const validate = (): boolean => {
+    const next: Record<string, string> = {};
+
+    if (!form.firstName.trim()) next.firstName = 'First name is required';
+    if (!form.lastName.trim()) next.lastName = 'Last name is required';
+
+    if (!form.email.trim()) {
+      next.email = 'Email is required';
+    } else if (!isValidEmail(form.email.trim())) {
+      next.email = 'Enter a valid email address';
+    }
+
+    if (!form.roleId) next.roleId = 'Role is required';
+
+    if (form.mobileNumber.trim() && !isValidPhone(form.mobileNumber.trim())) {
+      next.mobileNumber = 'Enter a valid phone number';
+    }
+
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
   const handleSubmit = async () => {
+    if (!validate()) return;
+
     setSubmitting(true);
     setErrors({});
 
@@ -172,21 +194,16 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
 
           <div className="space-y-2">
             <Label>Role <span className="text-destructive">*</span></Label>
-            <Select value={form.roleId} onValueChange={(v) => handleChange('roleId', v)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a role" />
-              </SelectTrigger>
-              <SelectContent>
-                {roles.map((role) => (
-                  <SelectItem key={role.id} value={role.id}>
-                    {role.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.roleId && (
-              <p className="text-sm text-destructive">{errors.roleId}</p>
-            )}
+            <SearchableSelect
+              options={roles.map((role) => ({ label: role.name, value: role.id }))}
+              value={form.roleId || null}
+              onValueChange={(v) => handleChange('roleId', v || '')}
+              placeholder="Select a role"
+              searchPlaceholder="Search roles..."
+              emptyMessage="No roles found"
+              isClearable={false}
+              error={errors.roleId}
+            />
           </div>
 
           <div className="space-y-2">
