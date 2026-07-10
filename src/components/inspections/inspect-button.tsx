@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
 
-interface FormItem { id: string; formId: string; title: string }
+interface FormItem { id: string; formId: string; title: string; inspectionType?: string }
 
 export function InspectFormPickerDialog({
   open,
@@ -54,10 +54,14 @@ export function InspectFormPickerDialog({
           id: String(f.id),
           formId: String(f.formId),
           title: String(f.title ?? f.formTitle ?? 'Untitled form'),
+          inspectionType: f.inspectionType as string | undefined,
         }));
-        // Asset stores local form ids; match on either id to be safe.
+        // Asset stores local form ids; match on either id to be safe. Also
+        // exclude driver-type forms — an asset inspection must use an asset form.
         const linked = allForms.filter(
-          (f) => assetFormIds.includes(f.id) || assetFormIds.includes(f.formId),
+          (f) =>
+            (assetFormIds.includes(f.id) || assetFormIds.includes(f.formId)) &&
+            f.inspectionType !== 'driver',
         );
         if (active) setForms(linked);
       } catch {

@@ -29,6 +29,7 @@ import {
 import {
   getEmbedTokenForTenant,
   storeEmbedToken,
+  embedTokenFingerprint,
 } from '@/lib/embed-token-storage';
 import {
   getCachedFormBuilderSession,
@@ -45,32 +46,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ─── 1. Check for a cached, still-valid session ───
-  const cachedSession = await getCachedFormBuilderSession(
-    user.currentTenantId,
-    user.id,
-  );
-
-  if (cachedSession) {
-    console.log(
-      `[FORM_BUILDER_SESSION] Reusing cached session for user ${user.email} (expires ${cachedSession.expiresAt.toISOString()})`,
-    );
-    return NextResponse.json({
-      data: {
-        sessionId: cachedSession.sessionId,
-        expiresAt: cachedSession.expiresAt.toISOString(),
-      },
-      error: null,
-    });
-  }
-
-  // ─── 2. No valid session — resolve embed token ───
+  // ─── 1. Resolve the embed token FIRST (the shared-org override applies
+  //        here, so all tenants can be pinned to one organization). ───
   let embedToken = await getEmbedTokenForTenant(
     user.currentTenantId,
     FORM_BUILDER_APP_NAME,
   );
 
-  // ─── 3. If no embed token exists, onboard the tenant first (owner flow) ───
+  // ─── 2. If no embed token exists, onboard the tenant first (owner flow) ───
   if (!embedToken) {
     console.log(
       `[FORM_BUILDER_SESSION] No embed token for tenant ${user.currentTenantId}, onboarding...`,
@@ -123,6 +106,30 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const tokenFp = embedTokenFingerprint(embedToken);
+
+  // ─── 3. Reuse a cached session ONLY if it was minted against this same
+  //        token/org. A fingerprint mismatch (e.g. after switching to the
+  //        shared org) means the old session can't see the forms — re-mint. ───
+  const cachedSession = await getCachedFormBuilderSession(
+    user.currentTenantId,
+    user.id,
+    tokenFp,
+  );
+
+  if (cachedSession) {
+    console.log(
+      `[FORM_BUILDER_SESSION] Reusing cached session for user ${user.email} (expires ${cachedSession.expiresAt.toISOString()})`,
+    );
+    return NextResponse.json({
+      data: {
+        sessionId: cachedSession.sessionId,
+        expiresAt: cachedSession.expiresAt.toISOString(),
+      },
+      error: null,
+    });
+  }
+
   // ─── 4. Create a new session via form-builder ───
   let result = await createFormBuilderSession({
     userEmail: user.email,
@@ -167,12 +174,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ─── 5. Cache the new session locally ───
+  // ─── 5. Cache the new session locally (tagged with the token fingerprint) ───
   await upsertFormBuilderSession(
     user.currentTenantId,
     user.id,
     result.data.sessionId,
     result.data.expiresAt,
+    tokenFp,
   );
 
   // ─── 6. Store org→tenant mapping for webhook form resolution ───

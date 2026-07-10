@@ -71,13 +71,15 @@ export async function getServiceSchedule(
 
       allItems.push({
         id: `${assetId}_${s.scheduleId}`,
-        planId: s.scheduleId,
-        planTitle: s.scheduleName,
+        // The Plan column shows the PLAN name (e.g. "Heavy Vehicle"); the
+        // schedule (e.g. "Wheel Alignment") is the service task for this row.
+        planId: status.planId ?? s.scheduleId,
+        planTitle: status.planName ?? s.scheduleName,
         assetId,
         assetName: (asset.name as string) || 'Asset',
         assetNumber: (asset.assetNumber as string) || undefined,
         serviceTaskIds: [],
-        serviceTaskTitles: [],
+        serviceTaskTitles: [s.scheduleName],
         intervalType: 'repeat',
         dueDimensions: [dim],
         status: mapped,
@@ -94,6 +96,7 @@ export async function getServiceSchedule(
     filtered = allItems.filter(
       (i) =>
         i.planTitle.toLowerCase().includes(q) ||
+        i.serviceTaskTitles.some((t) => t.toLowerCase().includes(q)) ||
         i.assetName.toLowerCase().includes(q) ||
         (i.assetNumber && i.assetNumber.toLowerCase().includes(q)),
     );
