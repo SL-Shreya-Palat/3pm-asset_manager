@@ -77,12 +77,10 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
     }
   }
 
-  const deleted = await deletePurchaseOrder(user.currentTenantId!, user.id, id);
-  if (!deleted) {
-    return NextResponse.json(
-      { data: null, error: 'Purchase order not found or cannot be deleted' },
-      { status: 404 },
-    );
+  const result = await deletePurchaseOrder(user.currentTenantId!, user.id, id);
+  if (!result.deleted) {
+    const status = result.error === 'Purchase order not found' ? 404 : 400;
+    return NextResponse.json({ data: null, error: result.error }, { status });
   }
   return NextResponse.json({ data: { success: true }, error: null });
 }

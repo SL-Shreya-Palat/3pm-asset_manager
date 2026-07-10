@@ -131,10 +131,16 @@ export function validateFuelRows(
     }
 
     const getStr = (f: string): string => fields[f] || '';
+    // Money/number columns arrive as "$45.00", "NZ$1,234.56", "40 L" — strip
+    // currency symbols, thousands separators, and unit suffixes before
+    // parsing. Number("$45") is NaN, and a NaN total used to be silently
+    // replaced by unitCost × volume (importing the wrong amount).
     const getNum = (f: string): number | undefined => {
       const v = fields[f];
       if (!v) return undefined;
-      const n = Number(v);
+      const cleaned = v.replace(/,/g, '').replace(/[^0-9.\-]/g, '');
+      if (!cleaned || cleaned === '-' || cleaned === '.') return undefined;
+      const n = Number(cleaned);
       return isNaN(n) ? undefined : n;
     };
 
@@ -153,10 +159,25 @@ export function validateFuelRows(
     }
 
     // ── Required: Date ──
+    // Slash/dash-separated dates are read DAY-FIRST (NZ convention): a fuel
+    // card's "05/06/2026" is 5 June, not May 6 — new Date() would read it
+    // US-style and shift transactions by months. ISO (yyyy-mm-dd) and other
+    // formats still parse natively.
     const dateRaw = getStr('date');
     let parsedDate: Date | null = null;
     if (dateRaw) {
-      parsedDate = new Date(dateRaw);
+      const dayFirst = dateRaw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+      if (dayFirst) {
+        const day = Number(dayFirst[1]);
+        const month = Number(dayFirst[2]);
+        let year = Number(dayFirst[3]);
+        if (year < 100) year += 2000;
+        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+          parsedDate = new Date(year, month - 1, day);
+        }
+      } else {
+        parsedDate = new Date(dateRaw);
+      }
     }
     if (!parsedDate || isNaN(parsedDate.getTime())) {
       rowErrors.push(dateRaw ? `Invalid date "${dateRaw}"` : 'Date is required');
@@ -178,8 +199,14 @@ export function validateFuelRows(
     }
 
     // ── Required: Cost ──
+    // A PRESENT-but-unreadable total errors the row — silently substituting
+    // unitCost × volume would import a different amount than the statement.
+    const totalCostRaw = getStr('totalCost');
     const totalCost = getNum('totalCost');
     const unitCost = getNum('unitCost');
+    if (totalCostRaw && totalCost == null) {
+      rowErrors.push(`Unreadable total cost "${totalCostRaw}"`);
+    }
     const resolvedTotalCost = totalCost ?? (unitCost != null && volume ? unitCost * volume : undefined);
     if (resolvedTotalCost == null || resolvedTotalCost < 0) {
       rowErrors.push('Total cost (or unit cost) is required');
@@ -214,7 +241,9 @@ export function validateFuelRows(
       endMileage: endMileage ?? undefined,
       distance: metrics.distance,
       volume: volume!,
-      unitCost: unitCost ?? resolvedTotalCost! / volume!,
+      // Derived from the paid total so the stored triple never contradicts
+      // (4dp — same rule as manual entry).
+      unitCost: Math.round((resolvedTotalCost! / volume!) * 10000) / 10000,
       totalCost: resolvedTotalCost!,
       fuelType,
       economy: metrics.economy,

@@ -10,6 +10,7 @@ import {
 import type { CreatePurchaseOrderInput, UpdatePurchaseOrderInput, TaxType, POStatus } from './types';
 import {
   validateCreatePOInput,
+  validateUpdatePOInput,
   calculateCostSummary,
   serializePurchaseOrder,
   VALID_TRANSITIONS,
@@ -18,8 +19,44 @@ import {
 import { creditPartsStock } from '@/controller/parts/stock';
 import { getUserRoleForTenant } from '@/lib/auth-helper';
 import { notifyUser, notifyTenantManagers } from '@/controller/notifications';
+import { isCommandConnectionEnabled } from '@/controller/command-connection/guard';
 
 const PO_LINK = '/maintenance/purchase-orders';
+
+/**
+ * While the Command connection is on, purchasing lives in Command — local POs
+ * would receive stock into a snapshot Command overwrites on the next sync, so
+ * the money would end up in no ledger. Enforced here (not just the hidden UI)
+ * so scripts/stale tabs/AI tools hit the same rule.
+ */
+export const PURCHASING_MANAGED_MESSAGE =
+  'Purchasing is managed in Command while the connection is on. Raise, approve, and receive purchase orders in Command.';
+
+/**
+ * Verify every PO line part exists in this tenant's inventory and is locally
+ * owned. Returns an error message or null. Command-sourced parts are refused —
+ * their quantities live in Command's ledger and a local receipt would be wiped
+ * by the next sync.
+ */
+async function checkPartsUsable(tenantOid: ObjectId, partIds: ObjectId[]): Promise<string | null> {
+  if (partIds.length === 0) return null;
+  const partsCol = await getPartsCollection();
+  const docs = await partsCol
+    .find(
+      { _id: { $in: partIds }, tenantId: tenantOid, isArchived: { $ne: true } },
+      { projection: { source: 1, name: 1 } },
+    )
+    .toArray();
+  const byId = new Map(docs.map((d) => [d._id.toString(), d]));
+  for (const id of partIds) {
+    const doc = byId.get(id.toString());
+    if (!doc) return 'One or more selected parts no longer exist in inventory';
+    if (doc.source === 'command') {
+      return `"${doc.name}" is Command-managed stock — purchase it through Command`;
+    }
+  }
+  return null;
+}
 
 /** Resolve a tenantMember `_id` (the id the approver picker uses) → the user's `userId`
  *  (the id notifications are addressed to). Returns null if unresolved. */
@@ -179,6 +216,10 @@ export async function createPurchaseOrder(
   userId: string,
   input: CreatePurchaseOrderInput,
 ) {
+  if (await isCommandConnectionEnabled(tenantId)) {
+    return { data: null, error: PURCHASING_MANAGED_MESSAGE };
+  }
+
   const validation = validateCreatePOInput(input as unknown as Record<string, unknown>);
   if (!validation.valid) return { data: null, error: validation.errors };
 
@@ -186,13 +227,24 @@ export async function createPurchaseOrder(
   const userOid = ObjectId.createFromHexString(userId);
   const now = new Date();
 
+  // Every line part must exist here and be locally owned.
+  const partsError = await checkPartsUsable(
+    tenantOid,
+    input.lineItems.map((li) => ObjectId.createFromHexString(li.partId)),
+  );
+  if (partsError) return { data: null, error: partsError };
+
+  // Resolve vendor name (tenant-scoped — a foreign vendor id must not resolve).
+  const vendorsCol = await getVendorsCollection();
+  const vendor = await vendorsCol.findOne({
+    _id: ObjectId.createFromHexString(input.vendorId),
+    tenantId: tenantOid,
+  });
+  if (!vendor) return { data: null, error: { vendorId: 'Vendor not found' } };
+  const vendorName = (vendor.name as string) || '';
+
   // Generate PO number
   const poNumber = await generatePONumber(tenantOid);
-
-  // Resolve vendor name
-  const vendorsCol = await getVendorsCollection();
-  const vendor = await vendorsCol.findOne({ _id: ObjectId.createFromHexString(input.vendorId) });
-  const vendorName = (vendor?.name as string) || '';
 
   // Compute costs
   const taxType: TaxType = (input.taxType as TaxType) || 'fixed';
@@ -270,6 +322,10 @@ export async function updatePurchaseOrder(
   poId: string,
   input: UpdatePurchaseOrderInput,
 ) {
+  if (await isCommandConnectionEnabled(tenantId)) {
+    return { data: null, error: PURCHASING_MANAGED_MESSAGE };
+  }
+
   const col = await getPurchaseOrdersCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
   const poOid = ObjectId.createFromHexString(poId);
@@ -286,16 +342,38 @@ export async function updatePurchaseOrder(
     return { data: null, error: 'Purchase order can only be edited in Draft or Rejected status' };
   }
 
+  // Same money rules as create — the update path must not accept garbage.
+  const validation = validateUpdatePOInput(input as unknown as Record<string, unknown>);
+  if (!validation.valid) return { data: null, error: validation.errors };
+  // Percentage bound when only the value changes (type lives on the doc).
+  const mergedTaxType = (input.taxType ?? existing.taxType) as TaxType;
+  const mergedTaxValue = input.taxValue ?? (existing.taxValue as number);
+  if (mergedTaxType === 'percentage' && typeof mergedTaxValue === 'number' && mergedTaxValue > 100) {
+    return { data: null, error: { taxValue: 'Tax percentage must be between 0 and 100' } };
+  }
+
+  if (input.lineItems !== undefined) {
+    const partsError = await checkPartsUsable(
+      tenantOid,
+      input.lineItems.map((li) => ObjectId.createFromHexString(li.partId)),
+    );
+    if (partsError) return { data: null, error: partsError };
+  }
+
   const $set: Record<string, unknown> = {
     updatedBy: ObjectId.createFromHexString(userId),
     updatedAt: new Date(),
   };
 
   if (input.vendorId !== undefined) {
-    $set.vendorId = ObjectId.createFromHexString(input.vendorId);
     const vendorsCol = await getVendorsCollection();
-    const vendor = await vendorsCol.findOne({ _id: ObjectId.createFromHexString(input.vendorId) });
-    $set.vendorName = (vendor?.name as string) || '';
+    const vendor = await vendorsCol.findOne({
+      _id: ObjectId.createFromHexString(input.vendorId),
+      tenantId: tenantOid,
+    });
+    if (!vendor) return { data: null, error: { vendorId: 'Vendor not found' } };
+    $set.vendorId = ObjectId.createFromHexString(input.vendorId);
+    $set.vendorName = (vendor.name as string) || '';
   }
 
   if (input.deliveryLocationId !== undefined) {
@@ -348,14 +426,39 @@ export async function updatePurchaseOrder(
 // Delete PO
 // ---------------------------------------------------------------------------
 
-/** Permanently delete a purchase order. */
-export async function deletePurchaseOrder(tenantId: string, userId: string, poId: string) {
+/**
+ * Permanently delete a purchase order — draft/rejected only. Anything past
+ * approval is a financial record (committed spend, possibly received stock
+ * whose cost basis lives on this doc) and must be closed/archived instead.
+ */
+export async function deletePurchaseOrder(
+  tenantId: string,
+  userId: string,
+  poId: string,
+): Promise<{ deleted: boolean; error: string | null }> {
+  if (await isCommandConnectionEnabled(tenantId)) {
+    return { deleted: false, error: PURCHASING_MANAGED_MESSAGE };
+  }
+
   const col = await getPurchaseOrdersCollection();
   const docOid = ObjectId.createFromHexString(poId);
   const tenantOid = ObjectId.createFromHexString(tenantId);
 
+  const existing = await col.findOne(
+    { _id: docOid, tenantId: tenantOid },
+    { projection: { status: 1 } },
+  );
+  if (!existing) return { deleted: false, error: 'Purchase order not found' };
+  if (!['draft', 'rejected'].includes(existing.status as string)) {
+    return {
+      deleted: false,
+      error:
+        'Only draft or rejected purchase orders can be deleted — this one is part of the financial record. Close or archive it instead.',
+    };
+  }
+
   const result = await col.deleteOne({ _id: docOid, tenantId: tenantOid });
-  return result.deletedCount > 0;
+  return { deleted: result.deletedCount > 0, error: result.deletedCount > 0 ? null : 'Purchase order not found' };
 }
 
 // ---------------------------------------------------------------------------
@@ -369,6 +472,10 @@ export async function transitionPurchaseOrderStatus(
   newStatus: string,
   note?: string,
 ) {
+  if (await isCommandConnectionEnabled(tenantId)) {
+    return { data: null, error: PURCHASING_MANAGED_MESSAGE };
+  }
+
   if (!isValidStatusForName(newStatus)) {
     return { data: null, error: 'Invalid status' };
   }
@@ -513,6 +620,10 @@ export async function receivePurchaseOrder(
   poId: string,
   receipts: POLineReceipt[],
 ) {
+  if (await isCommandConnectionEnabled(tenantId)) {
+    return { data: null, error: PURCHASING_MANAGED_MESSAGE };
+  }
+
   const col = await getPurchaseOrdersCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
   const poOid = ObjectId.createFromHexString(poId);
@@ -555,8 +666,33 @@ export async function receivePurchaseOrder(
     return { data: null, error: 'Nothing left to receive for the selected items' };
   }
 
-  // Credit the delta into inventory at the delivery location.
-  await creditPartsStock(tenantOid, credits, existing.deliveryLocationId as ObjectId, userOid);
+  // Every credited part must still exist locally and be locally owned —
+  // receiving into a deleted part must fail loudly, and Command-owned stock is
+  // received in Command (a local credit would be wiped by the next sync).
+  const partsCol = await getPartsCollection();
+  const creditPartDocs = await partsCol
+    .find(
+      { _id: { $in: credits.map((c) => c.partId) }, tenantId: tenantOid },
+      { projection: { source: 1, name: 1 } },
+    )
+    .toArray();
+  const creditPartById = new Map(creditPartDocs.map((d) => [d._id.toString(), d]));
+  for (const c of credits) {
+    const doc = creditPartById.get(c.partId.toString());
+    if (!doc) {
+      return {
+        data: null,
+        error:
+          'A part on this order no longer exists in inventory — restore it (or edit the order) before receiving.',
+      };
+    }
+    if (doc.source === 'command') {
+      return {
+        data: null,
+        error: `"${doc.name}" is Command-managed stock — receive it in Command.`,
+      };
+    }
+  }
 
   const fullyReceived = updatedLines.every((li) => (li.receivedQuantity ?? 0) >= li.quantity);
   const newStatus: POStatus = fullyReceived ? 'received' : 'received_partial';
@@ -578,10 +714,22 @@ export async function receivePurchaseOrder(
     note: `Received ${credits.reduce((s, c) => s + c.quantity, 0)} item(s) into stock`,
   };
 
-  await col.updateOne(
-    { _id: poOid, tenantId: tenantOid },
+  // Claim the receipt BEFORE crediting stock, conditioned on the doc being
+  // unchanged since we read it — two racing receivers can't both pass (the
+  // loser's claim matches nothing and no stock moves for them).
+  const claim = await col.updateOne(
+    { _id: poOid, tenantId: tenantOid, status, updatedAt: existing.updatedAt as Date },
     { $set, $push: { statusHistory: historyEntry } } as Record<string, unknown>,
   );
+  if (claim.matchedCount === 0) {
+    return {
+      data: null,
+      error: 'This purchase order was just updated by someone else — reload and try again.',
+    };
+  }
+
+  // Credit the delta into inventory at the delivery location.
+  await creditPartsStock(tenantOid, credits, existing.deliveryLocationId as ObjectId, userOid);
 
   // Let managers know stock arrived (best-effort).
   await notifyTenantManagers(tenantId, {

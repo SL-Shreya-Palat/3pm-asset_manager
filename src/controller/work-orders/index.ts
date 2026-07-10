@@ -15,7 +15,7 @@ import {
   applyInventoryDelta,
 } from './parts-inventory';
 import { getEnabledConnectionAuthTenantId } from '@/controller/command-connection/guard';
-import { getCommandStockLevels, pushStockOut } from '@/lib/command/stock';
+import { getCommandStockLevels, getCommandStockItem, pushStockOut } from '@/lib/command/stock';
 import { getUsersCollection } from '@/lib/mongodb';
 import { notifyUser, notifyEvent } from '@/controller/notifications';
 import { logServiceEntry } from '@/controller/service-history';
@@ -378,6 +378,9 @@ export async function updateWorkOrder(
   if (!existing) return { data: null, error: 'Work order not found' };
 
   const $set: Record<string, unknown> = {
+    // An AM-side edit freezes the doc against history re-import refreshes
+    // (no-op for WOs that weren't imported from Command).
+    commandImportManaged: false,
     updatedBy: ObjectId.createFromHexString(userId),
     updatedAt: new Date(),
   };
@@ -457,29 +460,71 @@ export async function updateWorkOrder(
   }
 
   // Parts — recompute lines + total; inventory delta applied after the write.
+  // Completed WOs are cost-frozen: partsCost was snapshotted into service
+  // history at completion and Command lines were already consumed, so parts
+  // edits are ignored (every other field still saves normally).
   let partsBefore: WOPart[] | null = null;
   let partsAfter: WOPart[] | null = null;
-  if (input.parts !== undefined) {
+  let warning: string | undefined;
+  if (input.parts !== undefined && existing.isCompleted) {
+    warning =
+      'This work order is completed — its stock lines and cost are locked and were not changed.';
+  } else if (input.parts !== undefined) {
     const existingParts = (existing.parts as WOPart[]) || [];
-    const local = await resolveWorkOrderParts(tenantOid, input.parts);
+    let local = await resolveWorkOrderParts(tenantOid, input.parts);
     const hasCommandLines =
       (input.parts || []).some((p) => p?.commandStockId) ||
       existingParts.some((p) => p.source === 'command');
     let commandLines: { parts: WOPart[]; partsCost: number } = { parts: [], partsCost: 0 };
     if (hasCommandLines) {
-      const authTenantId = await getEnabledConnectionAuthTenantId(tenantOid);
-      if (!authTenantId) {
-        return {
-          data: null,
-          error: 'This work order uses Command stock, but the Command connection is off.',
-        };
+      const existingCommand = existingParts.filter(
+        (p) => p.source === 'command' && p.commandStockId,
+      );
+      // Requested command lines, aggregated by stock id.
+      const requestedCommand = new Map<string, number>();
+      for (const p of input.parts || []) {
+        if (!p?.commandStockId) continue;
+        const qty = Number(p.quantity);
+        if (!Number.isFinite(qty) || qty <= 0) continue;
+        requestedCommand.set(
+          p.commandStockId,
+          (requestedCommand.get(p.commandStockId) || 0) + qty,
+        );
       }
-      try {
-        // Passing `existingParts` preserves pushed state — a line already
-        // pushed to Command keeps its quantity/transaction and is never re-pushed.
-        commandLines = await resolveCommandStockParts(authTenantId, input.parts, existingParts);
-      } catch (e) {
-        return { data: null, error: e instanceof Error ? e.message : 'Command stock lookup failed' };
+      const unchanged =
+        requestedCommand.size === existingCommand.length &&
+        existingCommand.every(
+          (p) => requestedCommand.get(String(p.commandStockId)) === p.quantity,
+        );
+      if (unchanged) {
+        // Command lines untouched — reuse the stored lines verbatim. No live
+        // Command lookup, so editing other WO fields works while disconnected.
+        commandLines = {
+          parts: existingCommand,
+          partsCost:
+            Math.round(
+              existingCommand.reduce((s, p) => s + (Number(p.lineTotal) || 0), 0) * 100,
+            ) / 100,
+        };
+      } else if (requestedCommand.size === 0) {
+        // All command lines removed — nothing to resolve; the keep-pushed guard
+        // below still retains any line whose OUT already happened.
+        commandLines = { parts: [], partsCost: 0 };
+      } else {
+        const authTenantId = await getEnabledConnectionAuthTenantId(tenantOid);
+        if (!authTenantId) {
+          return {
+            data: null,
+            error: 'This work order uses Command stock, but the Command connection is off.',
+          };
+        }
+        try {
+          // Passing `existingParts` preserves pushed state — a line already
+          // pushed to Command keeps its quantity/transaction and is never re-pushed.
+          commandLines = await resolveCommandStockParts(authTenantId, input.parts, existingParts);
+        } catch (e) {
+          return { data: null, error: e instanceof Error ? e.message : 'Command stock lookup failed' };
+        }
       }
       // Dropping an already-pushed line would silently desync the Command
       // ledger (the OUT already happened) — keep it on the WO.
@@ -489,6 +534,24 @@ export async function updateWorkOrder(
           commandLines.parts.push(prior);
           commandLines.partsCost = Math.round((commandLines.partsCost + prior.lineTotal) * 100) / 100;
         }
+      }
+      // Defense: a client that round-trips an imported Command part by partId
+      // only (no commandStockId) makes resolveWorkOrderParts produce a fresh
+      // duplicate of a line we already carry — drop the local duplicate.
+      const carriedIds = new Set(
+        commandLines.parts.map((p) => String(p.commandStockId)).filter(Boolean),
+      );
+      const dedupedLocal = local.parts.filter(
+        (p) =>
+          !(p.source === 'command' && p.commandStockId && carriedIds.has(String(p.commandStockId))),
+      );
+      if (dedupedLocal.length !== local.parts.length) {
+        local = {
+          parts: dedupedLocal,
+          partsCost:
+            Math.round(dedupedLocal.reduce((s, p) => s + (Number(p.lineTotal) || 0), 0) * 100) /
+            100,
+        };
       }
     }
     const combined = [...local.parts, ...commandLines.parts];
@@ -514,21 +577,61 @@ export async function updateWorkOrder(
   }
 
   const updated = await col.findOne({ _id: woOid });
-  return { data: updated ? serializeWorkOrder(updated as Record<string, unknown>) : null, error: null };
+  return {
+    data: updated ? serializeWorkOrder(updated as Record<string, unknown>) : null,
+    error: null,
+    ...(warning ? { warning } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Delete work order
 // ---------------------------------------------------------------------------
 
-/** Permanently delete a work order. */
-export async function deleteWorkOrder(tenantId: string, userId: string, woId: string) {
+/**
+ * Permanently delete a work order.
+ *
+ * Money guards: a completed WO is a financial record (its cost was copied to
+ * service history and, for Command lines, into Command's ledger) — archive it,
+ * don't delete it. A WO holding lines already pushed to Command can't be
+ * deleted either: the consumption already happened in Command and this doc
+ * holds the only AM-side audit link (transaction ids). Local part lines of a
+ * deletable (open) WO are returned to inventory (parts → []), honouring the
+ * delta contract documented in parts-inventory.ts.
+ */
+export async function deleteWorkOrder(
+  tenantId: string,
+  userId: string,
+  woId: string,
+): Promise<{ deleted: boolean; error: string | null }> {
   const col = await getWorkOrdersCollection();
   const docOid = ObjectId.createFromHexString(woId);
   const tenantOid = ObjectId.createFromHexString(tenantId);
+  const userOid = ObjectId.createFromHexString(userId);
+
+  const wo = await col.findOne({ _id: docOid, tenantId: tenantOid });
+  if (!wo) return { deleted: false, error: 'Work order not found' };
+
+  if (wo.isCompleted) {
+    return {
+      deleted: false,
+      error: 'Completed work orders are a financial record and can’t be deleted. Archive it instead.',
+    };
+  }
+  const parts = (wo.parts as WOPart[] | undefined) || [];
+  if (parts.some((p) => p.source === 'command' && p.pushedToCommand)) {
+    return {
+      deleted: false,
+      error:
+        'This work order has already consumed Command stock — deleting it would orphan that consumption. Archive it instead.',
+    };
+  }
+
+  // Return consumed local stock (delete = delta parts → []).
+  await applyInventoryDelta(tenantOid, parts, [], userOid);
 
   const result = await col.deleteOne({ _id: docOid, tenantId: tenantOid });
-  return result.deletedCount > 0;
+  return { deleted: result.deletedCount > 0, error: result.deletedCount > 0 ? null : 'Work order not found' };
 }
 
 // ---------------------------------------------------------------------------
@@ -568,6 +671,8 @@ export async function transitionWorkOrderStatus(
   const $set: Record<string, unknown> = {
     statusId: newStatus._id,
     statusLabel: newStatus.label,
+    // An AM-side transition freezes the doc against history re-import refreshes.
+    commandImportManaged: false,
     updatedBy: userOid,
     updatedAt: now,
   };
@@ -710,56 +815,77 @@ export async function completeWorkOrder(
     for (const part of pendingCommandParts) {
       const stockId = part.commandStockId as string;
 
-      // Pre-flight: Command's on-hand must cover the line (at the chosen
-      // location when one was set, else across all locations).
-      const levels = await getCommandStockLevels(stockId, authTenantId);
-      if (!levels.ok) {
-        return {
-          data: null,
-          error: `Command is unreachable while checking stock for "${part.partName}" — completion blocked, no stock was consumed for this line. Try again shortly.`,
-        };
-      }
-      const onHand = part.commandLocationId
-        ? levels.data.find((l) => l.locationId === part.commandLocationId)?.onHand ?? 0
-        : levels.data.reduce((sum, l) => sum + l.onHand, 0);
-      if (onHand < part.quantity) {
-        return {
-          data: null,
-          error: `Insufficient Command stock for "${part.partName}": available ${onHand}, required ${part.quantity}.`,
-        };
+      // Pre-flight against the SAME measure Command's OUT endpoint validates:
+      // per-location balance when a location was chosen, else the root cached
+      // quantity (per-location sums can be empty/partial for location-less
+      // stock and would false-block completion).
+      if (part.commandLocationId) {
+        const levels = await getCommandStockLevels(stockId, authTenantId);
+        if (!levels.ok) {
+          return fail(
+            `Command is unreachable while checking stock for "${part.partName}" — completion blocked, no stock was consumed for this line. Try again shortly.`,
+          );
+        }
+        const onHand = levels.data.find((l) => l.locationId === part.commandLocationId)?.onHand ?? 0;
+        if (onHand < part.quantity) {
+          return fail(
+            `Insufficient Command stock for "${part.partName}": available ${onHand}, required ${part.quantity}.`,
+          );
+        }
+      } else {
+        const item = await getCommandStockItem(stockId, authTenantId);
+        if (!item.ok) {
+          return fail(
+            `Command is unreachable while checking stock for "${part.partName}" — completion blocked, no stock was consumed for this line. Try again shortly.`,
+          );
+        }
+        if (item.data.quantity < part.quantity) {
+          return fail(
+            `Insufficient Command stock for "${part.partName}": available ${item.data.quantity}, required ${part.quantity}.`,
+          );
+        }
       }
 
+      // No unitCost sent — Command values the OUT at its own costPrice (finance
+      // lives in Command). sourceRef makes a crash-retry return the original
+      // transaction instead of consuming twice.
       const push = await pushStockOut(
         stockId,
         authTenantId,
         {
           quantity: part.quantity,
           stockLocationId: part.commandLocationId,
-          unitCost: part.unitCost,
           notes: `Drive work order ${wo.workOrderNumber}`,
+          sourceRef: `am-wo:${woId}:${stockId}`,
         },
         actorEmail,
       );
       if (!push.ok) {
-        return {
-          data: null,
-          error:
-            push.message ||
+        return fail(
+          push.message ||
             `Command rejected the stock consumption for "${part.partName}" (${push.reason}).`,
-        };
+        );
       }
 
       // Mark THIS line pushed immediately — a later failure must never re-push
-      // it (Command's OUT endpoint is not idempotent).
+      // it (Command's OUT endpoint is not idempotent) — and mirror the ledger's
+      // actual valuation onto the line so AM's cost never disagrees with the
+      // stockTransaction Command recorded.
+      const lineSet: Record<string, unknown> = {
+        'parts.$[line].pushedToCommand': true,
+        'parts.$[line].commandTransactionId': push.data.transactionId,
+        updatedAt: new Date(),
+      };
+      if (push.data.unitCost != null) {
+        lineSet['parts.$[line].unitCost'] = push.data.unitCost;
+        lineSet['parts.$[line].lineTotal'] =
+          push.data.totalCost != null
+            ? push.data.totalCost
+            : Math.round((push.data.unitCost * part.quantity + Number.EPSILON) * 100) / 100;
+      }
       await col.updateOne(
         { _id: woOid, tenantId: tenantOid },
-        {
-          $set: {
-            'parts.$[line].pushedToCommand': true,
-            'parts.$[line].commandTransactionId': push.data.transactionId,
-            updatedAt: new Date(),
-          },
-        },
+        { $set: lineSet },
         {
           arrayFilters: [
             { 'line.commandStockId': stockId, 'line.pushedToCommand': { $ne: true } },
@@ -782,10 +908,39 @@ export async function completeWorkOrder(
     }
   }
 
-  // 1) Mark completed (deterministic flag, independent of free-form status).
+  // 0b) Re-read the parts after the pushes and roll partsCost up from the
+  //     ledger-mirrored line totals, so the WO total (and the service-history
+  //     snapshot below) matches what Command actually recorded.
+  let finalPartsCost = typeof wo.partsCost === 'number' ? (wo.partsCost as number) : undefined;
+  if (pendingCommandParts.length > 0) {
+    const fresh = await col.findOne(
+      { _id: woOid, tenantId: tenantOid },
+      { projection: { parts: 1 } },
+    );
+    const freshParts = (fresh?.parts as WOPart[] | undefined) || [];
+    finalPartsCost =
+      Math.round(
+        (freshParts.reduce((sum, p) => sum + (Number(p.lineTotal) || 0), 0) + Number.EPSILON) * 100,
+      ) / 100;
+  }
+
+  // 1) Mark completed (deterministic flag, independent of free-form status) and
+  //    release the completion claim.
   await col.updateOne(
     { _id: woOid, tenantId: tenantOid },
-    { $set: { isCompleted: true, completedAt: now, completedBy: userOid, updatedBy: userOid, updatedAt: now } },
+    {
+      $set: {
+        isCompleted: true,
+        completedAt: now,
+        completedBy: userOid,
+        completionLockAt: null,
+        // Completion in AM freezes the doc against history re-import refreshes.
+        commandImportManaged: false,
+        updatedBy: userOid,
+        updatedAt: now,
+        ...(finalPartsCost !== undefined ? { partsCost: finalPartsCost } : {}),
+      },
+    },
   );
 
   // 2) Resolve linked defects → corrected.
@@ -851,7 +1006,7 @@ export async function completeWorkOrder(
         serviceTaskIds: taskIds,
         meterType: input.meterType,
         meterAtService: input.meterAtService,
-        totalCost: typeof wo.partsCost === 'number' ? (wo.partsCost as number) : undefined,
+        totalCost: finalPartsCost,
         notes: input.notes,
       },
       { source: 'work_order', performedById },

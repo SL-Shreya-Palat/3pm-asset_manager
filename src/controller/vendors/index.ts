@@ -183,12 +183,29 @@ export async function updateVendor(
   return { data: updated ? serializeVendor(updated) : null, error: null };
 }
 
-/** Permanently delete a vendor. */
-export async function deleteVendor(tenantId: string, userId: string, vendorId: string) {
+/**
+ * Permanently delete a vendor. Command-sourced suppliers can't be deleted
+ * while connected — the next sync would recreate them under a new _id,
+ * orphaning purchase orders and parts pricing that reference the old one.
+ */
+export async function deleteVendor(
+  tenantId: string,
+  userId: string,
+  vendorId: string,
+): Promise<{ deleted: boolean; error: string | null }> {
   const collection = await getVendorsCollection();
   const docOid = ObjectId.createFromHexString(vendorId);
   const tenantOid = ObjectId.createFromHexString(tenantId);
 
+  const existing = await collection.findOne(
+    { _id: docOid, tenantId: tenantOid },
+    { projection: { source: 1 } },
+  );
+  if (!existing) return { deleted: false, error: 'Vendor not found' };
+  if (existing.source === 'command' && (await isCommandConnectionEnabled(tenantId))) {
+    return { deleted: false, error: MASTER_DATA_MANAGED_MESSAGE };
+  }
+
   const result = await collection.deleteOne({ _id: docOid, tenantId: tenantOid });
-  return result.deletedCount > 0;
+  return { deleted: result.deletedCount > 0, error: result.deletedCount > 0 ? null : 'Vendor not found' };
 }

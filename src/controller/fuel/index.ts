@@ -4,7 +4,13 @@
  */
 import { ObjectId } from 'mongodb';
 import { getFuelTransactionsCollection, getAssetsCollection, getDriversCollection } from '@/lib/mongodb';
-import { validateCreateFuelTransactionInput, calculateFuelMetrics, serializeFuelTransaction } from './utils';
+import {
+  validateCreateFuelTransactionInput,
+  validateUpdateFuelTransactionInput,
+  deriveUnitCost,
+  calculateFuelMetrics,
+  serializeFuelTransaction,
+} from './utils';
 import type { CreateFuelTransactionInput, UpdateFuelTransactionInput } from './types';
 
 /** List fuel transactions with pagination, search, and filters. */
@@ -166,7 +172,9 @@ export async function createFuelTransaction(
     endMileage: input.endMileage ?? undefined,
     distance: metrics.distance,
     volume: input.volume,
-    unitCost: input.unitCost ?? undefined,
+    // Derived from what was actually paid — the stored triple can never
+    // self-contradict (user-typed unitCost is display input only).
+    unitCost: deriveUnitCost(input.volume, input.totalCost) ?? input.unitCost ?? undefined,
     totalCost: input.totalCost,
     fuelType: input.fuelType || 'diesel',
     economy: metrics.economy,
@@ -210,6 +218,19 @@ export async function updateFuelTransaction(
   });
   if (!existing) return { data: null, error: 'Fuel transaction not found' };
 
+  // Merged values drive metric recompute AND validation — a one-sided edit
+  // must not invert the odometer pair or corrupt the money fields.
+  const mergedStart = input.startMileage ?? existing.startMileage;
+  const mergedEnd = input.endMileage ?? existing.endMileage;
+  const mergedVolume = input.volume ?? existing.volume;
+  const mergedCost = input.totalCost ?? existing.totalCost;
+
+  const validation = validateUpdateFuelTransactionInput(input as Record<string, unknown>, {
+    startMileage: mergedStart as number | null | undefined,
+    endMileage: mergedEnd as number | null | undefined,
+  });
+  if (!validation.valid) return { data: null, error: validation.errors };
+
   const $set: Record<string, unknown> = {
     updatedBy: ObjectId.createFromHexString(userId),
     updatedAt: new Date(),
@@ -227,18 +248,18 @@ export async function updateFuelTransaction(
   if (input.startMileage !== undefined) $set.startMileage = input.startMileage;
   if (input.endMileage !== undefined) $set.endMileage = input.endMileage;
   if (input.volume !== undefined) $set.volume = input.volume;
-  if (input.unitCost !== undefined) $set.unitCost = input.unitCost;
   if (input.totalCost !== undefined) $set.totalCost = input.totalCost;
   if (input.fuelType !== undefined) $set.fuelType = input.fuelType;
   if (input.station !== undefined) $set.station = input.station?.trim() || undefined;
   if (input.notes !== undefined) $set.notes = input.notes?.trim() || undefined;
   if (input.source !== undefined) $set.source = input.source;
 
-  // Recalculate metrics with merged values
-  const mergedStart = input.startMileage ?? existing.startMileage;
-  const mergedEnd = input.endMileage ?? existing.endMileage;
-  const mergedVolume = input.volume ?? existing.volume;
-  const mergedCost = input.totalCost ?? existing.totalCost;
+  // Keep the stored triple consistent: unitCost is derived from the merged
+  // paid total and volume whenever either changes (see deriveUnitCost).
+  if (input.volume !== undefined || input.totalCost !== undefined || input.unitCost !== undefined) {
+    $set.unitCost =
+      deriveUnitCost(mergedVolume as number, mergedCost as number) ?? input.unitCost ?? existing.unitCost;
+  }
 
   const metrics = calculateFuelMetrics({
     startMileage: mergedStart,
@@ -314,15 +335,17 @@ export async function getFuelAnalytics(
     ])
     .toArray();
 
-  // Monthly breakdown
+  // Monthly breakdown — bucketed in the business timezone, not the server's
+  // (a UTC server puts an NZ morning fill-up in the previous month at edges).
+  const BUSINESS_TZ = 'Pacific/Auckland';
   const monthlyTrends = await collection
     .aggregate([
       { $match: matchFilter },
       {
         $group: {
           _id: {
-            year: { $year: '$date' },
-            month: { $month: '$date' },
+            year: { $year: { date: '$date', timezone: BUSINESS_TZ } },
+            month: { $month: { date: '$date', timezone: BUSINESS_TZ } },
           },
           totalVolume: { $sum: '$volume' },
           totalCost: { $sum: '$totalCost' },

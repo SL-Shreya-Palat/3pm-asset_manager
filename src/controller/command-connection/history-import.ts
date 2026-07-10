@@ -128,6 +128,37 @@ async function loadAssetMap(
   );
 }
 
+/**
+ * All workshop part lines, keyed by Command job-item id. The comprehensive
+ * job-card payload only carries `partsIds` — the actual lines (quantity, unit
+ * cost) live in Command's workshop parts register, so without this join every
+ * imported work order lands with $0 parts cost.
+ */
+async function loadWorkshopPartsMap(
+  authTenantId: string,
+): Promise<Map<string, Array<{ partId?: string; partName: string; quantity: number; cost: number }>>> {
+  const map = new Map<string, Array<{ partId?: string; partName: string; quantity: number; cost: number }>>();
+  let page = 1;
+  for (;;) {
+    const { rows, hasMore } = await fetchPage('/api/workshop/parts', authTenantId, page);
+    for (const r of rows) {
+      const jobItemId = str(r.jobItemId);
+      if (!jobItemId) continue;
+      const list = map.get(jobItemId) || [];
+      list.push({
+        partId: str(r.partId),
+        partName: str(r.partName) ?? 'Part',
+        quantity: num(r.quantity) ?? 0,
+        cost: num(r.cost) ?? 0,
+      });
+      map.set(jobItemId, list);
+    }
+    if (!hasMore) break;
+    page++;
+  }
+  return map;
+}
+
 /** Reserve `count` sequential values on a tenant counter (atomic). */
 async function reserveCounter(counterId: string, count: number): Promise<number> {
   const counters = await getCountersCollection();
@@ -705,6 +736,7 @@ async function importWorkOrders(
     entity: 'workOrders', processed: 0, created: 0, skipped: 0, errors: [], nextCursor: null, done: false,
   };
   const assetMap = await loadAssetMap(tenantOid);
+  const workshopParts = await loadWorkshopPartsMap(authTenantId);
   const statusCache = new Map<string, ObjectId>();
 
   const page = Math.max(1, cursor);
@@ -746,10 +778,15 @@ async function importWorkOrders(
     const isCompleted = COMPLETED_STATUS_RE.test(statusLabel);
 
     // Parts on items → already-consumed Command stock lines (never re-pushed).
+    // Joined from the workshop parts register by job-item id — the
+    // comprehensive payload itself only carries partsIds, no quantities/costs.
     const parts: any[] = [];
     let partsCost = 0;
     for (const item of items) {
-      const itemParts: any[] = Array.isArray(item.parts) ? item.parts : Array.isArray(item.partsDetails) ? item.partsDetails : [];
+      const itemId = str(item._id ?? item.id);
+      const registerParts = itemId ? workshopParts.get(itemId) || [] : [];
+      const inlineParts: any[] = Array.isArray(item.parts) ? item.parts : Array.isArray(item.partsDetails) ? item.partsDetails : [];
+      const itemParts: any[] = registerParts.length > 0 ? registerParts : inlineParts;
       for (const p of itemParts) {
         const qty = num(p.quantity) ?? 0;
         const unitCost = num(p.cost) ?? num(p.unitCost) ?? 0;
@@ -826,39 +863,48 @@ async function importWorkOrders(
         : [];
 
     const completedAt = isCompleted ? (toDate(card.updatedAt) ?? now) : null;
+    // Fields Command owns while the WO has never been touched in AM.
+    const refreshFields: Record<string, unknown> = {
+      workOrderNumber: str(card.jobNumber) ?? `JC-${commandJobCardId.slice(-6).toUpperCase()}`,
+      assetId: asset._id,
+      assetName: asset.name,
+      statusId,
+      statusLabel,
+      assigneeType: 'mechanic',
+      assigneeId: null,
+      assigneeName: staffNames.join(', '),
+      dueDate: toDate(card.due_date ?? card.dueDate),
+      description: [str(card.title), str(card.description)].filter(Boolean).join(' — '),
+      parts,
+      partsCost,
+      faultIds,
+      isCompleted,
+      completedAt,
+      completedBy: null,
+      source: 'fault',
+      commandData: {
+        priority: card.priority ?? null,
+        projectName: str(comp?.enrichment?.projectName) ?? null,
+        scheduleStartDate: card.schedule_start_date ?? null,
+        workshopComponentId: card.workshopComponentId ?? null,
+      },
+      updatedBy: userOid,
+      updatedAt: now,
+    };
+
+    // Two-step upsert so a re-run NEVER overwrites work done in AM: (1) insert
+    // the full doc when the job card is new (marked commandImportManaged),
+    // (2) refresh only while still import-managed — the first AM edit or
+    // completion clears the marker and freezes the doc. The single-$set
+    // version wiped AM-added parts (including pushedToCommand markers, which
+    // enabled a second Command stock consumption on re-complete).
     const upsert = await woCol.updateOne(
       { tenantId: tenantOid, commandJobCardId },
       {
-        $set: {
-          workOrderNumber: str(card.jobNumber) ?? `JC-${commandJobCardId.slice(-6).toUpperCase()}`,
-          assetId: asset._id,
-          assetName: asset.name,
-          statusId,
-          statusLabel,
-          assigneeType: 'mechanic',
-          assigneeId: null,
-          assigneeName: staffNames.join(', '),
-          dueDate: toDate(card.due_date ?? card.dueDate),
-          description: [str(card.title), str(card.description)].filter(Boolean).join(' — '),
-          parts,
-          partsCost,
-          faultIds,
-          isCompleted,
-          completedAt,
-          completedBy: null,
-          source: 'fault',
-          commandData: {
-            priority: card.priority ?? null,
-            projectName: str(comp?.enrichment?.projectName) ?? null,
-            scheduleStartDate: card.schedule_start_date ?? null,
-            workshopComponentId: card.workshopComponentId ?? null,
-          },
-          updatedBy: userOid,
-          updatedAt: now,
-        },
         $setOnInsert: {
           tenantId: tenantOid,
           commandJobCardId,
+          commandImportManaged: true,
           serviceTaskIds: [],
           defectIds: [],
           attachments: [],
@@ -869,11 +915,26 @@ async function importWorkOrders(
           isArchived: card.isArchived === true,
           archivedAt: null,
           archivedBy: null,
+          ...refreshFields,
         },
       },
       { upsert: true },
     );
-    if (upsert.upsertedCount > 0) result.created++;
+    if (upsert.upsertedCount > 0) {
+      result.created++;
+    } else {
+      await woCol.updateOne(
+        {
+          tenantId: tenantOid,
+          commandJobCardId,
+          commandImportManaged: { $ne: false },
+          // Legacy safety net: docs from before the marker existed that carry a
+          // pushed Command line were worked in AM — never refresh those.
+          'parts.pushedToCommand': { $ne: true },
+        },
+        { $set: refreshFields },
+      );
+    }
 
     // Back-link the WO onto its fault defects.
     if (faultIds.length > 0) {

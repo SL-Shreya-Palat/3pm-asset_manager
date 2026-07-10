@@ -91,7 +91,15 @@ export function writebackMetersIfLinked(
   source: string,
   actorEmail?: string,
 ): Promise<void> {
-  return push(tenantId, assetId, 'meters', { ...readings, source }, actorEmail);
+  // Capture-time stamp: if this push lands in the outbox and replays after a
+  // newer live reading, Command uses recordedAt to skip it (no meter regress).
+  return push(
+    tenantId,
+    assetId,
+    'meters',
+    { ...readings, source, recordedAt: new Date().toISOString() },
+    actorEmail,
+  );
 }
 
 /** Out-of-service flips (defect grounding / WO completion) → Command availability. */

@@ -21,6 +21,7 @@ import {
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { useConnection } from '@/hooks/use-connection';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { checkRecordOwnership } from '@/lib/rbac';
 import { PermissionGuard } from '@/components/auth/permission-guard';
@@ -44,6 +45,7 @@ export function InventoryDetail() {
   const params = useParams();
   const router = useRouter();
   const { user } = useAuth();
+  const { connected } = useConnection();
   const { hasFullAccess, permissionIndex } = useRoleAccess();
   const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(INVENTORY_FORM_ID);
   const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(INVENTORY_FORM_ID);
@@ -151,24 +153,28 @@ export function InventoryDetail() {
         }
         subtitle={`#${part.partNumber}`}
         actions={
-          <>
-            {checkRecordOwnership(editLevel, createdBy, user?.id) && (
-              <PermissionGuard permission={Permissions.maintenance.inventory.form.edit}>
-                <Button variant="outline" onClick={() => setEditPanelOpen(true)}>
-                  <Edit className="h-4 w-4" />
-                  Edit
-                </Button>
-              </PermissionGuard>
-            )}
-            {checkRecordOwnership(archiveLevel, createdBy, user?.id) && (
-              <PermissionGuard permission={Permissions.maintenance.inventory.form.archive}>
-                <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
-                  <Archive className="h-4 w-4" />
-                  Archive
-                </Button>
-              </PermissionGuard>
-            )}
-          </>
+          // Command-sourced stock is master data while connected — identity and
+          // quantities are edited/archived in Command (matches the list page).
+          connected && part.source === 'command' ? undefined : (
+            <>
+              {checkRecordOwnership(editLevel, createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.inventory.form.edit}>
+                  <Button variant="outline" onClick={() => setEditPanelOpen(true)}>
+                    <Edit className="h-4 w-4" />
+                    Edit
+                  </Button>
+                </PermissionGuard>
+              )}
+              {checkRecordOwnership(archiveLevel, createdBy, user?.id) && (
+                <PermissionGuard permission={Permissions.maintenance.inventory.form.archive}>
+                  <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
+                    <Archive className="h-4 w-4" />
+                    Archive
+                  </Button>
+                </PermissionGuard>
+              )}
+            </>
+          )
         }
       />
 

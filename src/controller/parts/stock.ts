@@ -17,6 +17,13 @@ export interface StockCreditEntry {
  * Add `quantity` units of each part to the given location's stock. If the part
  * has no bucket for that location yet, one is created. Parts not found or with a
  * non-positive quantity are skipped. Returns the number of parts updated.
+ *
+ * Concurrency: credits use `$inc` on the location bucket (commutative), never
+ * a read-modify-write of the whole array — a simultaneous work-order deduction
+ * or second receipt can't erase this credit. Command-sourced parts are never
+ * credited: their quantities live in Command's ledger and the next sync would
+ * wipe a local credit (callers pre-check and surface this; the filter here is
+ * the backstop).
  */
 export async function creditPartsStock(
   tenantOid: ObjectId,
@@ -28,30 +35,47 @@ export async function creditPartsStock(
   if (valid.length === 0) return 0;
 
   const partsCol = await getPartsCollection();
-  const ids = valid.map((e) => e.partId);
-  const docs = await partsCol.find({ _id: { $in: ids }, tenantId: tenantOid }).toArray();
-  const docById = new Map(docs.map((d) => [d._id.toString(), d]));
   const now = new Date();
+  let credited = 0;
 
-  const ops = valid
-    .map((e) => {
-      const doc = docById.get(e.partId.toString());
-      if (!doc) return null;
-      const locs = ((doc.stockLocations as Array<{ locationId: ObjectId | null; quantity: number }>) || [])
-        .map((s) => ({ locationId: s.locationId, quantity: s.quantity }));
-      const idx = locs.findIndex((s) => s.locationId && s.locationId.toString() === locationId.toString());
-      if (idx >= 0) locs[idx].quantity += e.quantity;
-      else locs.push({ locationId, quantity: e.quantity });
-      return {
-        updateOne: {
-          filter: { _id: doc._id, tenantId: tenantOid },
-          update: { $set: { stockLocations: locs, updatedBy: userOid, updatedAt: now } },
-        },
-      };
-    })
-    .filter((op): op is NonNullable<typeof op> => op !== null);
+  for (const e of valid) {
+    const baseFilter = { _id: e.partId, tenantId: tenantOid, source: { $ne: 'command' } };
+    const incUpdate = {
+      $inc: { 'stockLocations.$.quantity': e.quantity },
+      $set: { updatedBy: userOid, updatedAt: now },
+    };
 
-  if (ops.length === 0) return 0;
-  await partsCol.bulkWrite(ops);
-  return ops.length;
+    // Bucket exists → atomic increment.
+    const inc = await partsCol.updateOne(
+      { ...baseFilter, 'stockLocations.locationId': locationId },
+      incUpdate,
+    );
+    if (inc.matchedCount > 0) {
+      credited++;
+      continue;
+    }
+
+    // No bucket yet → create it (filter re-checks absence so a concurrent
+    // creator can't produce a duplicate bucket).
+    const push = await partsCol.updateOne(
+      { ...baseFilter, 'stockLocations.locationId': { $ne: locationId } },
+      {
+        $push: { stockLocations: { locationId, quantity: e.quantity } },
+        $set: { updatedBy: userOid, updatedAt: now },
+      } as Record<string, unknown>,
+    );
+    if (push.matchedCount > 0) {
+      credited++;
+      continue;
+    }
+
+    // Lost the create race — the bucket exists now; increment it.
+    const retry = await partsCol.updateOne(
+      { ...baseFilter, 'stockLocations.locationId': locationId },
+      incUpdate,
+    );
+    if (retry.matchedCount > 0) credited++;
+  }
+
+  return credited;
 }

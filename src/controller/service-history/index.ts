@@ -99,6 +99,14 @@ export async function logServiceEntry(
   const meterAtService =
     typeof input.meterAtService === 'number' && input.meterAtService >= 0 ? input.meterAtService : null;
 
+  // Money guard: a service cost is either a valid non-negative number or an
+  // explicit error — a negative slipping into history corrupts every spend sum.
+  if (input.totalCost != null) {
+    if (typeof input.totalCost !== 'number' || !Number.isFinite(input.totalCost) || input.totalCost < 0) {
+      return { data: null, error: 'Total cost must be a non-negative number' };
+    }
+  }
+
   // Meter policy: when the tenant has turned "service updates current meter" off,
   // the reading is kept on the history record below for reference only — it must
   // not advance the asset's current meter, reset the service baseline, spawn a

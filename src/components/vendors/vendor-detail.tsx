@@ -20,12 +20,14 @@ import {
 } from '@/components/ui/detail-page-header';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { cn } from '@/lib/utils';
+import { useConnection } from '@/hooks/use-connection';
 import { VendorForm } from './vendor-form';
 import type { VendorRow } from './types';
 
 export function VendorDetail() {
   const params = useParams();
   const router = useRouter();
+  const { connected } = useConnection();
   const [vendor, setVendor] = useState<VendorRow | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -99,16 +101,20 @@ export function VendorDetail() {
           </>
         }
         actions={
-          <>
-            <Button variant="outline" onClick={() => setEditPanelOpen(true)}>
-              <Edit className="h-4 w-4" />
-              Edit
-            </Button>
-            <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
-              <Archive className="h-4 w-4" />
-              Archive
-            </Button>
-          </>
+          // Command-sourced suppliers are master data while connected —
+          // edited/archived in Command (matches the vendors list page).
+          connected && vendor.source === 'command' ? undefined : (
+            <>
+              <Button variant="outline" onClick={() => setEditPanelOpen(true)}>
+                <Edit className="h-4 w-4" />
+                Edit
+              </Button>
+              <Button variant="secondary" onClick={() => setArchiveDialogOpen(true)}>
+                <Archive className="h-4 w-4" />
+                Archive
+              </Button>
+            </>
+          )
         }
       />
 

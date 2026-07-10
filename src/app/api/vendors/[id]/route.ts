@@ -53,10 +53,11 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   const { user } = auth.ctx;
 
   const { id } = await context.params;
-  const deleted = await deleteVendor(user.currentTenantId!, user.id, id);
+  const result = await deleteVendor(user.currentTenantId!, user.id, id);
 
-  if (!deleted) {
-    return NextResponse.json({ data: null, error: 'Vendor not found' }, { status: 404 });
+  if (!result.deleted) {
+    const status = result.error === 'Vendor not found' ? 404 : 400;
+    return NextResponse.json({ data: null, error: result.error }, { status });
   }
 
   return NextResponse.json({ data: { success: true }, error: null });

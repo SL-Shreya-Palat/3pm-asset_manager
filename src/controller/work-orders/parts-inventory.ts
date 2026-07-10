@@ -200,7 +200,16 @@ function adjustStockLocations(
   return locs;
 }
 
-/** Apply the net inventory change between two WO part lists. */
+/**
+ * Apply the net inventory change between two WO part lists.
+ *
+ * Consumption spreads across a part's location buckets, so it can't be a
+ * single `$inc` — instead each part uses optimistic concurrency: read, compute
+ * the new buckets, write conditioned on `updatedAt` being unchanged, retry on
+ * conflict. A concurrent PO receipt or second WO save re-reads instead of
+ * being silently overwritten (the old blind `$set` lost whichever write came
+ * first).
+ */
 export async function applyInventoryDelta(
   tenantOid: ObjectId,
   before: WOPart[] | undefined,
@@ -229,27 +238,42 @@ export async function applyInventoryDelta(
   if (deltas.length === 0) return;
 
   const partsCol = await getPartsCollection();
-  const oids = deltas.map((d) => ObjectId.createFromHexString(d.id));
-  const docs = await partsCol.find({ _id: { $in: oids }, tenantId: tenantOid }).toArray();
-  const docById = new Map(docs.map((d) => [d._id.toString(), d]));
-  const now = new Date();
+  const MAX_ATTEMPTS = 5;
 
-  const ops = deltas
-    .map(({ id, consumed }) => {
-      const doc = docById.get(id);
-      if (!doc) return null;
+  for (const { id, consumed } of deltas) {
+    const partOid = ObjectId.createFromHexString(id);
+    let applied = false;
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS && !applied; attempt++) {
+      const doc = await partsCol.findOne({ _id: partOid, tenantId: tenantOid });
+      if (!doc) break; // part deleted — nothing to adjust
+
       const newLocs = adjustStockLocations(
         (doc.stockLocations as Array<{ locationId: ObjectId | null; quantity: number }>) || [],
         consumed,
       );
-      return {
-        updateOne: {
-          filter: { _id: doc._id, tenantId: tenantOid },
-          update: { $set: { stockLocations: newLocs, updatedBy: userOid, updatedAt: now } },
-        },
-      };
-    })
-    .filter((op): op is NonNullable<typeof op> => op !== null);
+      const res = await partsCol.updateOne(
+        // updatedAt is the optimistic version stamp — every stock writer bumps it.
+        { _id: partOid, tenantId: tenantOid, updatedAt: doc.updatedAt },
+        { $set: { stockLocations: newLocs, updatedBy: userOid, updatedAt: new Date() } },
+      );
+      applied = res.modifiedCount > 0;
+    }
 
-  if (ops.length > 0) await partsCol.bulkWrite(ops);
+    if (!applied) {
+      // Contention never settled — apply on the freshest read rather than drop
+      // the movement entirely (matches the pre-fix behaviour as a last resort).
+      const doc = await partsCol.findOne({ _id: partOid, tenantId: tenantOid });
+      if (!doc) continue;
+      const newLocs = adjustStockLocations(
+        (doc.stockLocations as Array<{ locationId: ObjectId | null; quantity: number }>) || [],
+        consumed,
+      );
+      await partsCol.updateOne(
+        { _id: partOid, tenantId: tenantOid },
+        { $set: { stockLocations: newLocs, updatedBy: userOid, updatedAt: new Date() } },
+      );
+      console.warn(`[parts-inventory] optimistic retry exhausted for part ${id} — applied unconditionally`);
+    }
+  }
 }
