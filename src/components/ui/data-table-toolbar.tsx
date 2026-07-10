@@ -9,6 +9,7 @@ import {
   AlignStartVertical,
   X,
   Check,
+  ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -66,42 +67,102 @@ export function DataTableToolbar<T>({
   const activeFilterCount = filters ? Object.keys(filters).length : 0;
   const hasFilters = filterDefs && filterDefs.length > 0;
 
+  // Active-filter chips shown below the toolbar (one per selected value).
+  const filterChips: { key: string; label: string; onRemove: () => void }[] = [];
+  if (hasFilters && onFilterChange && filters) {
+    for (const def of filterDefs) {
+      const raw = filters[def.columnKey];
+      if (def.type === 'text') {
+        if (typeof raw === 'string' && raw.trim()) {
+          filterChips.push({
+            key: `${def.columnKey}:text`,
+            label: `${def.label}: ${raw}`,
+            onRemove: () => onFilterChange(def.columnKey, ''),
+          });
+        }
+      } else if (Array.isArray(raw)) {
+        for (const val of raw) {
+          const opt = def.options?.find((o) => o.value === val);
+          filterChips.push({
+            key: `${def.columnKey}:${val}`,
+            label: `${def.label}: ${opt?.label ?? val}`,
+            onRemove: () => onFilterChange(def.columnKey, raw.filter((v) => v !== val)),
+          });
+        }
+      }
+    }
+  }
+
   return (
-    <div className="flex items-center gap-2 pt-1 mb-3">
-      {/* Extra actions */}
-      {actions}
+    <div className="pt-1 mb-3">
+      <div className="flex items-center gap-2">
+        {/* Extra actions */}
+        {actions}
 
-      {/* Table controls — Filters · Columns · Density in one colorful group */}
-      <div className="inline-flex items-center gap-0.5 rounded-sm border border-border bg-card p-0.5 shadow-sm">
-        {hasFilters && onFilterChange && (
-          <>
-            <FiltersControl
-              filterDefs={filterDefs}
-              filters={filters ?? {}}
-              onFilterChange={onFilterChange}
-              onFiltersClear={onFiltersClear}
-              activeCount={activeFilterCount}
-            />
-            <Separator orientation="vertical" className="h-5" />
-          </>
-        )}
+        {/* Table controls — Filters · Columns · Density in one colorful group */}
+        <div className="inline-flex items-center gap-0.5 rounded-sm border border-border bg-card p-0.5 shadow-sm">
+          {hasFilters && onFilterChange && (
+            <>
+              <FiltersControl
+                filterDefs={filterDefs}
+                filters={filters ?? {}}
+                onFilterChange={onFilterChange}
+                onFiltersClear={onFiltersClear}
+                activeCount={activeFilterCount}
+              />
+              <Separator orientation="vertical" className="h-5" />
+            </>
+          )}
 
-        {/* Column Selection */}
-        <ColumnsControl
-          columns={columns}
-          hiddenColumnKeys={hiddenColumnKeys}
-          onHiddenColumnKeysChange={onHiddenColumnKeysChange}
-        />
+          {/* Column Selection */}
+          <ColumnsControl
+            columns={columns}
+            hiddenColumnKeys={hiddenColumnKeys}
+            onHiddenColumnKeysChange={onHiddenColumnKeysChange}
+          />
 
-        {/* Density */}
-        <DensityControl density={density} onDensityChange={onDensityChange} />
+          {/* Density */}
+          <DensityControl density={density} onDensityChange={onDensityChange} />
+        </div>
+
+        {/* After controls */}
+        {afterControls}
+
+        {/* Search (right-aligned) */}
+        {searchNode && <div className="ml-auto min-w-0 flex-1 max-w-lg">{searchNode}</div>}
       </div>
 
-      {/* After controls */}
-      {afterControls}
-
-      {/* Search (right-aligned) */}
-      {searchNode && <div className="ml-auto min-w-0 flex-1 max-w-lg">{searchNode}</div>}
+      {/* Active filter chips (below the toolbar) */}
+      {filterChips.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-muted-foreground">Filtered by:</span>
+          {filterChips.map((chip) => (
+            <span
+              key={chip.key}
+              className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2 py-0.5 text-xs text-foreground"
+            >
+              {chip.label}
+              <button
+                type="button"
+                onClick={chip.onRemove}
+                aria-label={`Remove ${chip.label}`}
+                className="text-muted-foreground hover:text-destructive"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+          {onFiltersClear && (
+            <button
+              type="button"
+              onClick={onFiltersClear}
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -151,48 +212,95 @@ function FiltersControl({
             </Button>
           )}
         </div>
-        <div className="p-4 space-y-4 max-h-80 overflow-y-auto">
+        <div className="p-3 space-y-2 max-h-80 overflow-y-auto">
           {filterDefs.map((def) => (
-            <div key={def.columnKey}>
-              <p className="text-sm font-medium mb-2">{def.label}</p>
-              {def.type === 'text' && (
-                <Input
-                  placeholder={`Filter by ${def.label.toLowerCase()}...`}
-                  value={(filters[def.columnKey] as string) ?? ''}
-                  onChange={(e) => onFilterChange(def.columnKey, e.target.value)}
-                  className="h-8"
-                />
-              )}
-              {def.type === 'select' && def.options && (
-                <div className="space-y-1">
-                  {def.options.map((opt) => {
-                    const selected = (filters[def.columnKey] as string[]) ?? [];
-                    const isChecked = selected.includes(opt.value);
-                    return (
-                      <label
-                        key={opt.value}
-                        className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 rounded px-2 py-1.5"
-                      >
-                        <Checkbox
-                          checked={isChecked}
-                          onCheckedChange={(checked) => {
-                            const next = checked
-                              ? [...selected, opt.value]
-                              : selected.filter((v) => v !== opt.value);
-                            onFilterChange(def.columnKey, next);
-                          }}
-                        />
-                        {opt.label}
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+            <FilterGroup
+              key={def.columnKey}
+              def={def}
+              filters={filters}
+              onFilterChange={onFilterChange}
+            />
           ))}
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/* ── Filter Group (collapsible dropdown — one per filter def) ──────────── */
+
+function FilterGroup({
+  def,
+  filters,
+  onFilterChange,
+}: {
+  def: DataTableFilterDef;
+  filters: Record<string, string | string[]>;
+  onFilterChange: (key: string, value: string | string[]) => void;
+}) {
+  const raw = filters[def.columnKey];
+  const selected = Array.isArray(raw) ? raw : [];
+  const activeCount = def.type === 'text' ? (raw ? 1 : 0) : selected.length;
+  // Open by default only when this group already has an active selection.
+  const [open, setOpen] = useState(activeCount > 0);
+
+  return (
+    <div className="overflow-hidden rounded-md border border-border">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between gap-2 px-3 py-2 text-sm font-medium transition-colors hover:bg-muted/50"
+        aria-expanded={open}
+      >
+        <span className="flex items-center gap-2">
+          {def.label}
+          {activeCount > 0 && (
+            <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-semibold text-white">
+              {activeCount}
+            </span>
+          )}
+        </span>
+        <ChevronDown
+          className={cn('h-4 w-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')}
+        />
+      </button>
+      {open && (
+        <div className="border-t border-border p-2">
+          {def.type === 'text' && (
+            <Input
+              placeholder={`Filter by ${def.label.toLowerCase()}...`}
+              value={(raw as string) ?? ''}
+              onChange={(e) => onFilterChange(def.columnKey, e.target.value)}
+              className="h-8"
+            />
+          )}
+          {def.type === 'select' && def.options && (
+            <div className="space-y-0.5">
+              {def.options.map((opt) => {
+                const isChecked = selected.includes(opt.value);
+                return (
+                  <label
+                    key={opt.value}
+                    className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted/50"
+                  >
+                    <Checkbox
+                      checked={isChecked}
+                      onCheckedChange={(checked) => {
+                        const next = checked
+                          ? [...selected, opt.value]
+                          : selected.filter((v) => v !== opt.value);
+                        onFilterChange(def.columnKey, next);
+                      }}
+                    />
+                    {opt.label}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

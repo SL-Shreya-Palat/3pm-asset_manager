@@ -11,10 +11,12 @@
 
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { Plus, Trash2, Pencil, Archive, ArchiveRestore, Loader2, Info, ChevronDown, ChevronRight } from 'lucide-react';
+import { Plus, Trash2, Edit, Archive, ArchiveRestore, Loader2, Info, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button, LoadingButton } from '@/components/ui/button';
+import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { SearchableSelect, type SearchableSelectOption } from '@/components/ui/searchable-select';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 import { ShowArchivedToggle } from '@/components/ui/show-archived-toggle';
 import { PageHeader } from '@/components/ui/page-header';
 import { useAuth } from '@/hooks/useAuth';
@@ -64,6 +66,7 @@ export function ServicePlansPage() {
   const { hasFullAccess, permissionIndex } = useRoleAccess();
   const editLevel = hasFullAccess ? 'ALL' : permissionIndex.getEditLevel(SERVICE_PLAN_FORM_ID);
   const archiveLevel = hasFullAccess ? 'ALL' : permissionIndex.getArchiveLevel(SERVICE_PLAN_FORM_ID);
+  const deleteLevel = hasFullAccess ? 'ALL' : permissionIndex.getDeleteLevel(SERVICE_PLAN_FORM_ID);
 
 
   const [plans, setPlans] = useState<PlanRow[]>([]);
@@ -79,6 +82,11 @@ export function ServicePlansPage() {
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [archivingPlan, setArchivingPlan] = useState<PlanRow | null>(null);
   const [archiving, setArchiving] = useState(false);
+
+  // Delete dialog
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingPlan, setDeletingPlan] = useState<PlanRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Service task options for schedule name field
   const [serviceTaskOptions, setServiceTaskOptions] = useState<SearchableSelectOption[]>([]);
@@ -194,6 +202,26 @@ export function ServicePlansPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!deletingPlan) return;
+    setDeleting(true);
+    try {
+      await axios.delete(`/api/service-plans/${deletingPlan.id}`);
+      showSuccessToast('Service plan deleted successfully');
+      setDeleteDialogOpen(false);
+      setDeletingPlan(null);
+      await load();
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.data?.error) {
+        showErrorToast(String(err.response.data.error));
+      } else {
+        showErrorToast('Failed to delete service plan');
+      }
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="flex h-full flex-col">
       <PageHeader
@@ -270,33 +298,48 @@ export function ServicePlansPage() {
                           </span>
                         </td>
                         <td className="px-3 py-2.5">
-                          <div className="flex justify-end gap-1">
-                            {!p.isArchived && checkRecordOwnership(editLevel, p.createdBy, user?.id) && (
-                              <PermissionGuard permission={Permissions.maintenance.servicePlans.form.edit}>
-                                <Button variant="ghost" size="icon-sm" onClick={() => openEdit(p)}>
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                              </PermissionGuard>
+                          <RowActions>
+                            {!p.isArchived && (
+                              <>
+                                {checkRecordOwnership(editLevel, p.createdBy, user?.id) && (
+                                  <PermissionGuard permission={Permissions.maintenance.servicePlans.form.edit}>
+                                    <RowActionButton label="Edit" icon={<Edit />} onClick={() => openEdit(p)} />
+                                  </PermissionGuard>
+                                )}
+                                {checkRecordOwnership(archiveLevel, p.createdBy, user?.id) && (
+                                  <PermissionGuard permission={Permissions.maintenance.servicePlans.form.archive}>
+                                    <RowActionButton
+                                      label="Archive"
+                                      icon={<Archive />}
+                                      onClick={() => { setArchivingPlan(p); setArchiveDialogOpen(true); }}
+                                    />
+                                  </PermissionGuard>
+                                )}
+                              </>
                             )}
-                            {checkRecordOwnership(archiveLevel, p.createdBy, user?.id) && (
-                              <PermissionGuard permission={Permissions.maintenance.servicePlans.form.archive}>
-                                <Button
-                                  variant="ghost"
-                                  size="icon-sm"
-                                  onClick={() => {
-                                    setArchivingPlan(p);
-                                    setArchiveDialogOpen(true);
-                                  }}
-                                >
-                                  {p.isArchived ? (
-                                    <ArchiveRestore className="h-4 w-4" />
-                                  ) : (
-                                    <Archive className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              </PermissionGuard>
+                            {p.isArchived && (
+                              <>
+                                {checkRecordOwnership(archiveLevel, p.createdBy, user?.id) && (
+                                  <PermissionGuard permission={Permissions.maintenance.servicePlans.form.archive}>
+                                    <RowActionButton
+                                      label="Unarchive"
+                                      icon={<ArchiveRestore />}
+                                      onClick={() => { setArchivingPlan(p); setArchiveDialogOpen(true); }}
+                                    />
+                                  </PermissionGuard>
+                                )}
+                                {checkRecordOwnership(deleteLevel, p.createdBy, user?.id) && (
+                                  <PermissionGuard permission={Permissions.maintenance.servicePlans.form.delete}>
+                                    <RowActionButton
+                                      label="Delete"
+                                      icon={<Trash2 />}
+                                      onClick={() => { setDeletingPlan(p); setDeleteDialogOpen(true); }}
+                                    />
+                                  </PermissionGuard>
+                                )}
+                              </>
                             )}
-                          </div>
+                          </RowActions>
                         </td>
                       </tr>
                       {isOpen && (
@@ -391,6 +434,15 @@ export function ServicePlansPage() {
         action={archivingPlan?.isArchived ? 'unarchive' : 'archive'}
         onConfirm={handleArchive}
         loading={archiving}
+      />
+
+      {/* Delete Dialog */}
+      <DeleteConfirmDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={deletingPlan?.name || 'Service Plan'}
+        onConfirm={handleDelete}
+        loading={deleting}
       />
 
       {/* Editor */}

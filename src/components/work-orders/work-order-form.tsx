@@ -224,6 +224,15 @@ export function WorkOrderForm({
 
   useEffect(() => { fetchLookups(); }, [fetchLookups]);
 
+  // New work orders default the due date to today (local date).
+  useEffect(() => {
+    if (mode === 'create') {
+      const d = new Date();
+      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      setDueDate(today);
+    }
+  }, [mode]);
+
   // Open, unlinked defects for the chosen asset — powers the "Defects to correct"
   // picker (create mode only; editing a WO's defect links isn't supported).
   const fetchAssetDefects = useCallback(async (aid: string) => {
@@ -508,22 +517,18 @@ export function WorkOrderForm({
           {/* ── Details / Asset ── */}
           <FormSection icon={Truck} title="Details">
             <div>
-              <Label>Asset <span className="text-destructive">*</span></Label>
-              <Select value={assetId} onValueChange={(val) => { setAssetId(val); setSelectedDefectIds([]); setSelectedFaultIds([]); clearFieldError('assetId'); }} disabled={lockAsset}>
-                <SelectTrigger className={`mt-1.5 ${fieldErrors.assetId ? 'border-destructive' : ''}`}>
-                  <SelectValue placeholder="Select asset" />
-                </SelectTrigger>
-                <SelectContent>
-                  {assets.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">No data yet</div>
-                  ) : (
-                    assets.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              {fieldErrors.assetId && <p className="text-sm text-destructive mt-1">{fieldErrors.assetId}</p>}
+              <SearchableSelect
+                label="Asset"
+                required
+                options={assets.map((a) => ({ label: a.name, value: a.id }))}
+                value={assetId || null}
+                onValueChange={(val) => { setAssetId(val || ''); setSelectedDefectIds([]); setSelectedFaultIds([]); clearFieldError('assetId'); }}
+                placeholder="Select asset"
+                searchPlaceholder="Search assets..."
+                emptyMessage="No assets found"
+                disabled={lockAsset}
+                error={fieldErrors.assetId}
+              />
             </div>
           </FormSection>
 
@@ -590,27 +595,23 @@ export function WorkOrderForm({
             <FormSection icon={AlertTriangle} title="Defects to correct">
               <div>
                 <Label>Defects</Label>
-                <Select value="" onValueChange={addDefect} disabled={!assetId}>
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder={assetId ? 'Select a defect' : 'Select an asset first'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableDefects.filter((d) => !selectedDefectIds.includes(d.id)).length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">
-                        {assetId ? 'No defects for this asset' : 'Select an asset first'}
-                      </div>
-                    ) : (
-                      availableDefects
-                        .filter((d) => !selectedDefectIds.includes(d.id))
-                        .map((d) => (
-                          <SelectItem key={d.id} value={d.id}>
-                            {d.defectNumber ? `${d.defectNumber} · ` : ''}{d.name}
-                            {d.status ? ` (${d.status.replace(/_/g, ' ')})` : ''}
-                          </SelectItem>
-                        ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <div className="mt-1.5">
+                  <SearchableSelect
+                    options={availableDefects
+                      .filter((d) => !selectedDefectIds.includes(d.id))
+                      .map((d) => ({
+                        label: `${d.defectNumber ? `${d.defectNumber} · ` : ''}${d.name}${d.status ? ` (${d.status.replace(/_/g, ' ')})` : ''}`,
+                        value: d.id,
+                      }))}
+                    value={null}
+                    onValueChange={(v) => { if (v) addDefect(v); }}
+                    placeholder={assetId ? 'Select a defect' : 'Select an asset first'}
+                    searchPlaceholder="Search defects..."
+                    emptyMessage={assetId ? 'No defects for this asset' : 'Select an asset first'}
+                    disabled={!assetId}
+                    isClearable={false}
+                  />
+                </div>
 
                 {selectedDefectIds.length > 0 && (
                   <div className="mt-3 rounded-lg border border-border bg-card shadow-sm divide-y divide-border overflow-hidden">
@@ -656,27 +657,23 @@ export function WorkOrderForm({
             <FormSection icon={AlertTriangle} title="Faults to resolve">
               <div>
                 <Label>Faults</Label>
-                <Select value="" onValueChange={addFault} disabled={!assetId}>
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder={assetId ? 'Select a fault' : 'Select an asset first'} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableFaults.filter((f) => !selectedFaultIds.includes(f.id)).length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">
-                        {assetId ? 'No faults for this asset' : 'Select an asset first'}
-                      </div>
-                    ) : (
-                      availableFaults
-                        .filter((f) => !selectedFaultIds.includes(f.id))
-                        .map((f) => (
-                          <SelectItem key={f.id} value={f.id}>
-                            {f.faultNumber ? `${f.faultNumber} · ` : ''}{f.title}
-                            {f.status ? ` (${f.status.replace(/_/g, ' ')})` : ''}
-                          </SelectItem>
-                        ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <div className="mt-1.5">
+                  <SearchableSelect
+                    options={availableFaults
+                      .filter((f) => !selectedFaultIds.includes(f.id))
+                      .map((f) => ({
+                        label: `${f.faultNumber ? `${f.faultNumber} · ` : ''}${f.title}${f.status ? ` (${f.status.replace(/_/g, ' ')})` : ''}`,
+                        value: f.id,
+                      }))}
+                    value={null}
+                    onValueChange={(v) => { if (v) addFault(v); }}
+                    placeholder={assetId ? 'Select a fault' : 'Select an asset first'}
+                    searchPlaceholder="Search faults..."
+                    emptyMessage={assetId ? 'No faults for this asset' : 'Select an asset first'}
+                    disabled={!assetId}
+                    isClearable={false}
+                  />
+                </div>
 
                 {selectedFaultIds.length > 0 && (
                   <div className="mt-3 rounded-lg border border-border bg-card shadow-sm divide-y divide-border overflow-hidden">
@@ -963,27 +960,23 @@ export function WorkOrderForm({
             </div>
           </FormSection>
 
-          {/* ── Parts ── */}
-          <FormSection icon={Package} title="Parts">
+          {/* ── Stock ── */}
+          <FormSection icon={Package} title="Stock">
             <div className="flex items-end gap-2">
               <div className="flex-1">
-                <Label>Part</Label>
-                <Select value={partToAdd} onValueChange={setPartToAdd}>
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder="Select part" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableParts.length === 0 ? (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">No parts in inventory</div>
-                    ) : (
-                      availableParts.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name} ({p.stock} in stock)
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <Label>Stock</Label>
+                <SearchableSelect
+                  className="mt-1.5"
+                  options={availableParts.map((p) => ({
+                    label: `${p.name} (${p.stock} in stock)`,
+                    value: p.id,
+                  }))}
+                  value={partToAdd || null}
+                  onValueChange={(v) => setPartToAdd(v || '')}
+                  placeholder="Select stock"
+                  searchPlaceholder="Search stock..."
+                  emptyMessage="No stock in inventory"
+                />
               </div>
               <div className="w-20">
                 <Label>Qty</Label>
@@ -1042,13 +1035,13 @@ export function WorkOrderForm({
                   );
                 })}
                 <div className="flex items-center justify-between px-3 py-2.5 bg-muted/40">
-                  <span className="text-sm font-medium text-foreground">Parts total</span>
+                  <span className="text-sm font-medium text-foreground">Stock total</span>
                   <span className="text-sm font-semibold text-foreground tabular-nums">${partsCost.toFixed(2)}</span>
                 </div>
               </div>
             )}
             <p className="text-xs text-muted-foreground mt-2">
-              Added parts are deducted from inventory stock when you save.
+              Selected stock is deducted from inventory when you save.
             </p>
           </FormSection>
 

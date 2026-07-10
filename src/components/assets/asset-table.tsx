@@ -222,6 +222,12 @@ export function AssetTable() {
     [assets, filters, assetFilterDefs],
   );
 
+  // Whether any filter currently has a value (drives the filtered header count).
+  const hasActiveFilters = useMemo(
+    () => Object.values(filters).some((v) => (Array.isArray(v) ? v.length > 0 : Boolean(v))),
+    [filters],
+  );
+
   // Change Team dialog state
   const [changeTeamOpen, setChangeTeamOpen] = useState(false);
   const [changeTeamAsset, setChangeTeamAsset] = useState<AssetRow | null>(null);
@@ -888,7 +894,7 @@ export function AssetTable() {
       {/* Header */}
       <PageHeader
         title="Assets"
-        count={pagination.total}
+        count={hasActiveFilters ? filteredAssets.length : pagination.total}
         description="Manage your fleet vehicles and equipment"
         className="px-0 pt-0 pb-4"
       >
@@ -929,9 +935,8 @@ export function AssetTable() {
         filters={filters}
         onFilterChange={setFilter}
         onFiltersClear={clearFilters}
-        actions={
+        afterControls={
           <div className="flex items-center gap-2">
-            <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
             <Button
               variant="outline"
               size="sm"
@@ -947,6 +952,7 @@ export function AssetTable() {
                 </Badge>
               )}
             </Button>
+            <ShowArchivedToggle checked={showArchived} onCheckedChange={setShowArchived} />
           </div>
         }
         searchNode={

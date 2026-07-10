@@ -201,6 +201,27 @@ export async function archiveServicePlan(
   return result.modifiedCount > 0;
 }
 
+/**
+ * Permanently delete a service plan. Defensive: also clears this plan from any
+ * assets that still reference it, so no asset is left pointing at a deleted plan.
+ */
+export async function deleteServicePlan(tenantId: string, planId: string): Promise<boolean> {
+  if (!ObjectId.isValid(planId)) return false;
+  const collection = await getServicePlansCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const planOid = ObjectId.createFromHexString(planId);
+
+  // Unassign the plan from any assets still pointing at it.
+  const assetsCol = await getAssetsCollection();
+  await assetsCol.updateMany(
+    { tenantId: tenantOid, servicePlanId: planOid },
+    { $set: { servicePlanId: null, updatedAt: new Date() } },
+  );
+
+  const result = await collection.deleteOne({ _id: planOid, tenantId: tenantOid });
+  return result.deletedCount > 0;
+}
+
 /** Assign a plan to a set of assets (sets asset.servicePlanId). Pass null to clear. */
 export async function assignPlanToAssets(
   tenantId: string,
