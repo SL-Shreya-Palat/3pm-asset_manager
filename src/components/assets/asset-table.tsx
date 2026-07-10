@@ -21,7 +21,6 @@ import {
   CheckCircle2,
   Wrench,
   ShieldAlert,
-  type LucideIcon,
 } from 'lucide-react';
 import { InspectFormPickerDialog } from '@/components/inspections/inspect-button';
 import { VinLookupDialog } from './vin-lookup-dialog';
@@ -49,7 +48,7 @@ import { DataTable, type DataTableColumn, type DataTableFilterDef } from '@/comp
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar';
 import { Spinner } from '@/components/ui/spinner';
 import { cn, formatDate } from '@/lib/utils';
-import { Skeleton } from '@/components/ui/skeleton';
+import { StatRibbon, StatSeg } from '@/components/ui/stat-ribbon';
 import {
   Tooltip,
   TooltipContent,
@@ -67,36 +66,6 @@ import { useConnection } from '@/hooks/use-connection';
 import { SourceBadge, CommandManagedBanner } from '@/components/command/source-badge';
 import { ASSET_STATUS_CONFIG, type AssetStatus } from '@/constants/assets';
 import type { AssetRow, TeamOption, Pagination } from './types';
-
-// ─── KPI tile ─────────────────────────────────────────────────────────────────
-type Tone = 'primary' | 'emerald' | 'amber' | 'red';
-const TONE: Record<Tone, { value: string; icon: string }> = {
-  primary: { value: 'text-primary-600', icon: 'bg-primary-100 text-primary-600' },
-  emerald: { value: 'text-emerald-600', icon: 'bg-emerald-100 text-emerald-600' },
-  amber: { value: 'text-amber-600', icon: 'bg-amber-100 text-amber-600' },
-  red: { value: 'text-red-600', icon: 'bg-red-100 text-red-600' },
-};
-
-function StatSeg({ tone, icon: Icon, label, value, loading }: {
-  tone: Tone; icon: LucideIcon; label: string; value?: number; loading?: boolean;
-}) {
-  const t = TONE[tone];
-  return (
-    <div className="flex min-w-[140px] flex-1 items-center gap-3 px-4 py-3">
-      <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg [&_svg]:h-4 [&_svg]:w-4', t.icon)}>
-        <Icon />
-      </span>
-      <div className="min-w-0">
-        {loading ? (
-          <Skeleton className="h-5 w-8" />
-        ) : (
-          <p className={cn('text-xl font-bold leading-none tabular-nums', t.value)}>{value ?? 0}</p>
-        )}
-        <p className="mt-1 truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      </div>
-    </div>
-  );
-}
 
 interface AssetSummary {
   total: number;
@@ -870,7 +839,7 @@ export function AssetTable() {
   const columns = connected ? assetColumns : assetColumns.filter((c) => c.key !== 'source');
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <InspectFormPickerDialog
         open={!!inspectAssetId}
         assetId={inspectAssetId ?? ''}
@@ -884,13 +853,14 @@ export function AssetTable() {
         open={barcodeDialogOpen}
         onOpenChange={setBarcodeDialogOpen}
         items={selectedAssets.map((a) => ({ id: a.id, name: a.name, code: a.assetNumber }))}
+        appLinkBase="/assets"
       />
       {/* Header */}
       <PageHeader
         title="Assets"
         count={pagination.total}
         description="Manage your fleet vehicles and equipment"
-        className="px-0 pt-0 pb-4"
+        className="px-0 pt-0 pb-4 sm:px-0"
       >
         {!connected && (
           <PermissionGuard permission={Permissions.assets.assets.form.create}>
@@ -909,13 +879,13 @@ export function AssetTable() {
       )}
 
       {/* Summary ribbon */}
-      <div className="px-6 pb-1">
-        <div className="flex flex-wrap divide-x rounded-xl border bg-card shadow-sm">
+      <div className="pb-3">
+        <StatRibbon>
           <StatSeg tone="primary" icon={Layers} label="Total assets" value={summary?.total} loading={!summary} />
           <StatSeg tone="emerald" icon={CheckCircle2} label="In service" value={summary?.inService} loading={!summary} />
           <StatSeg tone="amber" icon={Wrench} label="Under maintenance" value={summary?.outOfService} loading={!summary} />
           <StatSeg tone="red" icon={ShieldAlert} label="Non-compliant" value={summary?.nonCompliant} loading={!summary} />
-        </div>
+        </StatRibbon>
       </div>
 
       {/* Toolbar + Search */}

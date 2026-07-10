@@ -17,6 +17,7 @@ import { navItems } from '@/constants/navigation';
 import type { NavItem, NavChild } from '@/constants/navigation';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { useConnection } from '@/hooks/use-connection';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 
 function useFilteredNavItems() {
   const { loading, isMobileOnly, canAccessModule, canAccessSubModule } = useRoleAccess();
@@ -84,7 +85,10 @@ function NavSkeleton({ collapsed }: { collapsed: boolean }) {
 export function Sidebar() {
   const pathname = usePathname();
   const { loading, items: filteredItems } = useFilteredNavItems();
-  const [collapsed, setCollapsed] = useState(false);
+  const [manualCollapsed, setManualCollapsed] = useState(false);
+  const isMobile = useIsMobile();
+  // On phones the sidebar is always the icon rail — screen space goes to content.
+  const collapsed = isMobile || manualCollapsed;
   const [expandedItems, setExpandedItems] = useState<Set<string>>(() => {
     // Auto-expand parent if a child route is active
     const expanded = new Set<string>();
@@ -243,19 +247,21 @@ export function Sidebar() {
               <span>Sign Out</span>
             </a>
           )}
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            className={cn(
-              'flex items-center justify-center rounded p-2 text-sidebar-foreground hover:bg-gray-100 transition-colors',
-              collapsed && 'w-full',
-            )}
-          >
-            {collapsed ? (
-              <ChevronRight className="h-4 w-4" />
-            ) : (
-              <ChevronLeft className="h-4 w-4" />
-            )}
-          </button>
+          {!isMobile && (
+            <button
+              onClick={() => setManualCollapsed(!manualCollapsed)}
+              className={cn(
+                'flex items-center justify-center rounded p-2 text-sidebar-foreground hover:bg-gray-100 transition-colors',
+                collapsed && 'w-full',
+              )}
+            >
+              {collapsed ? (
+                <ChevronRight className="h-4 w-4" />
+              ) : (
+                <ChevronLeft className="h-4 w-4" />
+              )}
+            </button>
+          )}
         </div>
       </div>
     </aside>

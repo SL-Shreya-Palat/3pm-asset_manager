@@ -64,7 +64,7 @@ export function UserDetailPage({ userId }: UserDetailPageProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center gap-4 px-6 pt-6 pb-4">
+      <div className="flex items-center gap-4 px-4 pt-6 pb-4 sm:px-6">
         <PageBackButton href="/people/users" />
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
@@ -80,14 +80,14 @@ export function UserDetailPage({ userId }: UserDetailPageProps) {
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-border px-6">
-        <div className="flex gap-0">
+      <div className="border-b border-border px-4 sm:px-6">
+        <div className="flex gap-0 overflow-x-auto">
           {USER_TABS.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={cn(
-                'px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px',
+                'px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap shrink-0',
                 activeTab === tab
                   ? 'border-primary text-primary'
                   : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
@@ -100,7 +100,7 @@ export function UserDetailPage({ userId }: UserDetailPageProps) {
       </div>
 
       {/* Tab content */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-4 sm:p-6">
         {activeTab === 'General Details' && <GeneralDetailsTab user={user} />}
         {activeTab === 'Notifications' && <PlaceholderTab label="Notifications" />}
         {activeTab === 'Team Management' && <PlaceholderTab label="Team Management" />}

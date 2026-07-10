@@ -93,6 +93,13 @@
   --chart-3: #8b5cf6;
   --chart-4: #3b82f6;
   --chart-5: #f59e0b;
+  /* Status roles for data-viz (fixed semantics, themed for the surface).
+     Shipped with icon/label always, never colour-alone. Light steps validated
+     against the white card surface (emerald/amber/red 600). */
+  --status-good: #059669;
+  --status-warning: #d97706;
+  --status-critical: #dc2626;
+  --status-neutral: #64748b;
   --sidebar: #ffffff;
   --sidebar-foreground: #0f172a;
   --sidebar-primary: #ea580c;
@@ -138,6 +145,11 @@
   --chart-3: #a78bfa;
   --chart-4: #60a5fa;
   --chart-5: #fbbf24;
+  /* Status roles — lighter steps so marks clear 3:1 on the dark card surface. */
+  --status-good: #34d399;
+  --status-warning: #fbbf24;
+  --status-critical: #f87171;
+  --status-neutral: #94a3b8;
   --sidebar: #1e293b;
   --sidebar-foreground: #f8fafc;
   --sidebar-primary: #ea580c;

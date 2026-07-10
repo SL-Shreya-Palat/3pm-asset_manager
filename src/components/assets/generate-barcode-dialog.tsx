@@ -39,6 +39,11 @@ interface GenerateBarcodeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   items: BarcodeItem[];
+  /**
+   * Route prefix for scan-to-open QR labels (e.g. "/assets" → QR encodes
+   * `${origin}/assets/{id}`). Omit to hide the app-link option.
+   */
+  appLinkBase?: string;
 }
 
 /* ── Radio option sub-component ───────────────────────────────────── */
@@ -111,6 +116,7 @@ export function GenerateBarcodeDialog({
   open,
   onOpenChange,
   items,
+  appLinkBase,
 }: GenerateBarcodeDialogProps) {
   const [barcodeType, setBarcodeType] = useState<BarcodeType>('barcode');
   const [labelQuantity, setLabelQuantity] = useState(1);
@@ -123,7 +129,10 @@ export function GenerateBarcodeDialog({
     if (!open || items.length === 0) return;
     let cancelled = false;
 
-    const text = items[0].code || items[0].name;
+    const text =
+      barcodeType === 'applink' && appLinkBase
+        ? `${window.location.origin}${appLinkBase}/${items[0].id}`
+        : items[0].code || items[0].name;
 
     setPreviewUrl(null);
     generatePreviewDataUrl(text, barcodeType).then((url) => {
@@ -133,7 +142,7 @@ export function GenerateBarcodeDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, barcodeType, items]);
+  }, [open, barcodeType, items, appLinkBase]);
 
   const handleDownload = async () => {
     setGenerating(true);
@@ -147,6 +156,9 @@ export function GenerateBarcodeDialog({
         barcodeType,
         labelQuantity,
         labelSize,
+        appLink: appLinkBase
+          ? (id) => `${window.location.origin}${appLinkBase}/${id}`
+          : undefined,
       });
 
       const url = URL.createObjectURL(blob);
@@ -185,17 +197,27 @@ export function GenerateBarcodeDialog({
             {/* Bar code type */}
             <div>
               <Label>Bar code type</Label>
-              <div className="flex gap-3 mt-2">
-                <RadioOption
-                  selected={barcodeType === 'barcode'}
-                  onClick={() => setBarcodeType('barcode')}
-                  label="Bar code"
-                />
-                <RadioOption
-                  selected={barcodeType === 'qrcode'}
-                  onClick={() => setBarcodeType('qrcode')}
-                  label="QR code"
-                />
+              <div className="flex flex-col gap-2 mt-2">
+                <div className="flex gap-3">
+                  <RadioOption
+                    selected={barcodeType === 'barcode'}
+                    onClick={() => setBarcodeType('barcode')}
+                    label="Bar code"
+                  />
+                  <RadioOption
+                    selected={barcodeType === 'qrcode'}
+                    onClick={() => setBarcodeType('qrcode')}
+                    label="QR code"
+                  />
+                </div>
+                {appLinkBase && (
+                  <RadioOption
+                    selected={barcodeType === 'applink'}
+                    onClick={() => setBarcodeType('applink')}
+                    label="Scan-to-open QR"
+                    description="Scanning with a phone camera opens the asset in 3PM Drive — drivers can start an inspection on the spot"
+                  />
+                )}
               </div>
             </div>
 

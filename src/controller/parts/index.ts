@@ -29,10 +29,19 @@ export async function getAllParts(
   const filter: Record<string, unknown> = {
     tenantId: ObjectId.createFromHexString(tenantId),
   };
+  const and: Record<string, unknown>[] = [];
 
-  // "OWN" view scope — only show records created by this user
+  // "OWN" view scope — only show records created by this user, BUT always
+  // include Command-imported master data. Imported stock isn't "owned" by any
+  // single AM user (its createdBy is whoever first triggered the auto-sync), so
+  // scoping it by createdBy would hide all Command stock from OWN-scoped users.
   if (options.createdBy) {
-    filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+    and.push({
+      $or: [
+        { createdBy: ObjectId.createFromHexString(options.createdBy) },
+        { source: 'command' },
+      ],
+    });
   }
 
   if (options.showArchived) {
@@ -43,16 +52,20 @@ export async function getAllParts(
 
   if (options.search) {
     const regex = { $regex: options.search, $options: 'i' };
-    filter.$or = [
-      { name: regex },
-      { partNumber: regex },
-      { description: regex },
-    ];
+    and.push({
+      $or: [
+        { name: regex },
+        { partNumber: regex },
+        { description: regex },
+      ],
+    });
   }
 
   if (options.categoryId) {
     filter.categoryId = ObjectId.createFromHexString(options.categoryId);
   }
+
+  if (and.length > 0) filter.$and = and;
 
   const [items, total] = await Promise.all([
     collection.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray(),

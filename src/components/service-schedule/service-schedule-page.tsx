@@ -294,8 +294,8 @@ export function ServiceSchedulePage() {
       <PageHeader title="Asset Service Schedule" description="View upcoming and overdue service tasks for each asset" count={pagination.total} />
 
       {/* Status Tabs */}
-      <div className="px-6 pb-3">
-        <div className="flex items-center gap-1">
+      <div className="px-4 pb-3 sm:px-6">
+        <div className="flex flex-wrap items-center gap-1">
           {STATUS_TABS.map((tab) => {
             const isActive = activeTab === tab.key;
             const count = tabCounts[tab.key] || 0;
@@ -334,7 +334,7 @@ export function ServiceSchedulePage() {
       </div>
 
       {/* Toolbar + Table */}
-      <div className="flex-1 overflow-auto px-6 pb-6">
+      <div className="flex-1 overflow-auto px-4 pb-6 sm:px-6">
         <DataTableToolbar
           columns={columns}
           hiddenColumnKeys={hiddenColumnKeys}

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Offline — 3PM Drive</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #fff;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      text-align: center;
+    }
+    .brand {
+      width: 56px;
+      height: 56px;
+      border-radius: 12px;
+      background: #ea580c;
+      color: #fff;
+      font-weight: 700;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 16px;
+    }
+    h1 { font-size: 18px; margin: 0 0 8px; }
+    p { font-size: 14px; color: #64748b; margin: 0 0 20px; }
+    button {
+      background: #ea580c;
+      color: #fff;
+      border: 0;
+      border-radius: 6px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div>
+    <div class="brand">3PM</div>
+    <h1>You&rsquo;re offline</h1>
+    <p>Reconnect to the internet to continue your inspection.</p>
+    <button onclick="location.reload()">Try again</button>
+  </div>
+</body>
+</html>

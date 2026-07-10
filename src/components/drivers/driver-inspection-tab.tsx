@@ -9,6 +9,7 @@ import {
   User,
   ChevronDown,
   ChevronUp,
+  CalendarClock,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
@@ -89,20 +90,88 @@ const RESULT_CONFIG = {
   },
 };
 
+// ── Schedule status ───────────────────────────────────────────────────────
+
+interface InspectionStatusInfo {
+  enabled: boolean;
+  status: 'disabled' | 'up_to_date' | 'due' | 'overdue';
+  frequency: 'daily' | 'weekly' | 'monthly';
+  formTitle: string | null;
+  lastCompletedAt: string | null;
+  nextDueAt: string | null;
+}
+
+const FREQ_LABEL: Record<InspectionStatusInfo['frequency'], string> = {
+  daily: 'daily',
+  weekly: 'weekly',
+  monthly: 'monthly',
+};
+
+const STATUS_CONFIG: Record<
+  'up_to_date' | 'due' | 'overdue',
+  { label: string; variant: 'success' | 'warning' | 'destructive'; badgeClass: string }
+> = {
+  up_to_date: { label: 'Up to date', variant: 'success', badgeClass: 'bg-green-100 text-green-700' },
+  due: { label: 'Due', variant: 'warning', badgeClass: 'bg-amber-100 text-amber-700' },
+  overdue: { label: 'Overdue', variant: 'destructive', badgeClass: 'bg-red-100 text-red-700' },
+};
+
+function ScheduleStatusBanner({ status }: { status: InspectionStatusInfo }) {
+  if (!status.enabled || status.status === 'disabled') return null;
+  const cfg = STATUS_CONFIG[status.status];
+
+  return (
+    <div className="rounded-xl border bg-card p-4 shadow-sm">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', cfg.badgeClass)}>
+          <CalendarClock className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-foreground">
+              {status.formTitle || 'Driver inspection'}
+            </span>
+            <Badge variant={cfg.variant}>{cfg.label}</Badge>
+            <span className="text-xs text-muted-foreground">Required {FREQ_LABEL[status.frequency]}</span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <span>
+              Last completed:{' '}
+              <span className="text-foreground">
+                {status.lastCompletedAt ? formatDate(status.lastCompletedAt) : 'Never'}
+              </span>
+            </span>
+            {status.nextDueAt && (
+              <span>
+                Next due: <span className="text-foreground">{formatDate(status.nextDueAt)}</span>
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Component ───────────────────────────────────────────────────────────────
 
 export function DriverInspectionTab({ driverId }: { driverId: string }) {
   const [submissions, setSubmissions] = useState<InspectionSubmission[]>([]);
+  const [status, setStatus] = useState<InspectionStatusInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const fetchSubmissions = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`/api/drivers/${driverId}/wellness-checks?limit=50`, {
-        withCredentials: true,
-      });
-      setSubmissions(res.data.data?.items || []);
+      const [subsRes, statusRes] = await Promise.all([
+        axios.get(`/api/drivers/${driverId}/wellness-checks?limit=50`, { withCredentials: true }),
+        axios
+          .get(`/api/drivers/${driverId}/inspection-status`, { withCredentials: true })
+          .catch(() => null),
+      ]);
+      setSubmissions(subsRes.data.data?.items || []);
+      setStatus((statusRes?.data?.data as InspectionStatusInfo) ?? null);
     } catch {
       setSubmissions([]);
     } finally {
@@ -110,9 +179,11 @@ export function DriverInspectionTab({ driverId }: { driverId: string }) {
     }
   }, [driverId]);
 
+  // Defer so setState isn't called synchronously inside the effect body.
   useEffect(() => {
-    fetchSubmissions();
-  }, [fetchSubmissions]);
+    const t = setTimeout(() => fetchData(), 0);
+    return () => clearTimeout(t);
+  }, [fetchData]);
 
   if (loading) {
     return (
@@ -122,22 +193,28 @@ export function DriverInspectionTab({ driverId }: { driverId: string }) {
     );
   }
 
+  const banner = status ? <ScheduleStatusBanner status={status} /> : null;
+
   if (submissions.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed bg-card py-16 text-center">
-        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-muted-foreground">
-          <CheckCircle2 className="h-7 w-7" />
-        </span>
-        <p className="mt-4 text-base font-semibold text-foreground">No inspections yet</p>
-        <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-          Inspection results will appear here after a driver completes an inspection form.
-        </p>
+      <div className="space-y-4">
+        {banner}
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed bg-card py-16 text-center">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <CheckCircle2 className="h-7 w-7" />
+          </span>
+          <p className="mt-4 text-base font-semibold text-foreground">No inspections yet</p>
+          <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+            Inspection results will appear here after a driver completes an inspection form.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
+      {banner}
       {submissions.map((sub) => {
         const config = RESULT_CONFIG[sub.result] || RESULT_CONFIG.pass;
         const Icon = config.icon;

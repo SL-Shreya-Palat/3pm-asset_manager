@@ -1615,7 +1615,7 @@ export function TeamPage() {
   return (
     <div className="flex h-full">
       {/* Left Sidebar */}
-      <div className="w-[280px] border-r border-border bg-card flex flex-col">
+      <div className="w-36 shrink-0 border-r border-border bg-card flex flex-col sm:w-[280px]">
         <div className="p-4 border-b border-border">
           <h2 className="text-lg font-semibold text-foreground mb-3">Teams</h2>
           <SearchInput
@@ -1671,14 +1671,14 @@ export function TeamPage() {
 
         {/* Tabs - only shown when a specific team is selected */}
         {selectedTeamId && (
-          <div className="border-b border-border px-6">
-            <div className="flex gap-0">
+          <div className="border-b border-border px-4 sm:px-6">
+            <div className="flex gap-0 overflow-x-auto">
               {TEAM_TABS.map((tab) => (
                 <button
                   key={tab}
                   onClick={() => { setActiveTab(tab); setTabSearch(''); }}
                   className={cn(
-                    'px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px',
+                    'px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap shrink-0',
                     activeTab === tab
                       ? 'border-primary text-primary'
                       : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border',
@@ -1691,7 +1691,7 @@ export function TeamPage() {
           </div>
         )}
 
-        <div className="flex-1 overflow-auto p-6">
+        <div className="flex-1 overflow-auto p-4 sm:p-6">
           {/* All Teams view - no tabs, just the teams table */}
           {!selectedTeamId && (
             <>

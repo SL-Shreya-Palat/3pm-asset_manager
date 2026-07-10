@@ -4,7 +4,9 @@
  * Exception Report — a Whip Around-style COMPLIANCE CALENDAR. Rows are
  * asset × form; columns are days across the selected range. Each cell shows the
  * inspection status for that asset/form on that day and opens a popup with the
- * follow-up actions (Contact driver / Create reminder / View inspection).
+ * available actions (View inspection / View asset). Actions are limited to the
+ * ones that are fully wired end-to-end — placeholder "coming soon" items are not
+ * shown.
  *
  * The grid is computed on the fly by /api/exception-report from inspection
  * submissions — only "inspected"/"exception" cells come from the server; the
@@ -13,7 +15,7 @@
  * Controls mirror the spec: date range, form + team pickers, row-size, and a
  * "Reminders only" toggle that hides rows with nothing to action.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
 import { format, parseISO, subDays } from 'date-fns';
@@ -23,8 +25,6 @@ import {
   ChevronDown,
   Truck,
   ClipboardList,
-  Phone,
-  BellPlus,
   FileText,
   ArrowUpRight,
   CheckCircle2,
@@ -45,6 +45,7 @@ import {
 } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-is-mobile';
 import { useSyncSubmissions } from '@/hooks/use-sync-submissions';
 import { InspectionDetailDialog } from '@/components/inspections/inspection-history';
 import type {
@@ -60,8 +61,12 @@ const SIZE: Record<RowSize, { col: number; cell: string; pad: string; text: stri
   medium: { col: 46, cell: 'h-7', pad: 'py-2', text: 'text-[13px]' },
   small: { col: 38, cell: 'h-5', pad: 'py-1', text: 'text-xs' },
 };
+// Frozen (sticky) label-column widths. Narrower on phones so the day cells stay
+// visible without scrolling past a wall of frozen columns.
 const ASSET_COL = 190;
 const FORM_COL = 230;
+const ASSET_COL_MOBILE = 116;
+const FORM_COL_MOBILE = 128;
 
 // ── Cell appearance + labels ────────────────────────────────────────────────
 const CELL_CLASS: Record<CellStatus, string> = {
@@ -133,7 +138,6 @@ export function ExceptionReport() {
 
   const [active, setActive] = useState<ActiveCell | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
-  const { toasts, push } = useToasts();
 
   // Picker sources (once).
   useEffect(() => {
@@ -188,14 +192,6 @@ export function ExceptionReport() {
     setActive({ ...a, rect: { left: r.left, top: r.top, width: r.width, height: r.height } });
   };
 
-  const onContactDriver = (a: ActiveCell) => {
-    setActive(null);
-    push(`Contact driver about "${a.formTitle}" on ${format(parseISO(a.day), 'MMM d')} — driver messaging is coming soon.`);
-  };
-  const onCreateReminder = (a: ActiveCell) => {
-    setActive(null);
-    push(`Reminder noted for ${a.assetName} · ${a.formTitle} — scheduled reminders are coming soon.`);
-  };
   const onViewInspection = (a: ActiveCell) => {
     setActive(null);
     if (a.cell?.submissionId) setDetailId(a.cell.submissionId);
@@ -213,7 +209,7 @@ export function ExceptionReport() {
       />
 
       {/* Controls */}
-      <div className="flex flex-wrap items-center gap-3 px-6 pb-4">
+      <div className="flex flex-wrap items-center gap-3 px-4 pb-4 sm:px-6">
         <DateRangeButton range={range} onChange={setRange} />
         <MultiSelectButton
           icon={ClipboardList}
@@ -241,7 +237,7 @@ export function ExceptionReport() {
       </div>
 
       {/* Grid */}
-      <div className="flex-1 overflow-hidden px-6 pb-8">
+      <div className="flex-1 overflow-hidden px-4 pb-8 sm:px-6">
         {loading ? (
           <GridSkeleton />
         ) : !data || data.assets.length === 0 || data.days.length === 0 ? (
@@ -274,8 +270,6 @@ export function ExceptionReport() {
           {active && (
             <CellMenu
               active={active}
-              onContactDriver={onContactDriver}
-              onCreateReminder={onCreateReminder}
               onViewInspection={onViewInspection}
               onViewAsset={onViewAsset}
             />
@@ -285,19 +279,6 @@ export function ExceptionReport() {
 
       {/* Inspection detail (reused from Inspection History) */}
       <InspectionDetailDialog id={detailId} onClose={() => setDetailId(null)} />
-
-      {/* Toasts */}
-      <div className="pointer-events-none fixed bottom-6 right-6 z-60 flex w-80 flex-col gap-2">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className="pointer-events-auto flex items-start gap-2 rounded-md border bg-card px-3 py-2.5 text-sm shadow-lg"
-          >
-            <BellPlus className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-            <span className="flex-1 text-foreground">{t.message}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -316,6 +297,9 @@ function Grid({
 }) {
   const s = SIZE[rowSize];
   const todayIdx = data.days.indexOf(data.today);
+  const isMobile = useIsMobile();
+  const assetCol = isMobile ? ASSET_COL_MOBILE : ASSET_COL;
+  const formCol = isMobile ? FORM_COL_MOBILE : FORM_COL;
 
   // Reminders-only: keep only rows (asset/form) that have something to action.
   const rows = useMemo(() => {
@@ -360,8 +344,8 @@ function Grid({
       <div className="min-h-0 flex-1 overflow-auto rounded-xl border bg-card">
         <table className="w-max table-fixed border-separate border-spacing-0">
           <colgroup>
-            <col style={{ width: ASSET_COL }} />
-            <col style={{ width: FORM_COL }} />
+            <col style={{ width: assetCol }} />
+            <col style={{ width: formCol }} />
             {data.days.map((d) => (
               <col key={d} style={{ width: s.col }} />
             ))}
@@ -371,7 +355,7 @@ function Grid({
           <thead>
             <tr>
               <th
-                className="sticky left-0 top-0 z-30 border-b border-r bg-card px-4 py-3 text-left"
+                className="sticky left-0 top-0 z-30 border-b border-r bg-card px-2.5 py-3 text-left sm:px-4"
                 style={{ left: 0 }}
               >
                 <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
@@ -379,8 +363,8 @@ function Grid({
                 </span>
               </th>
               <th
-                className="sticky top-0 z-30 border-b border-r bg-card px-4 py-3 text-left"
-                style={{ left: ASSET_COL }}
+                className="sticky top-0 z-30 border-b border-r bg-card px-2.5 py-3 text-left sm:px-4"
+                style={{ left: assetCol }}
               >
                 <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
                   <ClipboardList className="h-4 w-4 text-muted-foreground" /> Forms
@@ -433,7 +417,7 @@ function Grid({
                   {fi === 0 && (
                     <td
                       rowSpan={forms.length}
-                      className="sticky left-0 z-10 border-b border-r bg-card px-4 align-top"
+                      className="sticky left-0 z-10 border-b border-r bg-card px-2.5 align-top sm:px-4"
                       style={{ left: 0 }}
                     >
                       <div className={cn('font-semibold text-foreground', s.pad, s.text)}>
@@ -447,8 +431,8 @@ function Grid({
                     </td>
                   )}
                   <td
-                    className="sticky z-10 border-b border-r bg-card px-4"
-                    style={{ left: ASSET_COL }}
+                    className="sticky z-10 border-b border-r bg-card px-2.5 sm:px-4"
+                    style={{ left: assetCol }}
                   >
                     <div className={cn('truncate text-muted-foreground', s.pad, s.text)}>
                       {form.formTitle}
@@ -523,19 +507,14 @@ function LegendDot({ className, label }: { className: string; label: string }) {
 // ── Cell popup menu ────────────────────────────────────────────────────────────
 function CellMenu({
   active,
-  onContactDriver,
-  onCreateReminder,
   onViewInspection,
   onViewAsset,
 }: {
   active: ActiveCell;
-  onContactDriver: (a: ActiveCell) => void;
-  onCreateReminder: (a: ActiveCell) => void;
   onViewInspection: (a: ActiveCell) => void;
   onViewAsset: (a: ActiveCell) => void;
 }) {
   const hasSubmission = !!active.cell;
-  const needsAction = active.status === 'missed' || active.status === 'due' || active.status === 'exception';
 
   return (
     <div className="py-1.5">
@@ -557,12 +536,6 @@ function CellMenu({
       <div className="my-1 h-px bg-border" />
       {hasSubmission && (
         <MenuItem icon={FileText} label="View inspection" onClick={() => onViewInspection(active)} />
-      )}
-      {needsAction && (
-        <>
-          <MenuItem icon={Phone} label="Contact driver" onClick={() => onContactDriver(active)} />
-          <MenuItem icon={BellPlus} label="Create reminder" onClick={() => onCreateReminder(active)} />
-        </>
       )}
       <MenuItem icon={ArrowUpRight} label="View asset" onClick={() => onViewAsset(active)} />
     </div>
@@ -754,22 +727,6 @@ function Switch({
       </button>
     </label>
   );
-}
-
-// ── Toasts (lightweight, no dependency) ────────────────────────────────────────
-interface Toast {
-  id: number;
-  message: string;
-}
-function useToasts() {
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const idRef = useRef(0);
-  const push = useCallback((message: string) => {
-    const id = ++idRef.current;
-    setToasts((t) => [...t, { id, message }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4000);
-  }, []);
-  return { toasts, push };
 }
 
 // ── States ─────────────────────────────────────────────────────────────────────

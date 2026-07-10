@@ -35,7 +35,29 @@ export async function ensureFreshFromCommand(
   try {
     const authTenantId = await getEnabledConnectionAuthTenantId(tenantId);
     if (!authTenantId) return; // standalone / not configured / disabled
-    await importFromCommand(tenantId, userId ?? '', authTenantId, [entity]);
+    const { summary, errors } = await importFromCommand(
+      tenantId,
+      userId ?? '',
+      authTenantId,
+      [entity],
+    );
+    // importFromCommand catches per-entity failures INTERNALLY and returns them
+    // here — surface them, otherwise a failed suppliers/stock sync silently
+    // leaves the list empty with no trace (the exact "records not importing"
+    // symptom is invisible without this log).
+    if (errors[entity]) {
+      console.error(`[command-auto-sync] ${entity} import failed:`, errors[entity]);
+    } else {
+      const c = summary[entity];
+      if (c && c.created === 0 && c.updated === 0 && c.skipped === 0) {
+        // Fetched OK but nothing landed — e.g. no contacts flagged
+        // roles.isSupplier, or an empty Command list. Flag it so this doesn't
+        // read as a silent success.
+        console.warn(
+          `[command-auto-sync] ${entity}: Command returned no importable records (check roles/filters/connection).`,
+        );
+      }
+    }
   } catch (e) {
     console.error('[command-auto-sync] refresh failed for', entity, e);
   }

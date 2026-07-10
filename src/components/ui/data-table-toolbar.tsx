@@ -67,7 +67,7 @@ export function DataTableToolbar<T>({
   const hasFilters = filterDefs && filterDefs.length > 0;
 
   return (
-    <div className="flex items-center gap-2 pt-1 mb-3">
+    <div className="flex flex-wrap items-center gap-2 pt-1 mb-3">
       {/* Extra actions */}
       {actions}
 

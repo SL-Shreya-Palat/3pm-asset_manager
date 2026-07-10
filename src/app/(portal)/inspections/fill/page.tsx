@@ -62,7 +62,7 @@ function FillInner() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-6 pt-6 pb-3 flex items-center gap-3">
+      <div className="px-4 pt-4 md:px-6 md:pt-6 pb-3 flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={() => router.push(backPath)}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
@@ -83,9 +83,9 @@ function FillInner() {
       ) : (
         <iframe
           src={`${FORM_BUILDER_URL}/embed/forms/${formId}?sessionId=${sessionId}`}
-          className="w-full h-[calc(100vh-120px)] border-0"
+          className="w-full flex-1 min-h-0 border-0"
           title="Inspection form"
-          allow="clipboard-write"
+          allow="clipboard-write; camera"
         />
       )}
     </div>

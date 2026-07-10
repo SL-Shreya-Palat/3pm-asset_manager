@@ -304,6 +304,41 @@ export async function getAssetSummary(tenantId: string) {
   return { total, inService, outOfService, nonCompliant };
 }
 
+/**
+ * Fleet-wide compliance breakdown for the dashboard donut. Reuses the exact
+ * worst-case logic (`computeComplianceStatusMap`) behind the assets list and
+ * summary, so counts always match those views. `untracked` = active assets with
+ * no expiry-bearing document.
+ */
+export async function getComplianceBreakdown(tenantId: string) {
+  const collection = await getAssetsCollection();
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+  const activeFilter = { tenantId: tenantOid, isArchived: { $ne: true } };
+
+  const activeIds = await collection
+    .find(activeFilter, { projection: { _id: 1 } })
+    .toArray();
+  const total = activeIds.length;
+
+  const complianceMap = await computeComplianceStatusMap(
+    tenantOid,
+    activeIds.map((a) => a._id as ObjectId),
+  );
+
+  let valid = 0;
+  let expiringSoon = 0;
+  let expired = 0;
+  for (const status of complianceMap.values()) {
+    if (status === "valid") valid++;
+    else if (status === "expiring_soon") expiringSoon++;
+    else if (status === "expired") expired++;
+  }
+  // Assets with no tracked (expiry-bearing) document at all.
+  const untracked = total - complianceMap.size;
+
+  return { total, valid, expiringSoon, expired, untracked };
+}
+
 /** Get a single asset by ID. */
 export async function getAssetById(
   tenantId: string,

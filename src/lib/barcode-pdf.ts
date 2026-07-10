@@ -11,7 +11,8 @@ import QRCode from 'qrcode';
 /* ── Types ────────────────────────────────────────────────────────── */
 
 export type LabelSize = 'small' | 'large';
-export type BarcodeType = 'barcode' | 'qrcode';
+/** 'applink' = QR encoding a URL that opens the asset in the app (PWA). */
+export type BarcodeType = 'barcode' | 'qrcode' | 'applink';
 
 interface LabelFormat {
   name: string;
@@ -32,6 +33,8 @@ export interface GeneratePDFOptions {
   barcodeType: BarcodeType;
   labelQuantity: number;
   labelSize: LabelSize;
+  /** Builds the URL a scan opens — required when barcodeType is 'applink'. */
+  appLink?: (id: string) => string;
 }
 
 /* ── Label format constants (US Letter 8.5" x 11") ───────────────── */
@@ -115,16 +118,19 @@ export async function generatePreviewDataUrl(
 /* ── Full PDF generation ──────────────────────────────────────────── */
 
 export async function generateLabelsPDF(options: GeneratePDFOptions): Promise<Blob> {
-  const { assets, barcodeType, labelQuantity, labelSize } = options;
+  const { assets, barcodeType, labelQuantity, labelSize, appLink } = options;
   const format = LABEL_FORMATS[labelSize];
   const doc = new jsPDF({ unit: 'in', format: 'letter', orientation: 'portrait' });
 
-  // Build flat list of labels (each asset repeated labelQuantity times)
-  const labels: { text: string }[] = [];
+  // Build flat list of labels (each asset repeated labelQuantity times).
+  // `value` is what the code encodes; `caption` is the printed text below it.
+  const labels: { value: string; caption: string }[] = [];
   for (const asset of assets) {
-    const text = asset.assetNumber || asset.name;
+    const caption = asset.assetNumber || asset.name;
+    const value =
+      barcodeType === 'applink' && appLink ? appLink(asset.id) : caption;
     for (let i = 0; i < labelQuantity; i++) {
-      labels.push({ text });
+      labels.push({ value, caption });
     }
   }
 
@@ -143,7 +149,7 @@ export async function generateLabelsPDF(options: GeneratePDFOptions): Promise<Bl
     const x = format.marginLeft + col * (format.labelWidth + format.gapX);
     const y = format.marginTop + row * (format.labelHeight + format.gapY);
 
-    const labelText = labels[i].text;
+    const { value: labelValue, caption: labelText } = labels[i];
     const padding = 0.08;
     const availWidth = format.labelWidth - padding * 2;
     const availHeight = format.labelHeight - padding * 2;
@@ -154,7 +160,7 @@ export async function generateLabelsPDF(options: GeneratePDFOptions): Promise<Bl
     let imgDataUrl: string;
 
     if (barcodeType === 'barcode') {
-      imgDataUrl = generateBarcodeDataUrl(labelText, 300, 80);
+      imgDataUrl = generateBarcodeDataUrl(labelValue, 300, 80);
       const barcodeWidth = Math.min(availWidth * 0.9, availWidth);
       const barcodeHeight = Math.min(imgAreaHeight * 0.65, imgAreaHeight);
       const imgX = x + padding + (availWidth - barcodeWidth) / 2;
@@ -162,7 +168,7 @@ export async function generateLabelsPDF(options: GeneratePDFOptions): Promise<Bl
       doc.addImage(imgDataUrl, 'PNG', imgX, imgY, barcodeWidth, barcodeHeight);
     } else {
       const qrSize = Math.min(imgAreaHeight * 0.85, availWidth * 0.45);
-      imgDataUrl = await generateQRCodeDataUrl(labelText, 200);
+      imgDataUrl = await generateQRCodeDataUrl(labelValue, 200);
       const imgX = x + padding + (availWidth - qrSize) / 2;
       const imgY = y + padding + (imgAreaHeight - qrSize) / 2;
       doc.addImage(imgDataUrl, 'PNG', imgX, imgY, qrSize, qrSize);

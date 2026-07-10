@@ -219,7 +219,7 @@ export function UsersPage() {
       </PageHeader>
 
       {/* Show Archived Toggle + Search */}
-      <div className="px-6 pb-4 flex items-center gap-4">
+      <div className="px-4 pb-4 flex flex-wrap items-center gap-4 sm:px-6">
         <SearchInput
           value={search}
           onChange={setSearch}
@@ -230,7 +230,7 @@ export function UsersPage() {
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto px-6 pb-6">
+      <div className="flex-1 overflow-auto px-4 pb-6 sm:px-6">
         <DataTable<UserRow>
           columns={userColumns}
           data={users}
