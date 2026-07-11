@@ -9,8 +9,10 @@ import { getDashboardSummary } from "@/controller/dashboard";
 export async function GET(request: NextRequest) {
   const auth = await authorize(request, "assets.assets.asset", "view");
   if (!auth.ok) return auth.res;
-  const { user } = auth.ctx;
+  const { user, teamIds } = auth.ctx;
 
-  const result = await getDashboardSummary(user.currentTenantId!);
+  const result = await getDashboardSummary(user.currentTenantId!, {
+    teamIds: teamIds ?? undefined,
+  });
   return NextResponse.json({ data: result, error: null });
 }

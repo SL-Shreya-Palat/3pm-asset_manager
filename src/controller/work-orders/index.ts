@@ -261,7 +261,7 @@ export async function createWorkOrder(
   let source: string = input.source || 'manual';
   if (faultOids.length > 0 && source !== 'defect') source = 'fault';
   else if (defectOids.length > 0) source = 'defect';
-  if (!['manual', 'defect', 'fault'].includes(source)) source = 'manual';
+  if (!['manual', 'defect', 'fault', 'service'].includes(source)) source = 'manual';
 
   // Parts → denormalized lines + total (local stock deducted after insert;
   // Command stock lines are pushed to Command at completion, not here).

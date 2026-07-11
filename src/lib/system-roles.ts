@@ -37,6 +37,17 @@ function viewOnlyGrant(formId: string): SparseFormGrant {
   return { id: formId, v: 'ALL', c: false, e: false };
 }
 
+/**
+ * View + edit, no create/archive. Used for Team Manager on `people.teams.team`:
+ * they may edit their own teams' membership/details (the /api/teams/:id/users
+ * routes require the `edit` action and are already gated by `inTeamScope`, so
+ * this can't reach teams they don't belong to) but cannot spin up new teams or
+ * delete existing ones — those stay a company-admin action.
+ */
+function viewEditGrant(formId: string): SparseFormGrant {
+  return { id: formId, v: 'ALL', c: false, e: 'ALL' };
+}
+
 /** Build a form grant with view-only access + OWN inspect (for drivers). */
 function viewOnlyWithOwnInspect(formId: string): SparseFormGrant {
   return { id: formId, v: 'ALL', c: false, e: false, ins: 'OWN' };
@@ -188,7 +199,7 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
         fullGrant('maintenance.defects.defect'),
         fullGrant('maintenance.faults.fault'),
         fullGrant('maintenance.workOrders.workOrder'),
-        viewOnlyGrant('people.teams.team'),
+        viewEditGrant('people.teams.team'),
         fullGrant('people.drivers.driver'),
       ],
       m: ['assets', 'inspections', 'maintenance', 'people'],
@@ -346,6 +357,30 @@ const LEGACY_SEED_PERMISSIONS: Record<string, SparsePermissions[]> = {
       'inspections.inspectionHistory',
       'maintenance.defects',
       'maintenance.workOrders',
+      'people.drivers',
+    ],
+  }, {
+    // Shape shipped between the 2026-07-10 RBAC pass and the teams-edit fix:
+    // had faults + view-only teams. Heal it to the current def (teams view+edit)
+    // so an existing Team Manager can administer their own team's membership.
+    v: 2,
+    forms: [
+      fullGrantWithInspect('assets.assets.asset'),
+      viewOnlyGrant('inspections.inspectionHistory.inspection'),
+      fullGrant('maintenance.defects.defect'),
+      fullGrant('maintenance.faults.fault'),
+      fullGrant('maintenance.workOrders.workOrder'),
+      viewOnlyGrant('people.teams.team'),
+      fullGrant('people.drivers.driver'),
+    ],
+    m: ['assets', 'inspections', 'maintenance', 'people'],
+    sm: [
+      'assets.assets',
+      'inspections.inspectionHistory',
+      'maintenance.defects',
+      'maintenance.faults',
+      'maintenance.workOrders',
+      'people.teams',
       'people.drivers',
     ],
   }],

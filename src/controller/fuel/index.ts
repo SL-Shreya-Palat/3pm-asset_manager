@@ -27,6 +27,12 @@ export async function getAllFuelTransactions(
     endDate?: string;
     showArchived?: boolean;
     createdBy?: string;
+    /**
+     * Team scope for team-scoped roles. Fuel docs carry no teamIds of their own,
+     * so we scope by the asset: only transactions for assets in these teams are
+     * visible. Empty array = no teams = sees nothing. `undefined` = unrestricted.
+     */
+    teamIds?: string[];
   },
 ) {
   const collection = await getFuelTransactionsCollection();
@@ -48,8 +54,35 @@ export async function getAllFuelTransactions(
     filter.createdBy = ObjectId.createFromHexString(options.createdBy);
   }
 
+  // Resolve the assets the caller's teams own; fuel is scoped through the asset.
+  let teamAssetOids: ObjectId[] | null = null;
+  if (options.teamIds) {
+    const teamOids = options.teamIds
+      .filter((id) => ObjectId.isValid(id))
+      .map((id) => ObjectId.createFromHexString(id));
+    const assetsCol = await getAssetsCollection();
+    const teamAssets = teamOids.length > 0
+      ? await assetsCol
+          .find(
+            { tenantId: ObjectId.createFromHexString(tenantId), teamIds: { $in: teamOids } },
+            { projection: { _id: 1 } },
+          )
+          .toArray()
+      : [];
+    teamAssetOids = teamAssets.map((a) => a._id);
+  }
+
   if (options.assetId) {
-    filter.assetId = ObjectId.createFromHexString(options.assetId);
+    const explicit = ObjectId.createFromHexString(options.assetId);
+    // Compose with team scope: an explicit asset outside the caller's teams
+    // resolves to an impossible filter (empty result), never a leak.
+    if (teamAssetOids && !teamAssetOids.some((id) => id.equals(explicit))) {
+      filter.assetId = { $in: [] as ObjectId[] };
+    } else {
+      filter.assetId = explicit;
+    }
+  } else if (teamAssetOids) {
+    filter.assetId = { $in: teamAssetOids };
   }
 
   if (options.driverId) {
@@ -298,6 +331,8 @@ export async function getFuelAnalytics(
     assetId?: string;
     startDate?: string;
     endDate?: string;
+    /** Team scope — fuel is scoped through the asset (fuel docs carry no teamIds). */
+    teamIds?: string[];
   },
 ) {
   const collection = await getFuelTransactionsCollection();
@@ -307,8 +342,33 @@ export async function getFuelAnalytics(
     isArchived: { $ne: true },
   };
 
+  // Resolve the assets the caller's teams own; scope fuel through the asset.
+  let teamAssetOids: ObjectId[] | null = null;
+  if (options.teamIds) {
+    const teamOids = options.teamIds
+      .filter((id) => ObjectId.isValid(id))
+      .map((id) => ObjectId.createFromHexString(id));
+    const assetsCol = await getAssetsCollection();
+    const teamAssets = teamOids.length > 0
+      ? await assetsCol
+          .find(
+            { tenantId: ObjectId.createFromHexString(tenantId), teamIds: { $in: teamOids } },
+            { projection: { _id: 1 } },
+          )
+          .toArray()
+      : [];
+    teamAssetOids = teamAssets.map((a) => a._id);
+  }
+
   if (options.assetId) {
-    matchFilter.assetId = ObjectId.createFromHexString(options.assetId);
+    const explicit = ObjectId.createFromHexString(options.assetId);
+    if (teamAssetOids && !teamAssetOids.some((id) => id.equals(explicit))) {
+      matchFilter.assetId = { $in: [] as ObjectId[] };
+    } else {
+      matchFilter.assetId = explicit;
+    }
+  } else if (teamAssetOids) {
+    matchFilter.assetId = { $in: teamAssetOids };
   }
 
   if (options.startDate || options.endDate) {

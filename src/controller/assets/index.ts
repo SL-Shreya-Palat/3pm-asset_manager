@@ -293,10 +293,15 @@ export async function getAllAssets(
 }
 
 /** Fleet-wide summary counts for the asset stat ribbon. */
-export async function getAssetSummary(tenantId: string) {
+export async function getAssetSummary(tenantId: string, options: { teamIds?: string[] } = {}) {
   const collection = await getAssetsCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
-  const activeFilter = { tenantId: tenantOid, isArchived: { $ne: true } };
+  const activeFilter: Record<string, unknown> = { tenantId: tenantOid, isArchived: { $ne: true } };
+  if (options.teamIds) {
+    activeFilter.teamIds = {
+      $in: options.teamIds.filter((id) => ObjectId.isValid(id)).map((id) => ObjectId.createFromHexString(id)),
+    };
+  }
 
   const [total, inService, outOfService] = await Promise.all([
     collection.countDocuments(activeFilter),
@@ -326,10 +331,15 @@ export async function getAssetSummary(tenantId: string) {
  * summary, so counts always match those views. `untracked` = active assets with
  * no expiry-bearing document.
  */
-export async function getComplianceBreakdown(tenantId: string) {
+export async function getComplianceBreakdown(tenantId: string, options: { teamIds?: string[] } = {}) {
   const collection = await getAssetsCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
-  const activeFilter = { tenantId: tenantOid, isArchived: { $ne: true } };
+  const activeFilter: Record<string, unknown> = { tenantId: tenantOid, isArchived: { $ne: true } };
+  if (options.teamIds) {
+    activeFilter.teamIds = {
+      $in: options.teamIds.filter((id) => ObjectId.isValid(id)).map((id) => ObjectId.createFromHexString(id)),
+    };
+  }
 
   const activeIds = await collection
     .find(activeFilter, { projection: { _id: 1 } })

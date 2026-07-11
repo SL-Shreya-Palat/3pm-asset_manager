@@ -187,8 +187,44 @@ export async function inviteUser(tenantId: string, invitedByUserId: string, inpu
   }
 
   // Role must belong to this tenant and be assignable.
-  if (!(await isAssignableRole(tenantOid, input.roleId))) {
+  if (!ObjectId.isValid(input.roleId)) {
     return { data: null, error: { roleId: 'Invalid role' } };
+  }
+  const rolesColForInvite = await getRolesCollection();
+  const invitedRole = await rolesColForInvite.findOne(
+    { _id: ObjectId.createFromHexString(input.roleId), tenantId: tenantOid, isArchived: { $ne: true } },
+    { projection: { teamScoped: 1 } },
+  );
+  if (!invitedRole) {
+    return { data: null, error: { roleId: 'Invalid role' } };
+  }
+
+  // Resolve + validate requested teams (must belong to this tenant, active).
+  // The membership `role` is informational only — access is driven by the
+  // membership's existence (see [[team RBAC]]); 'managing' is the sensible
+  // default for someone deliberately placed on a team at invite time.
+  const requestedTeamIds = Array.isArray(input.teamIds)
+    ? input.teamIds.filter((id) => ObjectId.isValid(id))
+    : [];
+  let teamMemberships: Array<{ teamId: ObjectId; role: 'managing' | 'following' }> = [];
+  if (requestedTeamIds.length > 0) {
+    const teamsCol = await getTeamsCollection();
+    const validTeams = await teamsCol
+      .find(
+        {
+          tenantId: tenantOid,
+          _id: { $in: requestedTeamIds.map((id) => ObjectId.createFromHexString(id)) },
+          isArchived: { $ne: true },
+        },
+        { projection: { _id: 1 } },
+      )
+      .toArray();
+    teamMemberships = validTeams.map((t) => ({ teamId: t._id as ObjectId, role: 'managing' as const }));
+  }
+  // A team-scoped role with no team has no scope at all (empty teamIds → sees
+  // nothing) — block the invite so team-scoped users always start usable.
+  if (invitedRole.teamScoped === true && teamMemberships.length === 0) {
+    return { data: null, error: { teamIds: 'Select at least one team for a team-scoped role' } };
   }
 
   // Check if this user already exists (e.g. registered via SSO before).
@@ -208,6 +244,7 @@ export async function inviteUser(tenantId: string, invitedByUserId: string, inpu
     email: normalizedEmail,
     mobileNumber: input.mobileNumber?.trim() || undefined,
     roleId: ObjectId.createFromHexString(input.roleId),
+    ...(teamMemberships.length > 0 ? { teamMemberships } : {}),
     isActive: true,
     portalUser: true,
     status: 'pending',

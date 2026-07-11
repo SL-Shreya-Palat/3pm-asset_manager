@@ -381,12 +381,15 @@ export async function processInspectionSubmission(
         { $set: { status: 'out_of_service', updatedAt: now } },
       );
       // Command-linked assets: mirror the grounding so Command pickers exclude it.
-      await writebackAvailabilityIfLinked(
+      // Fire-and-forget — an outbound Command HTTP call (up to several seconds on
+      // a slow/unreachable Command) must never delay the driver's submission from
+      // completing; the outbox retries it if Command doesn't accept it immediately.
+      void writebackAvailabilityIfLinked(
         tenantId,
         asset.id,
         true,
         `Failed pre-start inspection "${formTitle}"`,
-      );
+      ).catch(() => {});
     }
 
     // Notify the tenant's managers that new defects need review (best-effort).
@@ -423,7 +426,9 @@ export async function processInspectionSubmission(
   }
 
   // Command-linked assets: append the pre-start to the Command activity timeline.
-  await writebackActivityIfLinked(tenantId, asset.id, {
+  // Fire-and-forget, same reasoning as the availability write-back above — this
+  // is a nice-to-have mirror, not something the caller needs to wait on.
+  void writebackActivityIfLinked(tenantId, asset.id, {
     type: 'prestart_submitted',
     summary: `Pre-start "${formTitle}" submitted — ${evaluation.result === 'pass' ? 'passed' : 'failed'}${
       defectIds.length ? ` (${defectIds.length} defect${defectIds.length > 1 ? 's' : ''})` : ''
@@ -434,7 +439,7 @@ export async function processInspectionSubmission(
       defectsCreated: defectIds.length,
       ...(operatorName ? { operator: operatorName } : {}),
     },
-  });
+  }).catch(() => {});
 
   return {
     status: 'processed',

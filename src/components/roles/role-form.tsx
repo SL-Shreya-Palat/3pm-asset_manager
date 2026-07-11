@@ -495,6 +495,12 @@ export function RoleForm({ mode, initialData, roleId }: RoleFormProps) {
               <span className="text-sm text-foreground">Mobile Only</span>
             </label>
           </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            <strong>Team Scoped:</strong> users with this role only see records
+            (assets, defects, faults, work orders, fuel, dashboard) for the teams
+            they&apos;re placed on. Assign them a team when inviting, or on the
+            Teams page. Company-wide roles (unchecked) see everything.
+          </p>
         </div>
 
         {/* Permissions Section */}

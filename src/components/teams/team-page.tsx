@@ -1334,10 +1334,16 @@ export function TeamPage() {
               </TooltipTrigger>
               <TooltipContent side="top" className="max-w-xs text-left">
                 <p className="mb-1.5">
-                  <strong>Managing:</strong> Ability to edit Drivers, Assets and Managers within the Team. See and receive realtime alerts and notifications for Faults/Inspections of its Drivers and Assets.
+                  An informational label for this person&apos;s relationship to
+                  the team. It does <strong>not</strong> grant access on its own —
+                  what a user can see and edit is controlled by their assigned
+                  role (set a role to &ldquo;Team Scoped&rdquo; to limit it to
+                  their teams).
                 </p>
                 <p>
-                  <strong>Following:</strong> See and receive realtime alerts and notifications for Faults/Inspections of the Drivers and Assets within the Team.
+                  <strong>Managing</strong> vs <strong>Following</strong> is a
+                  note for your own reference (e.g. who leads the team vs. who
+                  just tracks it).
                 </p>
               </TooltipContent>
             </Tooltip>

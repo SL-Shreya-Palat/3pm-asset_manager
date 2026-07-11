@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronsUpDown,
   LogOut,
+  Truck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
@@ -251,8 +252,8 @@ export function Sidebar() {
         )}
       >
         <Link href="/dashboard" className="flex items-center gap-x-3 overflow-hidden">
-          <div className="flex h-8 min-w-8 shrink-0 items-center justify-center rounded-md bg-primary px-1.5 text-[11px] font-bold text-primary-foreground shadow-sm">
-            3PM
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm">
+            <Truck className="h-4.5 w-4.5" strokeWidth={2.25} aria-hidden="true" />
           </div>
           {!collapsed && (
             <span className="brand-wordmark truncate text-lg font-bold leading-none">

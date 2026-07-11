@@ -97,13 +97,17 @@ export async function syncFormBuilderSubmissions(
       return { status: 'ok', totalFound: 0, synced: 0, defectsCreated: 0 };
     }
 
-    // Which submissions are already processed locally?
+    // Which submissions are already processed locally? Tenant-scoped — without
+    // this filter the query and in-memory Set grow with EVERY tenant's
+    // submissions platform-wide, making this slower over time for everyone
+    // (this runs on every defects/history/exception page mount).
+    const tenantOid = ObjectId.createFromHexString(tenantId);
     const submissionsCol = await getInspectionSubmissionsCollection();
     const existingExternalIds = new Set(
       (
         await submissionsCol
           .find(
-            { externalSubmissionId: { $ne: null } },
+            { tenantId: tenantOid, externalSubmissionId: { $ne: null } },
             { projection: { externalSubmissionId: 1 } },
           )
           .toArray()
@@ -112,7 +116,6 @@ export async function syncFormBuilderSubmissions(
 
     // Load local forms for schema resolution.
     const formsCol = await getFormsCollection();
-    const tenantOid = ObjectId.createFromHexString(tenantId);
     const localForms = await formsCol.find({ tenantId: tenantOid }).toArray();
 
     // form-builder formId (hex) → local form doc.

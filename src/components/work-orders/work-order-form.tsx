@@ -88,15 +88,19 @@ interface WorkOrderFormProps {
   workOrder?: WorkOrderRow | null;
   onClose: () => void;
   onSaved: () => void;
-  /** 'defect' when raised to correct defects, 'fault' for faults — prefills + locks asset, defaults to mechanic, makes items optional. */
-  source?: 'manual' | 'defect' | 'fault';
+  /** 'defect'/'fault'/'service' when raised to correct a defect, fault, or scheduled service — prefills + locks asset, defaults to mechanic, makes items optional. */
+  source?: 'manual' | 'defect' | 'fault' | 'service';
   /** Pre-selected asset (create mode). */
   initialAssetId?: string;
   /** Defects this WO will correct (create mode, source='defect'). */
   initialDefectIds?: string[];
   /** Faults this WO will resolve (create mode, source='fault'). */
   initialFaultIds?: string[];
-  /** Lock the asset selector (used when raised from a specific defect/fault). */
+  /** Service task(s) this WO performs (create mode, source='service'). */
+  initialServiceTaskIds?: string[];
+  /** Prefilled description (create mode). */
+  initialDescription?: string;
+  /** Lock the asset selector (used when raised from a specific defect/fault/service). */
   lockAsset?: boolean;
 }
 
@@ -111,23 +115,29 @@ export function WorkOrderForm({
   initialAssetId,
   initialDefectIds,
   initialFaultIds,
+  initialServiceTaskIds,
+  initialDescription,
   lockAsset = false,
 }: WorkOrderFormProps) {
   const router = useRouter();
-  // Defect/fault-sourced covers raising a WO from a defect/fault (create) AND later
-  // editing that WO (its stored source), so items stay optional in both cases.
+  // Defect/fault/service-sourced covers raising a WO from one of these (create) AND
+  // later editing that WO (its stored source), so items stay optional in both cases.
   const isDefectSourced = source === 'defect' || workOrder?.source === 'defect';
   const isFaultSourced = source === 'fault' || workOrder?.source === 'fault';
-  const isItemsOptional = isDefectSourced || isFaultSourced;
+  const isServiceSourced = source === 'service' || workOrder?.source === 'service';
+  const isItemsOptional = isDefectSourced || isFaultSourced || isServiceSourced;
+  const isPrefillSourced = isDefectSourced || isFaultSourced || isServiceSourced;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  // Form fields — prefill asset + default to mechanic when raised from a defect/fault.
-  const [assetId, setAssetId] = useState(mode === 'create' && (isDefectSourced || isFaultSourced) ? (initialAssetId || '') : '');
-  const [serviceTaskIds, setServiceTaskIds] = useState<string[]>([]);
+  // Form fields — prefill asset + default to mechanic when raised from a defect/fault/service.
+  const [assetId, setAssetId] = useState(mode === 'create' && isPrefillSourced ? (initialAssetId || '') : '');
+  const [serviceTaskIds, setServiceTaskIds] = useState<string[]>(
+    mode === 'create' ? (initialServiceTaskIds || []) : [],
+  );
   const [assigneeTab, setAssigneeTab] = useState<AssigneeTab>(
-    mode === 'create' && (isDefectSourced || isFaultSourced) ? 'mechanic' : 'vendor',
+    mode === 'create' && isPrefillSourced ? 'mechanic' : 'vendor',
   );
   const [assigneeId, setAssigneeId] = useState('');
   const [thirdPartyName, setThirdPartyName] = useState('');
@@ -135,7 +145,7 @@ export function WorkOrderForm({
   const [showThirdPartyFields, setShowThirdPartyFields] = useState(false);
   const [dueDate, setDueDate] = useState('');
   const [statusId, setStatusId] = useState('');
-  const [description, setDescription] = useState('');
+  const [description, setDescription] = useState(mode === 'create' ? (initialDescription || '') : '');
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
 
   // Parts used on this WO (deducted from inventory on save).

@@ -4,14 +4,14 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { getFlatNavItems } from '@/constants/navigation';
-import { Skeleton } from '@/components/ui/skeleton';
 import { ShieldOff } from 'lucide-react';
 import { DriverInspectionGate } from '@/components/inspections/driver-inspection-gate';
+import { FleetAppLoader } from '@/components/loaders/fleet-app-loader';
 
 /**
  * Layout-level route guard for the portal.
  *
- * 1. Shows a loading skeleton while auth/permissions initialize (M2)
+ * 1. Shows the fleet loader while auth/permissions initialize (M2)
  * 2. Blocks mobileOnly users from the web portal (M4)
  * 3. Checks route-level permissions by matching pathname to nav config (M3)
  */
@@ -21,9 +21,9 @@ export function PortalGuard({ children }: { children: React.ReactNode }) {
   const { loading, hasFullAccess, canAccessModule, canAccessSubModule } =
     useRoleAccess();
 
-  // 1. Loading state — show skeleton
+  // 1. Loading state — show the fleet loader
   if (!initialized || loading) {
-    return <PortalSkeleton />;
+    return <FleetAppLoader />;
   }
 
   // NOTE: mobileOnly roles are intentionally NOT blocked here — the installed
@@ -85,20 +85,6 @@ function resolveRouteGate(
 // ---------------------------------------------------------------------------
 // Fallback UI components
 // ---------------------------------------------------------------------------
-
-function PortalSkeleton() {
-  return (
-    <div className="flex flex-1 flex-col gap-6 p-6">
-      <Skeleton className="h-8 w-48" />
-      <div className="grid grid-cols-3 gap-4">
-        <Skeleton className="h-32" />
-        <Skeleton className="h-32" />
-        <Skeleton className="h-32" />
-      </div>
-      <Skeleton className="h-64" />
-    </div>
-  );
-}
 
 function NotAuthorized() {
   return (

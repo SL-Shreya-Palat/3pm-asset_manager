@@ -35,9 +35,15 @@ const INITIAL_FORM = {
   lastName: '',
   email: '',
   roleId: '',
+  teamIds: [] as string[],
   countryCode: DEFAULT_COUNTRY_KEY,
   mobileNumber: '',
 };
+
+interface TeamOption {
+  id: string;
+  name: string;
+}
 
 /** Roles that can't be assigned when inviting a user (hidden from the dropdown). */
 const EXCLUDED_ROLE_NAMES = new Set(['owner', 'driver']);
@@ -47,8 +53,9 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [roles, setRoles] = useState<RoleOption[]>([]);
+  const [teams, setTeams] = useState<TeamOption[]>([]);
 
-  // Fetch roles for the dropdown
+  // Fetch roles + teams for the dropdowns
   useEffect(() => {
     if (!open) return;
     async function loadRoles() {
@@ -58,14 +65,31 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
         setRoles(
           items
             .filter((r: { name: string }) => !EXCLUDED_ROLE_NAMES.has(r.name.trim().toLowerCase()))
-            .map((r: { id: string; name: string }) => ({ id: r.id, name: r.name })),
+            .map((r: { id: string; name: string; teamScoped?: boolean }) => ({
+              id: r.id,
+              name: r.name,
+              teamScoped: r.teamScoped === true,
+            })),
         );
       } catch {
         setRoles([]);
       }
     }
+    async function loadTeams() {
+      try {
+        const res = await axios.get('/api/teams?limit=100', { withCredentials: true });
+        const items = res.data.data?.items || res.data.data || [];
+        setTeams(items.map((t: { id: string; name: string }) => ({ id: t.id, name: t.name })));
+      } catch {
+        setTeams([]);
+      }
+    }
     loadRoles();
+    loadTeams();
   }, [open]);
+
+  const selectedRole = roles.find((r) => r.id === form.roleId);
+  const roleIsTeamScoped = selectedRole?.teamScoped === true;
 
   // Reset form when dialog opens
   useEffect(() => {
@@ -103,6 +127,10 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
 
     if (!form.roleId) next.roleId = 'Role is required';
 
+    if (roleIsTeamScoped && form.teamIds.length === 0) {
+      next.teamIds = 'Select at least one team for this team-scoped role';
+    }
+
     if (!isValidPhoneForCountry(form.countryCode, form.mobileNumber)) {
       next.mobileNumber = 'Enter a valid mobile number for the selected country';
     }
@@ -118,12 +146,16 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
     setErrors({});
 
     try {
-      const body: Record<string, string | undefined> = {
+      const body: Record<string, unknown> = {
         firstName: form.firstName,
         lastName: form.lastName,
         email: form.email,
         roleId: form.roleId,
       };
+      // Only send teams for a team-scoped role (a company-wide role ignores them).
+      if (roleIsTeamScoped && form.teamIds.length > 0) {
+        body.teamIds = form.teamIds;
+      }
       if (form.mobileNumber.trim()) {
         // Send E.164 so 3pm-auth can register the user with the mobile.
         body.mobileNumber = phoneToE164(form.countryCode, form.mobileNumber);
@@ -212,7 +244,16 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
             <SearchableSelect
               options={roles.map((role) => ({ label: role.name, value: role.id }))}
               value={form.roleId || null}
-              onValueChange={(v) => handleChange('roleId', v || '')}
+              onValueChange={(v) => {
+                // Switching to a company-wide role clears any chosen teams.
+                setForm((prev) => ({ ...prev, roleId: v || '', teamIds: [] }));
+                setErrors((prev) => {
+                  const next = { ...prev };
+                  delete next.roleId;
+                  delete next.teamIds;
+                  return next;
+                });
+              }}
               placeholder="Select a role"
               searchPlaceholder="Search roles..."
               emptyMessage="No roles found"
@@ -220,6 +261,34 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
               error={errors.roleId}
             />
           </div>
+
+          {roleIsTeamScoped && (
+            <div className="space-y-2">
+              <Label>Teams <span className="text-destructive">*</span></Label>
+              <SearchableSelect
+                isMulti
+                options={teams.map((team) => ({ label: team.name, value: team.id }))}
+                value={form.teamIds}
+                onValueChange={(ids) => {
+                  setForm((prev) => ({ ...prev, teamIds: ids }));
+                  if (errors.teamIds) {
+                    setErrors((prev) => {
+                      const next = { ...prev };
+                      delete next.teamIds;
+                      return next;
+                    });
+                  }
+                }}
+                placeholder="Select team(s)"
+                searchPlaceholder="Search teams..."
+                emptyMessage="No teams found"
+                error={errors.teamIds}
+              />
+              <p className="text-xs text-muted-foreground">
+                This role only sees records for the teams you choose here.
+              </p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="invite-mobile">Mobile Number</Label>

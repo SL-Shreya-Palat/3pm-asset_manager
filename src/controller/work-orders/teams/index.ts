@@ -3,7 +3,12 @@
  * MongoDB native driver, no Mongoose/ODM.
  */
 import { ObjectId } from 'mongodb';
-import { getTeamsCollection, getAssetsCollection } from '@/lib/mongodb';
+import {
+  getTeamsCollection,
+  getAssetsCollection,
+  getDriversCollection,
+  getTenantMembersCollection,
+} from '@/lib/mongodb';
 import { validateCreateTeamInput, serializeTeam } from './utils';
 import type { CreateTeamInput, UpdateTeamInput } from './types';
 
@@ -204,12 +209,47 @@ export async function updateTeam(
   return { data: updated ? serializeTeam(updated) : null, error: null };
 }
 
-/** Permanently delete a team. */
+/**
+ * Permanently delete a team, cascading its id out of everything that references
+ * it. Without this, a hard delete leaves dangling teamIds on assets, drivers and
+ * members — which then silently mis-scope team RBAC (an asset still "belongs" to
+ * a team that no longer exists) and leave the team's members with a phantom
+ * membership. Historical records (defects/faults/inspections) keep their team
+ * stamp intentionally — they're an audit trail of where the work happened.
+ */
 export async function deleteTeam(tenantId: string, userId: string, teamId: string) {
   const collection = await getTeamsCollection();
   const docOid = ObjectId.createFromHexString(teamId);
   const tenantOid = ObjectId.createFromHexString(tenantId);
 
   const result = await collection.deleteOne({ _id: docOid, tenantId: tenantOid });
-  return result.deletedCount > 0;
+  if (result.deletedCount === 0) return false;
+
+  const [assetsCol, driversCol, membersCol] = await Promise.all([
+    getAssetsCollection(),
+    getDriversCollection(),
+    getTenantMembersCollection(),
+  ]);
+
+  await Promise.all([
+    // asset.teamIds is an array — drop this team from every asset.
+    assetsCol.updateMany(
+      { tenantId: tenantOid, teamIds: docOid },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { $pull: { teamIds: docOid } } as any,
+    ),
+    // driver.teamId is a single scalar — clear it where it pointed here.
+    driversCol.updateMany(
+      { tenantId: tenantOid, teamId: docOid },
+      { $set: { teamId: null } },
+    ),
+    // tenantMembers.teamMemberships[] — remove this team's membership entry.
+    membersCol.updateMany(
+      { tenantId: tenantOid, 'teamMemberships.teamId': docOid },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      { $pull: { teamMemberships: { teamId: docOid } } } as any,
+    ),
+  ]);
+
+  return true;
 }

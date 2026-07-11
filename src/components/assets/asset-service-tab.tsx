@@ -30,6 +30,10 @@ import {
   SERVICE_STATUS_TEXT,
   type ServiceScheduleStatus,
 } from '@/constants/service-status';
+import { RowActionButton } from '@/components/ui/row-actions';
+import { PermissionGuard } from '@/components/auth/permission-guard';
+import { Permissions } from '@/consts/permissions';
+import { WorkOrderForm } from '@/components/work-orders/work-order-form';
 
 type SchedStatus = ServiceScheduleStatus;
 
@@ -45,6 +49,7 @@ interface ScheduleStatus {
   lastServicedAt: string | null;
   serviceGroup: number | null;
   completedSchedules: string[];
+  serviceTaskId: string | null;
 }
 interface HistoryEntry {
   id: string;
@@ -72,6 +77,8 @@ export function AssetServiceTab({ assetId }: { assetId: string }) {
   const [loading, setLoading] = useState(true);
   const [logOpen, setLogOpen] = useState(false);
   const [preselect, setPreselect] = useState<string | null>(null);
+  const [woPanelOpen, setWoPanelOpen] = useState(false);
+  const [woSchedule, setWoSchedule] = useState<ScheduleStatus | null>(null);
 
   const fetchStatus = useCallback(async () => {
     setLoading(true);
@@ -98,6 +105,11 @@ export function AssetServiceTab({ assetId }: { assetId: string }) {
 
   const openLog = (scheduleId: string | null) => { setPreselect(scheduleId); setLogOpen(true); };
   const handleLogged = () => { setLogOpen(false); setPreselect(null); fetchStatus(); };
+
+  // Work order panel — raise a WO for a schedule that's due/overdue.
+  const handleOpenCreateWO = (schedule: ScheduleStatus) => { setWoSchedule(schedule); setWoPanelOpen(true); };
+  const handleCloseWOPanel = () => { setWoPanelOpen(false); setWoSchedule(null); };
+  const handleWOSaved = () => { handleCloseWOPanel(); fetchStatus(); };
 
   if (loading) {
     return (
@@ -151,6 +163,7 @@ export function AssetServiceTab({ assetId }: { assetId: string }) {
                 <th className="px-4 py-2.5">Next Service Value</th>
                 <th className="px-4 py-2.5">Value Till Next Service</th>
                 <th className="px-4 py-2.5">Last Serviced At</th>
+                <th className="px-4 py-2.5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -195,6 +208,15 @@ export function AssetServiceTab({ assetId }: { assetId: string }) {
                     </td>
                     <td className="px-4 py-3">
                       <span className="text-sm text-muted-foreground">{formatDate(s.lastServicedAt)}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <PermissionGuard permission={Permissions.maintenance.workOrders.form.create}>
+                        <RowActionButton
+                          label="Create work order"
+                          icon={<Wrench />}
+                          onClick={() => handleOpenCreateWO(s)}
+                        />
+                      </PermissionGuard>
                     </td>
                   </tr>
                 );
@@ -279,6 +301,33 @@ export function AssetServiceTab({ assetId }: { assetId: string }) {
           onLogged={handleLogged}
         />
       )}
+
+      {/* Work order panel backdrop */}
+      {woPanelOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 transition-opacity"
+          onClick={handleCloseWOPanel}
+        />
+      )}
+
+      {/* Right Panel — Work Order Form (raise a WO for a due/overdue schedule) */}
+      <div className={cn(
+        'fixed top-0 right-0 z-50 h-full w-[560px] border-l border-border bg-background transition-transform duration-300',
+        woPanelOpen ? 'translate-x-0' : 'translate-x-full',
+      )}>
+        {woPanelOpen && woSchedule && (
+          <WorkOrderForm
+            mode="create"
+            source="service"
+            initialAssetId={assetId}
+            initialServiceTaskIds={woSchedule.serviceTaskId ? [woSchedule.serviceTaskId] : []}
+            initialDescription={`Scheduled service: ${woSchedule.scheduleName} (${SERVICE_STATUS_LABEL[woSchedule.status]})`}
+            lockAsset
+            onClose={handleCloseWOPanel}
+            onSaved={handleWOSaved}
+          />
+        )}
+      </div>
     </div>
   );
 }

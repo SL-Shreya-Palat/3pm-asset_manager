@@ -71,7 +71,7 @@ const ADMIN_SIDEBAR: SidebarItem[] = [
     label: 'Notifications',
     icon: Bell,
     children: [
-      { key: 'notification-routing', label: 'Routing' },
+      { key: 'notification-routing', label: 'Alert Recipients' },
     ],
   },
   {

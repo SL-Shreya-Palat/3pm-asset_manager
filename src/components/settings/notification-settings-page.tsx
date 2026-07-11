@@ -164,7 +164,7 @@ export function NotificationSettingsPage() {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">{event.label}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">{event.description}</p>
-          <p className="mt-1 text-xs font-medium text-primary/90">→ {describeRule(rule)}</p>
+          <p className="mt-1 text-xs font-medium text-foreground">→ {describeRule(rule)}</p>
         </div>
 
         {/* Right: scope + role picker */}
@@ -194,7 +194,7 @@ export function NotificationSettingsPage() {
                     className={cn(
                       'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
                       on
-                        ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90'
+                        ? 'border-primary/30 bg-primary/10 text-primary hover:bg-primary/15'
                         : 'border-border bg-background text-foreground/70 hover:border-foreground/30 hover:text-foreground',
                     )}
                   >
