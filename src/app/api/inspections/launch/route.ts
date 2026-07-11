@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { authorize, inTeamScope } from '@/lib/authz';
-import { getDriverIdByEmail } from '@/controller/drivers';
+import { getDriverByUserId, getDriverIdByEmail } from '@/controller/drivers';
 import { getInspectionLaunchesCollection, getAssetsCollection, getDriversCollection } from '@/lib/mongodb';
 
 export async function POST(req: NextRequest) {
@@ -47,11 +47,17 @@ export async function POST(req: NextRequest) {
     };
 
     // Resolve the caller's own driver record once — used for OWN-scope checks.
+    // Primary: the userId → tenantMember → driver linkage (same resolver the
+    // my-due gate uses, so gate and launch can never disagree). Fallback:
+    // email match, for legacy driver records created without a member link.
     const driversCol = await getDriversCollection();
-    const myDriverId =
-      scope === 'OWN'
-        ? await getDriverIdByEmail(user.currentTenantId, String(user.email || ''))
-        : null;
+    let myDriverId: string | null = null;
+    if (scope === 'OWN') {
+      const myDriver = await getDriverByUserId(user.currentTenantId, user.id);
+      myDriverId =
+        myDriver?.id ??
+        (await getDriverIdByEmail(user.currentTenantId, String(user.email || '')));
+    }
 
     if (assetId && ObjectId.isValid(assetId)) {
       const assetOid = ObjectId.createFromHexString(assetId);

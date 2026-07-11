@@ -244,14 +244,38 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
   },
 ];
 
+/**
+ * Canonical Driver definition — the single source for every place that
+ * auto-creates a Driver role (driver invite flow, Command staff import).
+ * Keeping one definition guarantees auto-created Driver roles carry the
+ * assets `inspect` grant the inspection-launch flow requires.
+ */
+export const DRIVER_ROLE_DEF: SystemRoleDef = SYSTEM_ROLE_DEFS.find((d) => d.isDriver)!;
+
 // ---------------------------------------------------------------------------
 // Legacy seed permissions (pre business-alignment pass) — used to self-heal
-// roles that are still on the old defaults. A tenant-customized permission
-// set matches neither snapshot and is never touched.
+// roles that are still on the old defaults. Each role maps to the list of
+// known legacy snapshots (seeded + auto-created variants). A tenant-customized
+// permission set matches none of them and is never touched.
 // ---------------------------------------------------------------------------
 
-const LEGACY_SEED_PERMISSIONS: Record<string, SparsePermissions> = {
-  manager: {
+/**
+ * Shape historically inserted by the auto-create paths (drivers controller and
+ * Command staff import) before they were unified onto DRIVER_ROLE_DEF. It has
+ * no assets grant at all, so these drivers could never launch an inspection.
+ * Property order matters — self-heal compares canonical JSON.
+ */
+const LEGACY_AUTOCREATED_DRIVER_PERMISSIONS: SparsePermissions = {
+  v: 2,
+  forms: [
+    { id: 'inspections.inspectionHistory.inspection', v: 'ALL', c: false, e: false },
+  ],
+  m: ['inspections'],
+  sm: ['inspections.inspectionHistory'],
+};
+
+const LEGACY_SEED_PERMISSIONS: Record<string, SparsePermissions[]> = {
+  manager: [{
     v: 2,
     forms: [
       fullGrantWithInspect('assets.assets.asset'),
@@ -286,8 +310,8 @@ const LEGACY_SEED_PERMISSIONS: Record<string, SparsePermissions> = {
       'fuel.fuel',
       'vendors.vendors',
     ],
-  },
-  driver: {
+  }],
+  driver: [{
     v: 2,
     forms: [
       viewOnlyWithOwnInspect('assets.assets.asset'),
@@ -306,8 +330,8 @@ const LEGACY_SEED_PERMISSIONS: Record<string, SparsePermissions> = {
       'people.drivers',
       'fuel.fuel',
     ],
-  },
-  'team manager': {
+  }, LEGACY_AUTOCREATED_DRIVER_PERMISSIONS],
+  'team manager': [{
     v: 2,
     forms: [
       fullGrantWithInspect('assets.assets.asset'),
@@ -324,8 +348,8 @@ const LEGACY_SEED_PERMISSIONS: Record<string, SparsePermissions> = {
       'maintenance.workOrders',
       'people.drivers',
     ],
-  },
-  mechanic: {
+  }],
+  mechanic: [{
     v: 2,
     forms: [
       fullGrant('maintenance.defects.defect'),
@@ -334,7 +358,7 @@ const LEGACY_SEED_PERMISSIONS: Record<string, SparsePermissions> = {
     ],
     m: ['maintenance'],
     sm: ['maintenance.defects', 'maintenance.faults', 'maintenance.workOrders'],
-  },
+  }],
 };
 
 // ---------------------------------------------------------------------------
@@ -390,9 +414,12 @@ export async function seedSystemRoles(tenantId: ObjectId, userId: ObjectId): Pro
 
   await col.bulkWrite(ops);
 
-  // Self-heal: roles still carrying the legacy seed permissions get the new
-  // defaults. Compared as canonical JSON — any tenant customization differs
-  // from the legacy snapshot and is preserved untouched.
+  // Self-heal: roles still carrying ANY known legacy permission snapshot
+  // (old seed defaults or the old auto-created Driver shape) get the new
+  // defaults — including classification flags, since the legacy auto-created
+  // Driver roles were missing isDriver/teamScoped alignment. Compared as
+  // canonical JSON — any tenant customization matches no snapshot and is
+  // preserved untouched.
   const defsByName = new Map(SYSTEM_ROLE_DEFS.map((d) => [d.name.toLowerCase(), d]));
   const existing = await col
     .find({ tenantId, nameLower: { $in: Array.from(defsByName.keys()) } })
@@ -401,28 +428,39 @@ export async function seedSystemRoles(tenantId: ObjectId, userId: ObjectId): Pro
 
   const heals = existing.filter((role) => {
     const nameLower = role.nameLower as string;
-    const legacy = LEGACY_SEED_PERMISSIONS[nameLower];
+    const legacyList = LEGACY_SEED_PERMISSIONS[nameLower];
     const def = defsByName.get(nameLower);
-    if (!legacy || !def) return false;
+    if (!legacyList || !def) return false;
     const current = JSON.stringify(role.permissions);
-    return current === JSON.stringify(legacy) && current !== JSON.stringify(def.permissions);
+    if (current === JSON.stringify(def.permissions)) return false;
+    return legacyList.some((legacy) => current === JSON.stringify(legacy));
   });
 
   if (heals.length > 0) {
     await col.bulkWrite(
-      heals.map((role) => ({
-        updateOne: {
-          filter: { _id: role._id },
-          update: {
-            $set: {
-              permissions: defsByName.get(role.nameLower as string)!.permissions,
-              description: defsByName.get(role.nameLower as string)!.description,
-              updatedBy: userId,
-              updatedAt: now,
+      heals.map((role) => {
+        const def = defsByName.get(role.nameLower as string)!;
+        return {
+          updateOne: {
+            filter: { _id: role._id },
+            update: {
+              $set: {
+                permissions: def.permissions,
+                description: def.description,
+                teamScoped: def.teamScoped,
+                mobileOnly: def.mobileOnly,
+                isManager: def.isManager ?? null,
+                isTeamManager: def.isTeamManager ?? null,
+                isMechanic: def.isMechanic ?? null,
+                isDriver: def.isDriver ?? null,
+                isAdmin: def.isAdmin ?? null,
+                updatedBy: userId,
+                updatedAt: now,
+              },
             },
           },
-        },
-      })),
+        };
+      }),
     );
   }
 }

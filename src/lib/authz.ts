@@ -99,14 +99,11 @@ export async function authorize(
 
   const perms = await getFormPermissionLevels(authedUser.id, authedUser.currentTenantId, formId);
 
-  // M4: Block mobileOnly roles on web (cookie) sessions.
-  // Bearer / X-Session-Token requests (mobile app) are allowed through.
-  if (perms.mobileOnly) {
-    const hasBearerAuth = !!req.headers.get('authorization') || !!req.headers.get('x-session-token');
-    if (!hasBearerAuth) {
-      return { ok: false, res: NextResponse.json({ data: null, error: 'Forbidden' }, { status: 403 }) };
-    }
-  }
+  // NOTE: `mobileOnly` roles are NOT blocked on cookie sessions. The installed
+  // PWA — this product's mobile surface for drivers/mechanics — authenticates
+  // with the same cookies as the desktop browser, so a transport-level block
+  // locks drivers out of their own inspection flow entirely. The flag remains
+  // role metadata; actual access is governed by the role's permission grants.
 
   const teamIds = perms.teamIds;
 

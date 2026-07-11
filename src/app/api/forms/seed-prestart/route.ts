@@ -17,7 +17,7 @@ import { requireAdmin } from '@/lib/authz';
 import { seedInspectionForms, updateInspectionForms, getOrCreateFbSession, fbFetch, cleanupDuplicateFormBuilderForms } from '@/controller/seeding';
 import { getFormsCollection, getDb } from '@/lib/mongodb';
 import { FORM_BUILDER_APP_NAME } from '@/lib/form-builder-integration';
-import { getEmbedTokenForTenant } from '@/lib/embed-token-storage';
+import { getEmbedTokenForTenant, getFormBuilderOwnerEmail } from '@/lib/embed-token-storage';
 
 export async function POST(req: NextRequest) {
   try {
@@ -128,7 +128,12 @@ export async function DELETE(req: NextRequest) {
     try {
       const embedToken = await getEmbedTokenForTenant(user.currentTenantId!, FORM_BUILDER_APP_NAME);
       if (embedToken) {
-        const session = await getOrCreateFbSession(user.email, user.name || user.email, embedToken);
+        const session = await getOrCreateFbSession(
+          user.email,
+          user.name || user.email,
+          embedToken,
+          await getFormBuilderOwnerEmail(user.currentTenantId!),
+        );
         sessionId = session.sessionId;
       }
     } catch {

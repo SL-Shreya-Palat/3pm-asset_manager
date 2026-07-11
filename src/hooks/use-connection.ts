@@ -22,6 +22,31 @@ export interface ConnectionInfo {
   lastVerifiedAt: string | null;
 }
 
+/**
+ * Module-level shared fetch: the sidebar AND every list page mount this hook,
+ * so without sharing, one page view fired 2+ identical /api/command/connection
+ * requests. All mounts within the TTL share one in-flight promise/result.
+ */
+const CLIENT_TTL_MS = 60_000;
+let sharedFetchedAt = 0;
+let sharedPromise: Promise<ConnectionInfo | null> | null = null;
+
+function fetchConnectionShared(): Promise<ConnectionInfo | null> {
+  const now = Date.now();
+  if (sharedPromise && now - sharedFetchedAt < CLIENT_TTL_MS) return sharedPromise;
+  sharedFetchedAt = now;
+  sharedPromise = axios
+    .get('/api/command/connection', { withCredentials: true })
+    .then((res) => (res.data?.data ?? null) as ConnectionInfo | null)
+    .catch(() => {
+      // Treat as standalone on error, but don't cache the failure for the
+      // full TTL — let the next mount retry.
+      sharedFetchedAt = 0;
+      return null;
+    });
+  return sharedPromise;
+}
+
 export function useConnection(): {
   info: ConnectionInfo | null;
   /** Connection is ON (Command-managed) — true for both connected and degraded. */
@@ -33,16 +58,13 @@ export function useConnection(): {
 
   useEffect(() => {
     let active = true;
-    (async () => {
-      try {
-        const res = await axios.get('/api/command/connection', { withCredentials: true });
-        if (active) setInfo(res.data?.data ?? null);
-      } catch {
-        if (active) setInfo(null); // treat as standalone on error
-      } finally {
+    fetchConnectionShared()
+      .then((data) => {
+        if (active) setInfo(data);
+      })
+      .finally(() => {
         if (active) setLoading(false);
-      }
-    })();
+      });
     return () => {
       active = false;
     };

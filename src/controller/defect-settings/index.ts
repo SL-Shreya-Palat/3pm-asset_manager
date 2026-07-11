@@ -10,7 +10,7 @@ import {
   getFormsCollection,
 } from '@/lib/mongodb';
 import { FORM_BUILDER_APP_NAME, fetchLiveFormSchema } from '@/lib/form-builder-integration';
-import { getEmbedTokenForTenant } from '@/lib/embed-token-storage';
+import { getEmbedTokenForTenant, getFormBuilderOwnerEmail } from '@/lib/embed-token-storage';
 import { classifyInspectionType } from '@/controller/forms';
 import type {
   DefectSettingsDocument,
@@ -137,7 +137,13 @@ export async function getDefectSettings(
   if (user?.email) {
     const embedToken = await getEmbedTokenForTenant(tenantId, FORM_BUILDER_APP_NAME);
     const live = embedToken
-      ? await fetchLiveFormSchema(user.email, user.name || user.email, formId, embedToken)
+      ? await fetchLiveFormSchema(
+          user.email,
+          user.name || user.email,
+          formId,
+          embedToken,
+          await getFormBuilderOwnerEmail(tenantId),
+        )
       : null;
     if (live && Array.isArray(live.pages) && live.pages.length > 0) {
       pages = live.pages;

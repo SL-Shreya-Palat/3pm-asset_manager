@@ -28,6 +28,7 @@ import {
 } from '@/lib/form-builder-integration';
 import {
   getEmbedTokenForTenant,
+  getFormBuilderOwnerEmail,
   storeEmbedToken,
   embedTokenFingerprint,
 } from '@/lib/embed-token-storage';
@@ -98,6 +99,9 @@ export async function POST(request: NextRequest) {
       onboardResult.token,
       onboardResult.tokenId,
       FORM_BUILDER_APP_NAME,
+      // The onboarder is the one account guaranteed to exist in the new org —
+      // recorded so future members (invited drivers) can be provisioned.
+      user.email,
     );
 
     embedToken = onboardResult.token;
@@ -137,10 +141,30 @@ export async function POST(request: NextRequest) {
   });
 
   // If user not found (404) — the tenant is onboarded but this specific user
-  // hasn't been created in form-builder yet. Create them and retry.
+  // (e.g. an invited driver) hasn't been created in form-builder yet. Create
+  // them via a session minted for an EXISTING org account (the onboarder /
+  // owner) and retry. Minting the session for the missing user's own email
+  // can never succeed — that was the old bug.
   if (!result.ok && result.status === 404) {
+    const ownerEmail = await getFormBuilderOwnerEmail(user.currentTenantId);
+
+    if (!ownerEmail || ownerEmail === user.email.toLowerCase().trim()) {
+      console.error(
+        `[FORM_BUILDER_SESSION] Can't provision ${user.email}: no usable owner ` +
+          'email for this tenant (no embedTokens.ownerEmail and no resolvable tenant owner).',
+      );
+      return NextResponse.json(
+        {
+          data: null,
+          error:
+            'Your inspection account has not been set up yet and automatic setup is not configured. Please contact your administrator.',
+        },
+        { status: 503 },
+      );
+    }
+
     console.log(
-      `[FORM_BUILDER_SESSION] User ${user.email} not found, creating in form-builder...`,
+      `[FORM_BUILDER_SESSION] User ${user.email} not found, creating in form-builder as ${ownerEmail}...`,
     );
 
     const nameParts = (user.name || user.email).split(' ');
@@ -151,7 +175,7 @@ export async function POST(request: NextRequest) {
       email: user.email,
       firstName,
       lastName,
-      ownerEmail: user.email,
+      ownerEmail,
       embedToken,
       role: 'user',
     });

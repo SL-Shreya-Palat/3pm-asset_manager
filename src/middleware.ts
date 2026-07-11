@@ -8,6 +8,7 @@
  */
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { getAppUrl, getRequestOrigin } from '@/lib/app-url';
 
 const SESSION_COOKIE = 'session';
 
@@ -38,9 +39,18 @@ export function middleware(request: NextRequest) {
   const isProtected = protectedPrefixes.some((prefix) => pathname.startsWith(prefix));
 
   if (isProtected && !isLoggedIn && idpUrl && clientId) {
-    const appUrl = process.env.NODE_ENV === 'development'
-      ? process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-      : process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+    // Public origin resolution: NEXT_PUBLIC_APP_URL, else the forwarded host
+    // headers. Never `request.nextUrl.origin` alone — self-hosted behind
+    // Render's proxy it resolves to the internal http://localhost:<port>,
+    // which the IdP would then redirect freshly-authenticated users to.
+    let appUrl: string;
+    try {
+      appUrl = getAppUrl(getRequestOrigin(request));
+    } catch {
+      // No safe public origin available — let the request through (the layout
+      // guard still requires auth) rather than redirect to a broken URL.
+      return NextResponse.next();
+    }
 
     // Keep the query string so deep links (e.g. QR-scanned
     // /inspections/fill?assetId=X&formId=Y) survive the login round-trip.

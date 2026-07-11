@@ -124,6 +124,13 @@ export function GenerateBarcodeDialog({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
 
+  // Printed labels outlive the browser session that generated them — prefer
+  // the configured public URL so a label printed from a dev machine never
+  // permanently encodes a localhost link.
+  const labelOrigin =
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '') ||
+    (typeof window !== 'undefined' ? window.location.origin : '');
+
   // Regenerate preview when options change
   useEffect(() => {
     if (!open || items.length === 0) return;
@@ -131,7 +138,7 @@ export function GenerateBarcodeDialog({
 
     const text =
       barcodeType === 'applink' && appLinkBase
-        ? `${window.location.origin}${appLinkBase}/${items[0].id}`
+        ? `${labelOrigin}${appLinkBase}/${items[0].id}`
         : items[0].code || items[0].name;
 
     setPreviewUrl(null);
@@ -157,7 +164,7 @@ export function GenerateBarcodeDialog({
         labelQuantity,
         labelSize,
         appLink: appLinkBase
-          ? (id) => `${window.location.origin}${appLinkBase}/${id}`
+          ? (id) => `${labelOrigin}${appLinkBase}/${id}`
           : undefined,
       });
 

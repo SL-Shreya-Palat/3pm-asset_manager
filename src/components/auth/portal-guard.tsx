@@ -18,7 +18,7 @@ import { DriverInspectionGate } from '@/components/inspections/driver-inspection
 export function PortalGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { initialized } = useAuth();
-  const { loading, hasFullAccess, isMobileOnly, canAccessModule, canAccessSubModule } =
+  const { loading, hasFullAccess, canAccessModule, canAccessSubModule } =
     useRoleAccess();
 
   // 1. Loading state — show skeleton
@@ -26,12 +26,11 @@ export function PortalGuard({ children }: { children: React.ReactNode }) {
     return <PortalSkeleton />;
   }
 
-  // 2. mobileOnly block (M4)
-  if (isMobileOnly) {
-    return <MobileOnlyMessage />;
-  }
+  // NOTE: mobileOnly roles are intentionally NOT blocked here — the installed
+  // PWA is this product's mobile surface and uses the same web session.
+  // Their access is limited by role permission grants (M3 below + server RBAC).
 
-  // 3. Route-level permission check (M3)
+  // 2. Route-level permission check (M3)
   if (!hasFullAccess) {
     const gate = resolveRouteGate(pathname);
     if (gate) {
@@ -97,21 +96,6 @@ function PortalSkeleton() {
         <Skeleton className="h-32" />
       </div>
       <Skeleton className="h-64" />
-    </div>
-  );
-}
-
-function MobileOnlyMessage() {
-  return (
-    <div className="flex flex-1 items-center justify-center p-6">
-      <div className="text-center">
-        <ShieldOff className="mx-auto h-12 w-12 text-muted-foreground" />
-        <h2 className="mt-4 text-lg font-semibold">Mobile Access Only</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Your account is configured for mobile app access only. Please use the
-          mobile app to access your account.
-        </p>
-      </div>
     </div>
   );
 }

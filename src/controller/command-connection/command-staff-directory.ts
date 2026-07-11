@@ -24,9 +24,13 @@ import {
   getRolesCollection,
 } from '@/lib/mongodb';
 import { getCommandStaff, type CommandStaff } from '@/lib/command/fetchers';
+import { describeCommandFailure } from '@/lib/command/types';
 import { inviteUser } from '@/controller/users';
 import { createInvitation } from '@/controller/invitations';
 import { sendInvitationEmail } from '@/lib/email';
+import { DRIVER_ROLE_DEF } from '@/lib/system-roles';
+import { commandStaffDriverFields } from './driver-mapping';
+import { getAppUrl } from '@/lib/app-url';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -73,7 +77,11 @@ export async function commandStaffDirectory(
 > {
   const res = await getCommandStaff(authTenantId);
   if (!res.ok) {
-    return { ok: false, error: "Couldn't reach Command to load staff.", status: 503 };
+    return {
+      ok: false,
+      error: describeCommandFailure(res, 'load staff'),
+      status: res.reason === 'unreachable' ? 503 : 502,
+    };
   }
 
   const staff = res.data;
@@ -155,7 +163,11 @@ export async function importCommandStaffAsUsers(
 > {
   const res = await getCommandStaff(authTenantId);
   if (!res.ok) {
-    return { ok: false, error: "Couldn't reach Command to import staff.", status: 503 };
+    return {
+      ok: false,
+      error: describeCommandFailure(res, 'import staff'),
+      status: res.reason === 'unreachable' ? 503 : 502,
+    };
   }
 
   const wanted = new Set(ids);
@@ -229,7 +241,11 @@ export async function importCommandStaffAsDrivers(
 > {
   const res = await getCommandStaff(authTenantId);
   if (!res.ok) {
-    return { ok: false, error: "Couldn't reach Command to import staff.", status: 503 };
+    return {
+      ok: false,
+      error: describeCommandFailure(res, 'import drivers'),
+      status: res.reason === 'unreachable' ? 503 : 502,
+    };
   }
 
   const tenantOid = ObjectId.createFromHexString(tenantId);
@@ -266,13 +282,9 @@ export async function importCommandStaffAsDrivers(
         { tenantId: tenantOid, $or: match },
         {
           $set: {
-            commandStaffId: s.id,
-            source: 'command',
-            firstName,
-            lastName,
-            ...(s.email ? { email: s.email } : {}),
-            ...(s.phone ? { mobileNumber: s.phone } : {}),
-            commandSyncedAt: now,
+            // Shared Command→driver profile mapping (licence, DOB, phones,
+            // employee number, photo) — same fields the auto-sync maintains.
+            ...commandStaffDriverFields(s, now),
             updatedBy: userOid,
             updatedAt: now,
           },
@@ -329,8 +341,7 @@ export async function importCommandStaffAsDrivers(
                 invitedByUserId: userId,
               });
 
-              const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-              const acceptUrl = `${appUrl}/invite/accept?token=${rawToken}`;
+              const acceptUrl = `${getAppUrl()}/invite/accept?token=${rawToken}`;
 
               const usersCol = await getUsersCollection();
               const inviter = await usersCol.findOne({ _id: userOid });
@@ -497,23 +508,20 @@ async function resolveDriverRoleIdForImport(
 
   if (existing) return existing._id as ObjectId;
 
+  // Auto-create the Driver role from the canonical definition — this carries
+  // the assets `inspect: OWN` grant the inspection-launch flow requires.
   const result = await rolesCol.insertOne({
     tenantId: tenantOid,
-    name: 'Driver',
+    name: DRIVER_ROLE_DEF.name,
     key: 'driver',
     nameLower: 'driver',
-    description: 'Mobile-only access for completing inspections.',
-    permissions: {
-      v: 2,
-      forms: [
-        { id: 'inspections.inspectionHistory.inspection', v: 'ALL', c: false, e: false },
-      ],
-      m: ['inspections'],
-      sm: ['inspections.inspectionHistory'],
-    },
-    teamScoped: true,
-    mobileOnly: true,
+    description: DRIVER_ROLE_DEF.description,
+    permissions: DRIVER_ROLE_DEF.permissions,
+    teamScoped: DRIVER_ROLE_DEF.teamScoped,
+    mobileOnly: DRIVER_ROLE_DEF.mobileOnly,
     isSystem: false,
+    type: 'custom',
+    isDriver: true,
     isActive: true,
     isArchived: false,
     archivedAt: null,

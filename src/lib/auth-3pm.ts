@@ -85,8 +85,17 @@ export async function exchangeToken(guid: string): Promise<{
  * next request instead of locking the user out for the TTL. On logout the cookie
  * is cleared, so the no-cookie fast path below bypasses the cache entirely.
  */
-const SESSION_CACHE_TTL_MS = 30_000;
+const SESSION_CACHE_TTL_MS = 5 * 60_000;
 const sessionCache = new Map<string, { session: UserSession; expiresAt: number }>();
+
+/**
+ * In-flight verify dedupe: a cold page load fires 7-9 parallel API calls
+ * BEFORE the first verify completes and populates the cache — without this,
+ * each of them opened its own IdP round-trip (and if the IdP was cold-starting
+ * on Render, they all hung together). All concurrent callers for the same
+ * token now share ONE request.
+ */
+const inflightVerify = new Map<string, Promise<UserSession | null>>();
 
 /**
  * Verify the session cookie against the 3pm-auth IdP.
@@ -106,34 +115,47 @@ export async function getSession(): Promise<UserSession | null> {
     const cached = sessionCache.get(token);
     if (cached && cached.expiresAt > now) return cached.session;
 
-    const res = await fetch(`${IDP_URL}/api/verify-token`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: `${SESSION_COOKIE}=${token}`,
-      },
-      body: JSON.stringify({
-        token,
-        clientId: AUTH_CLIENT_ID,
-        clientSecret: AUTH_CLIENT_SECRET,
-      }),
-    });
+    // Join an already-running verify for this token instead of duplicating it.
+    const inflight = inflightVerify.get(token);
+    if (inflight) return inflight;
 
-    const result = await res.json();
+    const verifyPromise = (async (): Promise<UserSession | null> => {
+      const res = await fetch(`${IDP_URL}/api/verify-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Cookie: `${SESSION_COOKIE}=${token}`,
+        },
+        body: JSON.stringify({
+          token,
+          clientId: AUTH_CLIENT_ID,
+          clientSecret: AUTH_CLIENT_SECRET,
+        }),
+      });
 
-    if (!res.ok || result.error || !result.data?.valid) return null;
+      const result = await res.json();
 
-    const session = result.data.user as UserSession;
+      if (!res.ok || result.error || !result.data?.valid) return null;
 
-    // Cache the success; prune stale entries opportunistically so the map stays bounded.
-    if (sessionCache.size > 500) {
-      for (const [key, val] of sessionCache) {
-        if (val.expiresAt <= now) sessionCache.delete(key);
+      const session = result.data.user as UserSession;
+
+      // Cache the success; prune stale entries opportunistically so the map stays bounded.
+      if (sessionCache.size > 500) {
+        for (const [key, val] of sessionCache) {
+          if (val.expiresAt <= now) sessionCache.delete(key);
+        }
       }
-    }
-    sessionCache.set(token, { session, expiresAt: now + SESSION_CACHE_TTL_MS });
+      sessionCache.set(token, { session, expiresAt: now + SESSION_CACHE_TTL_MS });
 
-    return session;
+      return session;
+    })();
+
+    inflightVerify.set(token, verifyPromise);
+    try {
+      return await verifyPromise;
+    } finally {
+      inflightVerify.delete(token);
+    }
   } catch (error) {
     console.error('Error verifying 3pm-auth session:', error);
     return null;

@@ -9,8 +9,10 @@
  * the token.
  */
 import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { validateInvitationToken } from '@/controller/invitations';
 import { getLoginUrl, getSession } from '@/lib/auth-3pm';
+import { getAppUrl } from '@/lib/app-url';
 
 interface PageProps {
   searchParams: Promise<{ token?: string; error?: string }>;
@@ -60,7 +62,14 @@ export default async function AcceptInvitationPage({ searchParams }: PageProps) 
     );
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  // Public origin, proxy-aware — never a localhost fallback in production
+  // (the IdP would bounce the invited user to localhost after login).
+  const hdrs = await headers();
+  const forwardedHost = hdrs.get('x-forwarded-host') ?? hdrs.get('host');
+  const forwardedProto = hdrs.get('x-forwarded-proto') ?? 'https';
+  const appUrl = getAppUrl(
+    forwardedHost ? `${forwardedProto.split(',')[0].trim()}://${forwardedHost.split(',')[0].trim()}` : null,
+  );
   const invitedEmail = invitation.email.toLowerCase().trim();
 
   // Guard against session bleed-through. If a DIFFERENT user is already signed

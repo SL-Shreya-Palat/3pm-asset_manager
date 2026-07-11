@@ -21,6 +21,8 @@ import {
   MASTER_DATA_MANAGED_MESSAGE,
 } from '@/controller/command-connection/guard';
 import { ensureFreshFromCommand } from '@/controller/command-connection/auto-sync';
+import { DRIVER_ROLE_DEF } from '@/lib/system-roles';
+import { getAppUrl } from '@/lib/app-url';
 import type { CreateDriverInput, UpdateDriverInput } from './types';
 
 /**
@@ -227,24 +229,20 @@ async function resolveDriverRoleId(tenantOid: ObjectId, createdByOid: ObjectId):
 
   if (existing) return existing._id as ObjectId;
 
-  // Auto-create Driver role with mobile-only inspection access
+  // Auto-create the Driver role from the canonical definition — this carries
+  // the assets `inspect: OWN` grant the inspection-launch flow requires.
   const result = await rolesCol.insertOne({
     tenantId: tenantOid,
-    name: 'Driver',
+    name: DRIVER_ROLE_DEF.name,
     key: 'driver',
     nameLower: 'driver',
-    description: 'Mobile-only access for completing inspections.',
-    permissions: {
-      v: 2,
-      forms: [
-        { id: 'inspections.inspectionHistory.inspection', v: 'ALL', c: false, e: false },
-      ],
-      m: ['inspections'],
-      sm: ['inspections.inspectionHistory'],
-    },
-    teamScoped: true,
-    mobileOnly: true,
+    description: DRIVER_ROLE_DEF.description,
+    permissions: DRIVER_ROLE_DEF.permissions,
+    teamScoped: DRIVER_ROLE_DEF.teamScoped,
+    mobileOnly: DRIVER_ROLE_DEF.mobileOnly,
     isSystem: false,
+    type: 'custom',
+    isDriver: true,
     isActive: true,
     isArchived: false,
     archivedAt: null,
@@ -349,8 +347,7 @@ export async function createDriver(tenantId: string, userId: string, input: Crea
           invitedByUserId: userId,
         });
 
-        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-        const acceptUrl = `${appUrl}/invite/accept?token=${rawToken}`;
+        const acceptUrl = `${getAppUrl()}/invite/accept?token=${rawToken}`;
 
         const usersCol = await getUsersCollection();
         const inviter = await usersCol.findOne({ _id: userOid });

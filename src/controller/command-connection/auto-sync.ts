@@ -49,12 +49,19 @@ const g = globalThis as typeof globalThis & {
 const lastSyncAt: Map<string, number> = (g._amCommandSyncAt ??= new Map());
 
 /**
- * Refresh one master entity from Command, then return. Awaited at LIST read
- * entrypoints so the freshest Command data is displayed. Coalesced to at most
- * one sync per (tenant, entity) per `SYNC_TTL_MS` so pagination/search bursts
- * don't each pay for a full import.
- * No-ops when standalone; fails fast via the circuit breaker when Command is
- * unreachable (the caller then serves the local snapshot).
+ * Refresh one master entity from Command — STALE-WHILE-REVALIDATE.
+ *
+ * Returns immediately; the actual Command fetch + upserts run in the
+ * background. List reads therefore ALWAYS serve the local snapshot at local
+ * speed, and Command changes land within seconds (visible on the next
+ * request/poll). Coalesced to at most one background sync per
+ * (tenant, entity) per `SYNC_TTL_MS`.
+ *
+ * Rationale: awaiting the import inline meant the unlucky request after each
+ * TTL expiry stalled for a full fetch-all + upsert round-trip to Command —
+ * multi-second list loads that read as "the app is slow". A briefly stale
+ * table beats a frozen one; the manual "Import from Command" action remains
+ * the synchronous, never-throttled path.
  */
 export async function ensureFreshFromCommand(
   tenantId: string,
@@ -70,52 +77,64 @@ export async function ensureFreshFromCommand(
   // success and a failure throttle equally — avoids hammering a down Command).
   lastSyncAt.set(key, Date.now());
 
-  try {
-    const authTenantId = await getEnabledConnectionAuthTenantId(tenantId);
-    if (!authTenantId) return; // standalone / not configured / disabled
-    const { summary, errors } = await importFromCommand(
-      tenantId,
-      userId ?? '',
-      authTenantId,
-      [entity],
-    );
-    // importFromCommand catches per-entity failures INTERNALLY and returns them
-    // here — surface them, otherwise a failed suppliers/stock sync silently
-    // leaves the list empty with no trace (the exact "records not importing"
-    // symptom is invisible without this log).
-    if (errors[entity]) {
-      console.error(`[command-auto-sync] ${entity} import failed:`, errors[entity]);
-    } else {
-      const c = summary[entity];
-      if (c && c.created === 0 && c.updated === 0 && c.skipped === 0) {
-        // Fetched OK but nothing landed — e.g. no contacts flagged
-        // roles.isSupplier, or an empty Command list. Flag it so this doesn't
-        // read as a silent success.
-        console.warn(
-          `[command-auto-sync] ${entity}: Command returned no importable records (check roles/filters/connection).`,
-        );
+  // Deliberately NOT awaited — see doc comment.
+  void (async () => {
+    try {
+      const authTenantId = await getEnabledConnectionAuthTenantId(tenantId);
+      if (!authTenantId) return; // standalone / not configured / disabled
+      const { summary, errors } = await importFromCommand(
+        tenantId,
+        userId ?? '',
+        authTenantId,
+        [entity],
+      );
+      // importFromCommand catches per-entity failures INTERNALLY and returns
+      // them here — surface them, otherwise a failed suppliers/stock sync
+      // silently leaves the list empty with no trace (the exact "records not
+      // importing" symptom is invisible without this log).
+      if (errors[entity]) {
+        console.error(`[command-auto-sync] ${entity} import failed:`, errors[entity]);
+      } else {
+        const c = summary[entity];
+        if (c && c.created === 0 && c.updated === 0 && c.skipped === 0) {
+          // Fetched OK but nothing landed — e.g. no contacts flagged
+          // roles.isSupplier, or an empty Command list. Flag it so this doesn't
+          // read as a silent success.
+          console.warn(
+            `[command-auto-sync] ${entity}: Command returned no importable records (check roles/filters/connection).`,
+          );
+        }
       }
+    } catch (e) {
+      console.error('[command-auto-sync] refresh failed for', entity, e);
     }
-  } catch (e) {
-    console.error('[command-auto-sync] refresh failed for', entity, e);
-  }
+  })();
 }
 
 /**
- * Refresh a SINGLE Command-sourced asset from Command (asset detail view).
- * Awaited by the caller so the detail page is always current. No-ops when
- * standalone / unreachable.
+ * Refresh a SINGLE Command-sourced asset (asset detail view) — same
+ * stale-while-revalidate + TTL discipline as the list sync. The detail page
+ * renders the local snapshot immediately; the background refresh lands for
+ * the next read. Previously this was awaited AND unthrottled, so every
+ * detail view of a Command asset paid a Command round-trip.
  */
 export async function ensureFreshAsset(
   tenantId: string,
   userId: string | undefined,
   commandAssetId: string,
 ): Promise<void> {
-  try {
-    const authTenantId = await getEnabledConnectionAuthTenantId(tenantId);
-    if (!authTenantId) return;
-    await syncOneAssetFromCommand(tenantId, userId ?? '', authTenantId, commandAssetId);
-  } catch (e) {
-    console.error('[command-auto-sync] single-asset refresh failed', e);
-  }
+  const key = `${tenantId}:asset:${commandAssetId}`;
+  const last = lastSyncAt.get(key);
+  if (last !== undefined && Date.now() - last < SYNC_TTL_MS) return;
+  lastSyncAt.set(key, Date.now());
+
+  void (async () => {
+    try {
+      const authTenantId = await getEnabledConnectionAuthTenantId(tenantId);
+      if (!authTenantId) return;
+      await syncOneAssetFromCommand(tenantId, userId ?? '', authTenantId, commandAssetId);
+    } catch (e) {
+      console.error('[command-auto-sync] single-asset refresh failed', e);
+    }
+  })();
 }

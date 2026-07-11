@@ -13,6 +13,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { exchangeToken, getLoginUrl, SESSION_COOKIE, TENANT_COOKIE } from '@/lib/auth-3pm';
+import { getAppUrl, getRequestOrigin } from '@/lib/app-url';
 import { ensureLocalRecords } from '@/lib/provisioning';
 import {
   getAcceptedInvitationByEmail,
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
       expectedEmail &&
       user.email.toLowerCase().trim() !== expectedEmail.toLowerCase().trim()
     ) {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+      const appUrl = getAppUrl(getRequestOrigin(request));
 
       if (!reauthTried) {
         // Re-initiate the invited login once, after clearing local + IdP

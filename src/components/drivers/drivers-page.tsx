@@ -41,6 +41,7 @@ import {
   SourceBadge,
   CommandManagedBanner,
 } from "@/components/command/source-badge";
+import { ImportCommandStaffDialog } from "@/components/users/import-command-dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/hooks/useAuth";
 import { useRoleAccess } from "@/hooks/use-role-access";
@@ -112,6 +113,9 @@ export function DriversPage() {
   const [inspectForms, setInspectForms] = useState<
     { formId: string; title: string }[]
   >([]);
+
+  // Import-from-Command dialog (drivers arrive with the Driver role preset).
+  const [importOpen, setImportOpen] = useState(false);
 
   // Archive state
   const [showArchived, setShowArchived] = useState(false);
@@ -618,7 +622,14 @@ export function DriversPage() {
         description="Manage driver profiles, licences, and asset assignments"
         count={pagination.total}
       >
-        {!connected && (
+        {connected ? (
+          hasFullAccess && (
+            <Button onClick={() => setImportOpen(true)}>
+              <Send className="h-4 w-4" />
+              Import from Command
+            </Button>
+          )
+        ) : (
           <PermissionGuard permission={Permissions.people.drivers.form.create}>
             <Button onClick={() => router.push("/people/drivers/new")}>
               <Plus className="h-4 w-4" />
@@ -627,6 +638,13 @@ export function DriversPage() {
           </PermissionGuard>
         )}
       </PageHeader>
+
+      <ImportCommandStaffDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImported={() => fetchDrivers(1)}
+        defaultRoleName="Driver"
+      />
 
       <div className="space-y-3 px-6 pb-3">
         {connected && <CommandManagedBanner />}

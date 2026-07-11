@@ -65,16 +65,18 @@ export function NotificationBell() {
     }
   }, []);
 
-  // Poll every 30s. `load` only setStates after an await, so it's lint-safe.
+  // Slow fallback poll (3 min). The SSE stream below is the real-time channel;
+  // this only covers reconnect gaps / multi-instance deploys. A 30s poll was
+  // hammering the auth stack on the server for no user-visible benefit.
   useEffect(() => {
     let active = true;
     const tick = async () => { if (active) await load(); };
     tick();
-    const t = setInterval(tick, 30000);
+    const t = setInterval(tick, 180000);
     return () => { active = false; clearInterval(t); };
   }, [load]);
 
-  // Real-time updates via SSE. Instant delivery; the 30s poll above stays as a
+  // Real-time updates via SSE. Instant delivery; the poll above stays as a
   // fallback (covers reconnects / multi-instance deploys). EventSource auto-reconnects.
   useEffect(() => {
     let es: EventSource | null = null;

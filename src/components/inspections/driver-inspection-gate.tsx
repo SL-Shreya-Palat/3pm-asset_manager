@@ -38,9 +38,11 @@ export function DriverInspectionGate() {
 
   const [due, setDue] = useState<DueInfo | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [launchError, setLaunchError] = useState<string | null>(null);
   const [rechecking, setRechecking] = useState(false);
   const [notYet, setNotYet] = useState(false);
   const launchKeyRef = useRef<string | null>(null);
+  const openingRef = useRef(false);
 
   /** Ask the server whether an inspection is owed. Returns the due flag. */
   const check = useCallback(
@@ -78,36 +80,50 @@ export function DriverInspectionGate() {
     return () => clearTimeout(t);
   }, [isGatedDriver, check]);
 
-  // Record a launch + mint a form-builder session once per due form, so the
-  // submission that comes back is correlated to this driver.
+  // Record a launch + mint a form-builder session, so the submission that
+  // comes back is correlated to this driver. Any failure is surfaced in the
+  // overlay with a Retry button — never a silent infinite spinner.
+  const openInspection = useCallback(async (info: DueInfo) => {
+    if (!info.formId || !info.driverId || openingRef.current) return;
+    openingRef.current = true;
+    setLaunchError(null);
+    try {
+      await axios.post(
+        '/api/inspections/launch',
+        { formId: info.formId, driverId: info.driverId },
+        { withCredentials: true },
+      );
+      const res = await axios.post(
+        '/api/embed/form-builder-session',
+        {},
+        { withCredentials: true },
+      );
+      const sid = res.data?.data?.sessionId;
+      if (sid) {
+        setSessionId(sid);
+      } else {
+        setLaunchError('The inspection form could not be opened.');
+      }
+    } catch (err) {
+      const serverMsg = axios.isAxiosError(err)
+        ? (err.response?.data as { error?: unknown } | undefined)?.error
+        : null;
+      setLaunchError(
+        typeof serverMsg === 'string' && serverMsg
+          ? serverMsg
+          : 'The inspection form could not be opened.',
+      );
+    } finally {
+      openingRef.current = false;
+    }
+  }, []);
+
   useEffect(() => {
     if (!due?.formId || !due.driverId) return;
     if (launchKeyRef.current === due.formId) return;
     launchKeyRef.current = due.formId;
-
-    let active = true;
-    (async () => {
-      try {
-        await axios.post(
-          '/api/inspections/launch',
-          { formId: due.formId, driverId: due.driverId },
-          { withCredentials: true },
-        );
-        const res = await axios.post(
-          '/api/embed/form-builder-session',
-          {},
-          { withCredentials: true },
-        );
-        const sid = res.data?.data?.sessionId;
-        if (active && sid) setSessionId(sid);
-      } catch {
-        // Leave sessionId null → the overlay shows a retry affordance.
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [due?.formId, due?.driverId]);
+    openInspection(due);
+  }, [due, openInspection]);
 
   // While the gate is open, poll (cheap, no sync) so a webhook-processed
   // submission clears it automatically.
@@ -166,6 +182,25 @@ export function DriverInspectionGate() {
           title="Driver inspection"
           allow="clipboard-write; camera"
         />
+      ) : launchError ? (
+        <div className="flex flex-1 items-center justify-center p-6">
+          <div className="flex max-w-md flex-col items-center gap-4 text-center">
+            <ShieldAlert className="h-8 w-8 text-destructive" />
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                We couldn&apos;t open your inspection
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">{launchError}</p>
+            </div>
+            <Button onClick={() => due && openInspection(due)}>
+              <RefreshCw className="h-4 w-4" />
+              Try again
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              If this keeps happening, contact your administrator.
+            </p>
+          </div>
+        </div>
       ) : (
         <div className="flex flex-1 items-center justify-center">
           <div className="flex flex-col items-center gap-3">

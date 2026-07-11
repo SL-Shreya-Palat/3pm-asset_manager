@@ -20,13 +20,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
   }
 
+  // Impact counts (4 countDocuments) only when explicitly requested — the
+  // settings panel's disconnect dialog is the sole consumer. Every page load
+  // hits this route via useConnection, so the default path must stay cheap.
+  const wantImpact = request.nextUrl.searchParams.get('impact') === '1';
   const [connection, impact] = await Promise.all([
     resolveConnection(user.currentTenantId),
-    getDisconnectImpact(user.currentTenantId),
+    wantImpact ? getDisconnectImpact(user.currentTenantId) : Promise.resolve(undefined),
   ]);
 
   return NextResponse.json({
-    data: { ...connection, configured: isCommandConfigured(), impact },
+    data: { ...connection, configured: isCommandConfigured(), ...(impact ? { impact } : {}) },
     error: null,
   });
 }

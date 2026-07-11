@@ -21,6 +21,7 @@ import {
   resend3PMInvitation,
 } from '@/lib/3pm-data-api';
 import { sendInvitationEmail } from '@/lib/email';
+import { getAppUrl } from '@/lib/app-url';
 import type { InviteUserInput, UpdateTenantMemberInput } from './types';
 
 /**
@@ -556,8 +557,7 @@ export async function resendInvitation(
     invitedByUserId: requestedByUserId,
   });
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  const acceptUrl = `${appUrl}/invite/accept?token=${rawToken}`;
+  const acceptUrl = `${getAppUrl()}/invite/accept?token=${rawToken}`;
 
   const sent = await sendInvitationEmail({
     recipientEmail: email,

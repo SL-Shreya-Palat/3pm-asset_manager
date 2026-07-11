@@ -17,23 +17,27 @@ export async function register() {
         console.error('[INSTRUMENTATION] Index setup failed:', err),
       );
 
-    const { migrateAllTenantPrestartForms } = await import('@/controller/seeding');
-
-    try {
-      const results = await migrateAllTenantPrestartForms();
-      if (results.length > 0) {
-        const updated = results.filter((r) => r.status === 'updated').length;
-        const errors = results.filter((r) => r.status === 'error').length;
-        console.log(
-          `[INSTRUMENTATION] Pre-start template migration: ${updated} tenants updated, ${errors} errors`,
-        );
-        for (const r of results.filter((r) => r.status === 'error')) {
-          console.error(`[INSTRUMENTATION]   ✗ ${r.tenantName}: ${r.error}`);
+    // Fire-and-forget, like the index setup: this walks every tenant and can
+    // call out to form-builder. On Render the service cold-starts after idle,
+    // so awaiting it here made the FIRST user request of every wake pay for
+    // the whole migration on top of the platform cold start.
+    import('@/controller/seeding')
+      .then(({ migrateAllTenantPrestartForms }) => migrateAllTenantPrestartForms())
+      .then((results) => {
+        if (results.length > 0) {
+          const updated = results.filter((r) => r.status === 'updated').length;
+          const errors = results.filter((r) => r.status === 'error').length;
+          console.log(
+            `[INSTRUMENTATION] Pre-start template migration: ${updated} tenants updated, ${errors} errors`,
+          );
+          for (const r of results.filter((r) => r.status === 'error')) {
+            console.error(`[INSTRUMENTATION]   ✗ ${r.tenantName}: ${r.error}`);
+          }
         }
-      }
-    } catch (err) {
-      // Non-fatal — don't block app startup.
-      console.error('[INSTRUMENTATION] Pre-start template migration failed:', err);
-    }
+      })
+      .catch((err) => {
+        // Non-fatal — never blocks app startup.
+        console.error('[INSTRUMENTATION] Pre-start template migration failed:', err);
+      });
   }
 }

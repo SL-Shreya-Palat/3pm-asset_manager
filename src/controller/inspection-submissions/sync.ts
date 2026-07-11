@@ -25,6 +25,29 @@ const FORM_BUILDER_MONGODB_URI =
 const FORM_BUILDER_DB_NAME =
   process.env.FORM_BUILDER_DB_NAME || 'formbuilder-portal';
 
+/**
+ * Cached form-builder Mongo client (same globalThis pattern as lib/mongodb).
+ * A fresh MongoClient per sync call paid a full TLS + auth handshake every
+ * time — and this runs on defects/history/exception page mounts and on the
+ * driver gate's "I've completed it".
+ */
+const gFb = globalThis as typeof globalThis & {
+  _fbMongoClientPromise?: Promise<MongoClient>;
+};
+
+function getFbClient(): Promise<MongoClient> {
+  if (!gFb._fbMongoClientPromise) {
+    gFb._fbMongoClientPromise = new MongoClient(FORM_BUILDER_MONGODB_URI)
+      .connect()
+      .catch((err) => {
+        // Don't cache a failed connection — next call retries.
+        gFb._fbMongoClientPromise = undefined;
+        throw err;
+      });
+  }
+  return gFb._fbMongoClientPromise;
+}
+
 export type SyncSubmissionsResult =
   | { status: 'no_mapping' }
   | {
@@ -51,11 +74,10 @@ export async function syncFormBuilderSubmissions(
   const organizationId = orgMapping.organizationId.toString();
   const appId = process.env.FORM_BUILDER_APP_ID;
 
-  const fbClient = new MongoClient(FORM_BUILDER_MONGODB_URI);
-  await fbClient.connect();
+  const fbClient = await getFbClient();
   const fbDb = fbClient.db(FORM_BUILDER_DB_NAME);
 
-  try {
+  {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const submissionFilter: any = {
       organizationId: new ObjectId(organizationId),
@@ -154,7 +176,5 @@ export async function syncFormBuilderSubmissions(
       defectsCreated: defectsCreatedCount,
       errors: errors.length > 0 ? errors : undefined,
     };
-  } finally {
-    await fbClient.close();
   }
 }
