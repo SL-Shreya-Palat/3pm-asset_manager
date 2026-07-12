@@ -365,6 +365,23 @@ async function importDrivers(
   return counts;
 }
 
+/**
+ * Compose a business-contact office address into one display string. Handles
+ * both Command shapes: `{addressLine1, city, state, postalCode}` (native) and
+ * `{street, city, state, fullAddress}` (Zoho-migrated tenants).
+ */
+function contactAddress(addr: Record<string, unknown> | undefined | null): string | undefined {
+  if (!addr || typeof addr !== 'object') return undefined;
+  return (
+    str((addr as any).fullAddress) ??
+    str((addr as any).address) ??
+    ([addr.addressLine1 ?? (addr as any).street, addr.addressLine2, addr.city, addr.state, (addr as any).postalCode]
+      .map((p) => str(p))
+      .filter(Boolean)
+      .join(', ') || undefined)
+  );
+}
+
 /** Suppliers → vendors (business contacts with the supplier role). */
 async function importVendors(
   tenantId: ObjectId,
@@ -393,6 +410,20 @@ async function importVendors(
       continue;
     }
 
+    // Command's contact PERSONS ride along on each row (`contacts`, from its
+    // financialContacts collection) — that's where the real contact name and
+    // often the only email/phone live. Root email/phone win; person is fallback.
+    const persons: Array<Record<string, unknown>> = Array.isArray(row.contacts) ? row.contacts : [];
+    const person =
+      persons.find((p) => str(p?.firstName) ?? str(p?.lastName) ?? str(p?.email) ?? str(p?.phone)) ??
+      persons[0];
+    const personName = person
+      ? [str(person.firstName), str(person.lastName)].filter(Boolean).join(' ') || undefined
+      : undefined;
+    const email = str(row.email) ?? str(person?.email);
+    const phone = str(row.phone) ?? str(row.mobile) ?? str(person?.phone);
+    const address = contactAddress(row.officeAddress);
+
     const now = new Date();
     const result = await vendors.updateOne(
       { tenantId, commandContactId },
@@ -400,9 +431,10 @@ async function importVendors(
         $set: {
           source: 'command',
           name,
-          contactName: str(row.contactName) ?? str(row.contactPerson) ?? name,
-          ...(str(row.email) ? { email: str(row.email) } : {}),
-          ...(str(row.phone) ?? str(row.mobile) ? { phone: str(row.phone) ?? str(row.mobile) } : {}),
+          contactName: personName ?? str(row.contactName) ?? str(row.contactPerson) ?? name,
+          ...(email ? { email } : {}),
+          ...(phone ? { phone } : {}),
+          ...(address ? { address } : {}),
           commandSyncedAt: now,
           updatedBy: userId,
           updatedAt: now,
