@@ -57,6 +57,10 @@ export interface HistoryBatchResult {
 const PAGE_LIMIT = 100;
 /** Job cards fan out to a comprehensive call each — keep batches small. */
 const JOBCARD_BATCH = 25;
+// Command's workshop LIST + per-card comprehensive endpoints are heavy
+// aggregations that can exceed the transport's 5s default on large tenants and
+// surface as `unreachable`. Match the master-data import's generous timeout.
+const HISTORY_FETCH_TIMEOUT_MS = 20_000;
 
 function str(v: unknown): string | undefined {
   if (v == null) return undefined;
@@ -104,7 +108,9 @@ async function fetchPage(
   limit = PAGE_LIMIT,
 ): Promise<{ rows: any[]; hasMore: boolean }> {
   const sep = path.includes('?') ? '&' : '?';
-  const res = await commandRequest<any>(`${path}${sep}page=${page}&limit=${limit}`, authTenantId);
+  const res = await commandRequest<any>(`${path}${sep}page=${page}&limit=${limit}`, authTenantId, {
+    timeoutMs: HISTORY_FETCH_TIMEOUT_MS,
+  });
   if (!res.ok) {
     throw new Error(`Command ${path} page ${page} failed: ${res.reason}${res.status ? ` ${res.status}` : ''}`);
   }
@@ -756,6 +762,7 @@ async function importWorkOrders(
     const compRes = await commandRequest<any>(
       `/api/workshop/job-cards/${encodeURIComponent(commandJobCardId)}/comprehensive`,
       authTenantId,
+      { timeoutMs: HISTORY_FETCH_TIMEOUT_MS },
     );
     if (compRes.ok) comp = compRes.data?.data ?? null;
     const card = comp?.jobCard ?? comp ?? row;

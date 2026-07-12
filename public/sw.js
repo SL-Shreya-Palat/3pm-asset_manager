@@ -8,7 +8,7 @@
  *
  * Bump VERSION to invalidate all caches on deploy of a new SW.
  */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const STATIC_CACHE = `drive-static-${VERSION}`;
 const OFFLINE_URL = '/offline.html';
 

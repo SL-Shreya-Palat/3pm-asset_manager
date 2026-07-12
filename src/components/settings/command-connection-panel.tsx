@@ -38,14 +38,18 @@ interface ConnectionData {
 
 interface ImportSummary {
   assets?: { created: number; updated: number; skipped: number };
-  drivers?: { created: number; updated: number; skipped: number };
   vendors?: { created: number; updated: number; skipped: number };
   locations?: { created: number; updated: number; skipped: number };
+  stock?: { created: number; updated: number; skipped: number };
 }
 
+// Master DATA only. Staff/drivers are intentionally NOT here — people need a
+// role + login invite, which is a different workflow handled on the Users /
+// Drivers pages ("Import from Command"). Driver RECORDS still mirror
+// automatically via the on-read auto-sync, so the drivers list stays populated
+// without a confusing "no-invite" import living in connection settings.
 const ENTITY_OPTIONS = [
   { key: 'assets', label: 'Assets', hint: 'Fleet assets become read-only Command records here' },
-  { key: 'drivers', label: 'Staff → Drivers', hint: 'Command staff imported as drivers' },
   { key: 'vendors', label: 'Suppliers → Vendors', hint: 'Business contacts with supplier role' },
   { key: 'locations', label: 'Locations', hint: 'Company locations' },
   { key: 'stock', label: 'Stock', hint: 'Command stock items — consumption pushes transactions back to Command' },
@@ -213,7 +217,7 @@ export function CommandConnectionPanel() {
         <h2 className="text-lg font-semibold text-foreground">Command connection</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           When connected, Command (construction portal) is the master source for assets,
-          staff, suppliers and locations — and Drive pushes meter readings,
+          suppliers, locations and stock — and Drive pushes meter readings,
           compliance dates and out-of-service status back to Command.
         </p>
       </div>

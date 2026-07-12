@@ -105,7 +105,7 @@ export async function getOptions(
 export async function getPage(
   entity: CommandEntity,
   authTenantId: string,
-  opts: { page: number; limit: number; search?: string; query?: Record<string, string> },
+  opts: { page: number; limit: number; search?: string; query?: Record<string, string>; timeoutMs?: number },
 ): Promise<CommandResult<CommandPage>> {
   const params = new URLSearchParams({
     page: String(Math.max(1, opts.page)),
@@ -116,6 +116,7 @@ export async function getPage(
   const res = await commandRequest<any>(
     `${LIST_ENDPOINTS[entity]}?${params.toString()}`,
     authTenantId,
+    opts.timeoutMs ? { timeoutMs: opts.timeoutMs } : undefined,
   );
   if (!res.ok) return res;
   const items = extractArray(res.data).filter(

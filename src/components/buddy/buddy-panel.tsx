@@ -236,12 +236,18 @@ export function BuddyPanel() {
   const firstName = user?.firstName;
   const last = messages[messages.length - 1];
   const showThinking = busy && (!last || last.role === "user");
-  const sidebarVisible = effectiveFullPage || showThreads;
+  // Only DESKTOP full-page docks the thread list beside the chat. On phones the
+  // chat is full-screen and a docked 256px list would crush the conversation to
+  // a sliver — so there the list is a History-toggled drawer that slides OVER
+  // the chat (see sidebarAsOverlay) and the conversation keeps the full width.
+  const dockSidebar = effectiveFullPage && !isMobile;
+  const sidebarVisible = dockSidebar || showThreads;
+  const sidebarAsOverlay = sidebarVisible && isMobile;
 
   const ThreadList = (
     <div
-      className={`flex flex-col border-r border-border bg-muted/30 ${
-        effectiveFullPage ? "w-64" : "w-56"
+      className={`flex h-full flex-col border-r border-border bg-muted/30 ${
+        sidebarAsOverlay ? "w-72 max-w-[85%]" : dockSidebar ? "w-64" : "w-56"
       }`}
     >
       <div className="p-2">
@@ -302,7 +308,7 @@ export function BuddyPanel() {
             Your fleet assistant
           </p>
         </div>
-        {!effectiveFullPage && (
+        {!dockSidebar && (
           <IconButton
             onClick={() => setShowThreads((v) => !v)}
             label="Conversation history"
@@ -432,11 +438,27 @@ export function BuddyPanel() {
     <div
       className={
         effectiveFullPage
-          ? "fixed inset-0 z-50 flex bg-card animate-in fade-in"
+          ? "fixed inset-0 z-50 flex bg-card animate-in fade-in [padding-top:env(safe-area-inset-top)] [padding-bottom:env(safe-area-inset-bottom)]"
           : "fixed right-16 top-0 bottom-0 z-40 flex w-[430px] border-l border-border bg-card shadow-xl animate-in slide-in-from-right"
       }
     >
-      {sidebarVisible && ThreadList}
+      {sidebarAsOverlay ? (
+        // Phone: thread list slides OVER the chat as a drawer (backdrop dismisses),
+        // so the conversation is never squeezed.
+        <>
+          <button
+            type="button"
+            aria-label="Close conversation history"
+            onClick={() => setShowThreads(false)}
+            className="absolute inset-0 z-10 bg-black/40 animate-in fade-in"
+          />
+          <div className="absolute inset-y-0 left-0 z-20 animate-in slide-in-from-left">
+            {ThreadList}
+          </div>
+        </>
+      ) : (
+        sidebarVisible && ThreadList
+      )}
       {Conversation}
     </div>
   );

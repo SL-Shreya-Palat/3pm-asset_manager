@@ -50,6 +50,13 @@ export type ImportSummary = Partial<Record<ImportEntity, ImportCounts>>;
 
 const PAGE_LIMIT = 100;
 const MAX_PAGES = 100; // safety cap (10k records/entity per run)
+// Command's full LIST endpoints (stock, business-contact, …) run a heavy
+// sort+count+enrich aggregation over the tenant's WHOLE dataset. On large
+// tenants that exceeds the transport's 5s default and surfaces as `unreachable`
+// (only the big datasets fail; small lookups stay under 5s). Give the paged
+// import a generous timeout — same reasoning the staff import already uses
+// (see getCommandStaff, which fetches with a 15s timeout for the same reason).
+const IMPORT_FETCH_TIMEOUT_MS = 20_000;
 
 function str(v: unknown): string | undefined {
   if (v == null) return undefined;
@@ -80,7 +87,12 @@ async function fetchAll(
 ): Promise<Array<Record<string, any>>> {
   const rows: Array<Record<string, any>> = [];
   for (let page = 1; page <= MAX_PAGES; page++) {
-    const res = await getPage(entity, authTenantId, { page, limit: PAGE_LIMIT, query });
+    const res = await getPage(entity, authTenantId, {
+      page,
+      limit: PAGE_LIMIT,
+      query,
+      timeoutMs: IMPORT_FETCH_TIMEOUT_MS,
+    });
     if (!res.ok) {
       if (page === 1) throw new Error(`Command ${entity} fetch failed: ${res.reason}`);
       break; // partial failure mid-run — keep what we have
@@ -308,6 +320,16 @@ async function importDrivers(
       counts.skipped++;
       continue;
     }
+
+    // Only staff who hold a driver's licence in Command are drivers — office /
+    // non-driving staff are OUT OF SCOPE (not "skipped", so they don't pollute
+    // the user-facing counts, same as importVendors' non-supplier contacts).
+    // Command exposes the licence as licenseNumber (from the staff
+    // drivers-licence block). This gates the auto-sync + bulk 'drivers' import;
+    // the explicit per-person "Import from Command" dialog writes drivers
+    // directly (users/command-import.ts) and is intentionally unaffected, so an
+    // admin can still add a specific licence-less person by hand.
+    if (!s.licenseNumber) continue;
 
     // Link an existing local driver by email (never duplicate a person).
     const match: Record<string, unknown>[] = [{ commandStaffId: s.id }];
