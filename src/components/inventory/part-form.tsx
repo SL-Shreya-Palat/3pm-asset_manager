@@ -62,8 +62,12 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
   const [locations, setLocations] = useState<LookupOption[]>([]);
   const [vendors, setVendors] = useState<LookupOption[]>([]);
 
+  // Whether the lookup dropdowns are still loading their options.
+  const [lookupsLoading, setLookupsLoading] = useState(true);
+
   // Fetch lookup data
   const fetchLookups = useCallback(async () => {
+    setLookupsLoading(true);
     try {
       const [muRes, catRes, locRes, venRes] = await Promise.all([
         axios.get('/api/inventory-settings/measurement-units', { withCredentials: true }),
@@ -82,6 +86,8 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
       setVendors(vendorItems.map((i: Record<string, unknown>) => ({ id: i.id as string, name: i.name as string })));
     } catch {
       // Silent fail
+    } finally {
+      setLookupsLoading(false);
     }
   }, []);
 
@@ -406,6 +412,7 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
                     value: u.id,
                   }))}
                   value={measurementUnitId || null}
+                  loading={lookupsLoading}
                   onValueChange={(val) => setMeasurementUnitId(val || '')}
                   placeholder="Select unit"
                   searchPlaceholder="Search units..."
@@ -430,6 +437,7 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
                   className="mt-1.5"
                   options={categories.map((c) => ({ label: c.name, value: c.id }))}
                   value={categoryId || null}
+                  loading={lookupsLoading}
                   onValueChange={(val) => setCategoryId(val || '')}
                   placeholder="Select category"
                   searchPlaceholder="Search categories..."
@@ -473,6 +481,7 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
                       className="mt-1"
                       options={vendors.map((v) => ({ label: v.name, value: v.id }))}
                       value={line.vendorId || null}
+                      loading={lookupsLoading}
                       onValueChange={(val) => updateVendorLine(idx, 'vendorId', val || '')}
                       placeholder="Select vendor"
                       searchPlaceholder="Search vendors..."
@@ -523,6 +532,7 @@ export function PartForm({ mode, part, onClose, onSaved }: PartFormProps) {
                       className="mt-1"
                       options={locations.map((l) => ({ label: l.name, value: l.id }))}
                       value={line.locationId || null}
+                      loading={lookupsLoading}
                       onValueChange={(val) => updateLocationLine(idx, 'locationId', val || '')}
                       placeholder="Select location"
                       searchPlaceholder="Search locations..."

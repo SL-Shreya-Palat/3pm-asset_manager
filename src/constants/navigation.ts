@@ -48,7 +48,6 @@ export const navItems: NavItem[] = [
     children: [
       { label: 'Inspection History', href: '/inspections/history', requiredModule: 'inspections', requiredSubModule: 'inspectionHistory' },
       { label: 'Forms', href: '/inspections/forms', requiredModule: 'inspections', requiredSubModule: 'forms' },
-      { label: 'Inspection Settings', href: '/inspections/defect-settings', requiredModule: 'inspections', requiredSubModule: 'defectSettings' },
       { label: 'Exception Report', href: '/inspections/exception-report', requiredModule: 'inspections', requiredSubModule: 'exceptionReport' },
     ],
   },

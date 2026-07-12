@@ -25,6 +25,7 @@ import {
 import { cn } from '@/lib/utils';
 import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { useAuth } from '@/hooks/useAuth';
 import type {
   WorkOrderRow,
   LookupOption,
@@ -114,6 +115,9 @@ export function WorkOrderForm({
   lockAsset = false,
 }: WorkOrderFormProps) {
   const router = useRouter();
+  const { user } = useAuth();
+  // Mechanics get a simplified, mostly read-only editor (status + attachments only).
+  const isMechanic = user?.tenant?.isMechanic === true;
   // Defect/fault-sourced covers raising a WO from a defect/fault (create) AND later
   // editing that WO (its stored source), so items stay optional in both cases.
   const isDefectSourced = source === 'defect' || workOrder?.source === 'defect';
@@ -163,9 +167,15 @@ export function WorkOrderForm({
   const [mechanics, setMechanics] = useState<UserLookup[]>([]);
   const [statuses, setStatuses] = useState<WOStatusOption[]>([]);
   const [availableParts, setAvailableParts] = useState<PartLookup[]>([]);
+  // Whether the lookup dropdowns are still loading (non-mechanic path).
+  const [lookupsLoading, setLookupsLoading] = useState(!isMechanic);
 
   // Fetch lookup data
   const fetchLookups = useCallback(async () => {
+    // Mechanics can't access these lookup endpoints (assets/vendors/users/parts
+    // all 403); their disabled fields are seeded separately, so skip the fetch.
+    if (isMechanic) return;
+    setLookupsLoading(true);
     try {
       const [assetsRes, tasksRes, vendorsRes, usersRes, statusesRes, partsRes] = await Promise.all([
         axios.get('/api/assets?limit=100', { withCredentials: true }),
@@ -235,10 +245,41 @@ export function WorkOrderForm({
       }));
     } catch {
       // Silent
+    } finally {
+      setLookupsLoading(false);
     }
-  }, []);
+  }, [isMechanic]);
 
   useEffect(() => { fetchLookups(); }, [fetchLookups]);
+
+  // Mechanics can't hit the lookup endpoints (assets/vendors/users/parts all
+  // 403), so seed the disabled fields' options straight from the work order and
+  // load the status list (allowed for WO viewers) so Status stays editable.
+  useEffect(() => {
+    if (!isMechanic || mode !== 'edit' || !workOrder) return;
+    let cancelled = false;
+    (async () => {
+      const [woRes, statusRes] = await Promise.allSettled([
+        axios.get(`/api/work-orders/${workOrder.id}`, { withCredentials: true }),
+        axios.get('/api/work-order-statuses', { withCredentials: true }),
+      ]);
+      if (cancelled) return;
+      if (statusRes.status === 'fulfilled') {
+        setStatuses((statusRes.value.data?.data || []) as WOStatusOption[]);
+      }
+      const full = (woRes.status === 'fulfilled' ? woRes.value.data?.data : null) as WorkOrderRow | null;
+      const src = full || workOrder;
+      if (src.assetId) setAssets([{ id: src.assetId, name: src.assetName || src.assetId }]);
+      const names = full?.serviceTaskNames || {};
+      setServiceTasks((src.serviceTaskIds || []).map((id) => ({ id, name: names[id] || id })));
+      if (src.assigneeId && src.assigneeType === 'mechanic') {
+        setMechanics([{ id: src.assigneeId, name: src.assigneeName || '', email: src.assigneeEmail, phoneNumber: src.assigneePhone }]);
+      } else if (src.assigneeId && src.assigneeType === 'vendor') {
+        setVendors([{ id: src.assigneeId, name: src.assigneeName || '', contactName: src.assigneeContact || '', email: src.assigneeEmail, phone: src.assigneePhone }]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isMechanic, mode, workOrder]);
 
   // New work orders default the due date to today (local date).
   useEffect(() => {
@@ -567,7 +608,8 @@ export function WorkOrderForm({
                 placeholder="Select asset"
                 searchPlaceholder="Search assets..."
                 emptyMessage="No assets found"
-                disabled={lockAsset}
+                loading={lookupsLoading}
+                disabled={lockAsset || isMechanic}
                 error={fieldErrors.assetId}
               />
             </div>
@@ -589,6 +631,8 @@ export function WorkOrderForm({
                   placeholder="Search and select service tasks..."
                   searchPlaceholder="Search service tasks..."
                   emptyMessage="No service tasks found"
+                  loading={lookupsLoading}
+                  disabled={isMechanic}
                 />
               </div>
               {serviceTaskIds.length > 0 && (
@@ -605,6 +649,7 @@ export function WorkOrderForm({
                           type="button"
                           variant="ghost"
                           size="icon-sm"
+                          disabled={isMechanic}
                           onClick={() => setServiceTaskIds((prev) => prev.filter((id) => id !== taskId))}
                           className="text-muted-foreground hover:text-destructive shrink-0"
                         >
@@ -763,9 +808,10 @@ export function WorkOrderForm({
                 <button
                   key={tab}
                   type="button"
+                  disabled={isMechanic}
                   onClick={() => handleAssigneeTabChange(tab)}
                   className={cn(
-                    'px-3 py-1.5 text-sm rounded-md transition-colors',
+                    'px-3 py-1.5 text-sm rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
                     assigneeTab === tab
                       ? 'bg-primary text-primary-foreground font-medium'
                       : 'text-muted-foreground hover:bg-muted hover:text-foreground',
@@ -786,7 +832,7 @@ export function WorkOrderForm({
                 </div>
                 <div>
                   <Label>Vendor <span className="text-destructive">*</span></Label>
-                  <Select value={assigneeId} onValueChange={handleVendorSelect}>
+                  <Select value={assigneeId} onValueChange={handleVendorSelect} disabled={isMechanic}>
                     <SelectTrigger className={`mt-1.5 ${fieldErrors.assigneeId ? 'border-destructive' : ''}`}>
                       <SelectValue placeholder="Select vendor" />
                     </SelectTrigger>
@@ -855,6 +901,8 @@ export function WorkOrderForm({
                     placeholder="Select mechanic"
                     searchPlaceholder="Search mechanics..."
                     emptyMessage="No mechanics found"
+                    loading={lookupsLoading}
+                    disabled={isMechanic}
                     error={fieldErrors.assigneeId}
                   />
                 </div>
@@ -877,13 +925,13 @@ export function WorkOrderForm({
                 )}
 
                 <p className="text-xs text-muted-foreground">
-                  Can&apos;t find the contact? You can add it in{' '}
+                  Can&apos;t find the mechanic? You can add one in{' '}
                   <button
                     type="button"
-                    onClick={() => router.push('/vendors')}
+                    onClick={() => router.push('/people/users')}
                     className="text-primary hover:underline font-medium"
                   >
-                    the vendors
+                    the Users
                   </button>
                 </p>
               </div>
@@ -898,8 +946,9 @@ export function WorkOrderForm({
                       Can&apos;t find the third party?{' '}
                       <button
                         type="button"
+                        disabled={isMechanic}
                         onClick={() => setShowThirdPartyFields(true)}
-                        className="text-primary hover:underline font-medium"
+                        className="text-primary hover:underline font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Add new third party
                       </button>
@@ -911,6 +960,7 @@ export function WorkOrderForm({
                       <Label>Name <span className="text-destructive">*</span></Label>
                       <Input
                         value={thirdPartyName}
+                        disabled={isMechanic}
                         onChange={(e) => { setThirdPartyName(e.target.value); clearFieldError('thirdPartyName'); }}
                         placeholder="Third party name"
                         className={`mt-1.5 ${fieldErrors.thirdPartyName ? 'border-destructive' : ''}`}
@@ -924,6 +974,7 @@ export function WorkOrderForm({
                       <Input
                         type="email"
                         value={thirdPartyEmail}
+                        disabled={isMechanic}
                         onChange={(e) => { setThirdPartyEmail(e.target.value); clearFieldError('thirdPartyEmail'); }}
                         placeholder="Third party email"
                         className={`mt-1.5 ${fieldErrors.thirdPartyEmail ? 'border-destructive' : ''}`}
@@ -941,7 +992,7 @@ export function WorkOrderForm({
           {/* ── Due Date ── */}
           <FormSection icon={Calendar} title="Due Date">
             <div>
-              <DateField label="Due Date" value={dueDate} onChange={setDueDate} placeholder="Select due date" />
+              <DateField label="Due Date" value={dueDate} onChange={setDueDate} placeholder="Select due date" disabled={isMechanic} />
             </div>
           </FormSection>
 
@@ -992,6 +1043,7 @@ export function WorkOrderForm({
               <Textarea
                 id="woDescription"
                 value={description}
+                disabled={isMechanic}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Describe this work order..."
                 rows={3}
@@ -1017,6 +1069,8 @@ export function WorkOrderForm({
                   placeholder="Select stock"
                   searchPlaceholder="Search stock..."
                   emptyMessage="No stock in inventory"
+                  loading={lookupsLoading}
+                  disabled={isMechanic}
                 />
               </div>
               <div className="w-20">
@@ -1025,11 +1079,12 @@ export function WorkOrderForm({
                   type="number"
                   min={1}
                   value={qtyToAdd}
+                  disabled={isMechanic}
                   onChange={(e) => setQtyToAdd(e.target.value)}
                   className="mt-1.5"
                 />
               </div>
-              <Button type="button" variant="outline" onClick={handleAddPart} disabled={!partToAdd}>
+              <Button type="button" variant="outline" onClick={handleAddPart} disabled={!partToAdd || isMechanic}>
                 <Plus className="h-4 w-4" /> Add
               </Button>
             </div>
@@ -1060,7 +1115,7 @@ export function WorkOrderForm({
                         type="number"
                         min={1}
                         value={p.quantity}
-                        disabled={frozen}
+                        disabled={frozen || isMechanic}
                         onChange={(e) => updatePartQty(key, parseInt(e.target.value, 10))}
                         className="w-16 h-8 text-center"
                       />
@@ -1072,6 +1127,7 @@ export function WorkOrderForm({
                           type="button"
                           variant="ghost"
                           size="icon-sm"
+                          disabled={isMechanic}
                           onClick={() => removePart(key)}
                           className="text-muted-foreground hover:text-destructive shrink-0"
                         >

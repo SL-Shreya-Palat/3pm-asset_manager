@@ -19,6 +19,7 @@ import {
 import { getFormPermissionLevels } from '@/lib/server-permissions';
 
 const FORM_ID = 'settings.workOrderStatuses.workOrderStatus';
+const WORK_ORDER_FORM_ID = 'maintenance.workOrders.workOrder';
 
 export async function GET(request: NextRequest) {
   const user = await getAuthenticatedUser(request);
@@ -30,8 +31,17 @@ export async function GET(request: NextRequest) {
   const showArchived = request.nextUrl.searchParams.get('showArchived') === 'true';
 
   const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
+
+  // Statuses are reference data needed to view/edit work orders — so besides the
+  // settings managers, anyone who can view work orders (e.g. mechanics, who have
+  // no settings access) may read the full list to pick/change a WO's status.
+  let createdBy = perms.view === 'OWN' ? user.id : undefined;
   if (perms.view === 'NONE') {
-    return NextResponse.json({ data: null, error: 'You do not have permission to view work order statuses' }, { status: 403 });
+    const woPerms = await getFormPermissionLevels(user.id, user.currentTenantId, WORK_ORDER_FORM_ID);
+    if (woPerms.view === 'NONE') {
+      return NextResponse.json({ data: null, error: 'You do not have permission to view work order statuses' }, { status: 403 });
+    }
+    createdBy = undefined;
   }
 
   // Lazily backfill the default statuses for tenants that predate default
@@ -44,8 +54,6 @@ export async function GET(request: NextRequest) {
       console.error('[work-order-statuses] lazy default seeding failed (non-fatal):', err);
     }
   }
-
-  const createdBy = perms.view === 'OWN' ? user.id : undefined;
 
   const items = await getAllWorkOrderStatuses(user.currentTenantId, search, { showArchived, createdBy });
   return NextResponse.json({ data: items, error: null });

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ChevronDown, ChevronRight, Ruler, Tag, MapPin, Wrench, CircleDot, Box, Layers, Bell, Cable, Radio, Gauge, ClipboardCheck } from 'lucide-react';
+import { ChevronDown, ChevronRight, Ruler, Tag, MapPin, Wrench, CircleDot, Box, Layers, Bell, Cable, Radio, Gauge, ClipboardCheck, FileCheck2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useConnection } from '@/hooks/use-connection';
 import { InventorySettingsList, type SettingsFieldConfig } from './inventory-settings-list';
@@ -14,6 +14,7 @@ import { IoTSettingsPanel } from './iot-settings-panel';
 import { useRoleAccess } from '@/hooks/use-role-access';
 import { MeterSettingsPanel } from './meter-settings-panel';
 import { DriverInspectionSettingsPanel } from './driver-inspection-settings-panel';
+import { InspectionFormsSettingsPanel } from './inspection-forms-settings-panel';
 
 /** Settings tabs. */
 const TABS = [
@@ -63,6 +64,7 @@ const ADMIN_SIDEBAR: SidebarItem[] = [
     label: 'Inspections',
     icon: ClipboardCheck,
     children: [
+      { key: 'inspection-forms', label: 'Forms Inspection' },
       { key: 'driver-inspections', label: 'Driver Inspections' },
     ],
   },
@@ -120,7 +122,7 @@ const ASSET_TYPE_FIELDS: SettingsFieldConfig[] = [
   { key: 'description', label: 'Description', type: 'textarea', placeholder: 'Optional description' },
 ];
 
-const VALID_SIDEBAR_KEYS = new Set(['asset-types', 'measurement-units', 'part-categories', 'part-locations', 'work-order-statuses', 'meter-settings', 'driver-inspections', 'notification-routing', 'command-connection', 'iot-hub']);
+const VALID_SIDEBAR_KEYS = new Set(['asset-types', 'measurement-units', 'part-categories', 'part-locations', 'work-order-statuses', 'meter-settings', 'inspection-forms', 'driver-inspections', 'notification-routing', 'command-connection', 'iot-hub']);
 
 /**
  * Maps sidebar child keys to their [module, subModule, formId] tuple for
@@ -135,6 +137,7 @@ const SIDEBAR_PERMISSION_MAP: Record<string, [string, string, string]> = {
   'part-categories':      ['settings', 'partCategories',    'settings.partCategories.partCategory'],
   'part-locations':       ['settings', 'partLocations',     'settings.partLocations.partLocation'],
   'work-order-statuses':  ['settings', 'workOrderStatuses', 'settings.workOrderStatuses.workOrderStatus'],
+  'inspection-forms':     ['inspections', 'defectSettings', 'inspections.defectSettings.defectSetting'],
   'notification-routing': ['settings', 'notifications',     'settings.notifications.notification'],
   'command-connection':    ['settings', 'connections',       'settings.connections.connection'],
   'iot-hub':              ['settings', 'integrations',      'settings.integrations.integration'],
@@ -201,7 +204,7 @@ export function SettingsPage() {
         setExpandedKeys((prev) => new Set([...prev, 'inventory']));
       } else if (['work-order-statuses', 'meter-settings'].includes(section)) {
         setExpandedKeys((prev) => new Set([...prev, 'work-orders']));
-      } else if (['driver-inspections'].includes(section)) {
+      } else if (['inspection-forms', 'driver-inspections'].includes(section)) {
         setExpandedKeys((prev) => new Set([...prev, 'inspections']));
       } else if (['notification-routing'].includes(section)) {
         setExpandedKeys((prev) => new Set([...prev, 'notifications']));
@@ -292,6 +295,8 @@ export function SettingsPage() {
         return <WorkOrderStatusesList />;
       case 'meter-settings':
         return <MeterSettingsPanel />;
+      case 'inspection-forms':
+        return <InspectionFormsSettingsPanel />;
       case 'driver-inspections':
         return <DriverInspectionSettingsPanel />;
       case 'notification-routing':
@@ -313,6 +318,7 @@ export function SettingsPage() {
       case 'part-locations': return MapPin;
       case 'work-order-statuses': return CircleDot;
       case 'meter-settings': return Gauge;
+      case 'inspection-forms': return FileCheck2;
       case 'driver-inspections': return ClipboardCheck;
       case 'notification-routing': return Bell;
       case 'command-connection': return Cable;

@@ -47,11 +47,13 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [roles, setRoles] = useState<RoleOption[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
 
   // Fetch roles for the dropdown
   useEffect(() => {
     if (!open) return;
     async function loadRoles() {
+      setRolesLoading(true);
       try {
         const res = await axios.get('/api/roles?limit=100', { withCredentials: true });
         const items = res.data.data?.items || [];
@@ -62,6 +64,8 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
         );
       } catch {
         setRoles([]);
+      } finally {
+        setRolesLoading(false);
       }
     }
     loadRoles();
@@ -211,6 +215,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
             <Label>Role <span className="text-destructive">*</span></Label>
             <SearchableSelect
               options={roles.map((role) => ({ label: role.name, value: role.id }))}
+              loading={rolesLoading}
               value={form.roleId || null}
               onValueChange={(v) => handleChange('roleId', v || '')}
               placeholder="Select a role"

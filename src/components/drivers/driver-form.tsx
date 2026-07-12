@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { SquarePen, IdCard } from 'lucide-react';
@@ -17,9 +17,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { BaseForm } from '@/components/ui/base-form';
-import { SearchableSelect } from '@/components/ui/searchable-select';
+import { LookupSelect } from '@/components/ui/lookup-select';
 import { PhoneInput } from '@/components/ui/phone-input';
-import type { TeamOption } from './types';
 import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 
 /** Currencies for the rate dropdown. */
@@ -44,7 +43,6 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [teams, setTeams] = useState<TeamOption[]>([]);
 
   // Form fields — Personal Details
   const [firstName, setFirstName] = useState('');
@@ -174,18 +172,6 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
     }
   }, [initialData]);
 
-  const fetchTeams = useCallback(async () => {
-    try {
-      const res = await axios.get('/api/teams?limit=100', { withCredentials: true });
-      setTeams(res.data.data?.items || []);
-    } catch {
-      setTeams([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchTeams();
-  }, [fetchTeams]);
 
   // Preview the projected employee number on the create form (read-only).
   useEffect(() => {
@@ -392,9 +378,10 @@ export function DriverForm({ mode, initialData, driverId }: DriverFormProps) {
               </div>
               <div>
                 <Label htmlFor="teamId">Team</Label>
-                <SearchableSelect
+                <LookupSelect
                   className="mt-1.5"
-                  options={teams.map((t) => ({ label: t.name, value: t.id }))}
+                  endpoint="/api/teams?limit=100"
+                  mapItem={(t) => ({ label: t.name as string, value: t.id as string })}
                   value={teamId || null}
                   onValueChange={(val) => setTeamId(val || '')}
                   placeholder="Select team"

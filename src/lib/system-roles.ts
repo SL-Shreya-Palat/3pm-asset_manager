@@ -32,6 +32,11 @@ function fullGrantWithInspect(formId: string): SparseFormGrant {
   return { id: formId, v: 'ALL', c: true, e: 'ALL', ar: 'ALL', ins: 'ALL' };
 }
 
+/** Build a full-access grant WITHOUT create (view/edit/archive ALL, no create). */
+function fullGrantNoCreate(formId: string): SparseFormGrant {
+  return { id: formId, v: 'ALL', c: false, e: 'ALL', ar: 'ALL' };
+}
+
 /** Build a form grant with view-only access. */
 function viewOnlyGrant(formId: string): SparseFormGrant {
   return { id: formId, v: 'ALL', c: false, e: false };
@@ -193,13 +198,16 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
   {
     name: 'Mechanic',
     description:
-      'Mechanic — full access to defects, faults, and work orders in the maintenance module.',
+      'Mechanic — views and works on assigned defects, faults and work orders. Cannot create new records by default (mechanics have no access to the Assets/Drivers a new record requires); an admin can grant create via the Roles UI.',
     permissions: {
       v: 2,
       forms: [
-        fullGrant('maintenance.defects.defect'),
-        fullGrant('maintenance.faults.fault'),
-        fullGrant('maintenance.workOrders.workOrder'),
+        // View + edit + archive existing records, but no create. Mechanics have
+        // no Assets/Drivers access, which a new defect/fault/work order requires.
+        // An admin can grant create per-form via the Roles UI to enable it.
+        fullGrantNoCreate('maintenance.defects.defect'),
+        fullGrantNoCreate('maintenance.faults.fault'),
+        fullGrantNoCreate('maintenance.workOrders.workOrder'),
       ],
       m: ['maintenance'],
       sm: [

@@ -44,6 +44,8 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
   const [formsList, setFormsList] = useState<FormItem[]>([]);
   const [formsLoading, setFormsLoading] = useState(true);
   const [selectedFormIds, setSelectedFormIds] = useState<Set<string>>(new Set());
+  const [assetTypesLoading, setAssetTypesLoading] = useState(true);
+  const [teamsLoading, setTeamsLoading] = useState(true);
 
   // Service Plans
   const [servicePlansList, setServicePlansList] = useState<{ id: string; name: string }[]>([]);
@@ -184,20 +186,26 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
   }, [assetTypes]);
 
   const fetchAssetTypes = useCallback(async () => {
+    setAssetTypesLoading(true);
     try {
       const res = await axios.get('/api/inventory-settings/asset-types', { withCredentials: true });
       setAssetTypes(res.data.data || []);
     } catch {
       // Silently fail
+    } finally {
+      setAssetTypesLoading(false);
     }
   }, []);
 
   const fetchTeams = useCallback(async () => {
+    setTeamsLoading(true);
     try {
       const res = await axios.get('/api/teams?limit=100', { withCredentials: true });
       setTeams(res.data.data?.items || []);
     } catch {
       setTeams([]);
+    } finally {
+      setTeamsLoading(false);
     }
   }, []);
 
@@ -590,6 +598,7 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
                 <SearchableSelect
                   label="Team"
                   options={teams.map((t) => ({ label: t.name, value: t.id }))}
+                  loading={teamsLoading}
                   value={teamId || null}
                   onValueChange={(val) => setTeamId(val || '')}
                   placeholder="Select team"
@@ -651,6 +660,7 @@ export function AssetForm({ mode, initialData, assetId }: AssetFormProps) {
                 <SearchableSelect
                   className="mt-1.5"
                   options={assetTypes.map((t) => ({ label: t.name, value: t.id }))}
+                  loading={assetTypesLoading}
                   value={assetTypeId || null}
                   onValueChange={(val) => setAssetTypeId(val || '')}
                   placeholder="Select type"

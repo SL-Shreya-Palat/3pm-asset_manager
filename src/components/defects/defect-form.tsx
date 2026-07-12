@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { X } from 'lucide-react';
 import { Button, LoadingButton } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import { DateField } from '@/components/ui/date-field';
 import { Textarea } from '@/components/ui/textarea';
 import { AttachmentUploader, type UploadedFile } from '@/components/ui/attachment-uploader';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { LookupSelect } from '@/components/ui/lookup-select';
 import {
   Select,
   SelectContent,
@@ -19,7 +20,8 @@ import {
 } from '@/components/ui/select';
 import { getTodayDateString } from '@/lib/utils';
 import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
-import type { DefectRow, LookupOption } from './types';
+import { useAuth } from '@/hooks/useAuth';
+import type { DefectRow } from './types';
 
 interface DefectFormProps {
   mode: 'create' | 'edit';
@@ -29,6 +31,10 @@ interface DefectFormProps {
 }
 
 export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) {
+  const { user } = useAuth();
+  // Mechanics keep full edit on defects except the Asset/Driver, which they
+  // can't access — those are shown disabled (seeded from the record).
+  const isMechanic = user?.tenant?.isMechanic === true;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -42,36 +48,6 @@ export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) 
   const [priority, setPriority] = useState('');
   const [status, setStatus] = useState('new');
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
-
-  // Lookup data
-  const [assets, setAssets] = useState<LookupOption[]>([]);
-  const [drivers, setDrivers] = useState<LookupOption[]>([]);
-
-  // Fetch lookup data
-  const fetchLookups = useCallback(async () => {
-    try {
-      const [assetsRes, driversRes] = await Promise.all([
-        axios.get('/api/assets?limit=100', { withCredentials: true }),
-        axios.get('/api/drivers?limit=100', { withCredentials: true }),
-      ]);
-
-      const assetItems = assetsRes.data.data?.items || assetsRes.data.data || [];
-      setAssets(assetItems.map((i: Record<string, unknown>) => ({
-        id: i.id as string,
-        name: i.name as string,
-      })));
-
-      const driverItems = driversRes.data.data?.items || driversRes.data.data || [];
-      setDrivers(driverItems.map((i: Record<string, unknown>) => ({
-        id: i.id as string,
-        name: `${(i.firstName as string) || ''} ${(i.lastName as string) || ''}`.trim() || (i.email as string) || '',
-      })));
-    } catch {
-      // Silent
-    }
-  }, []);
-
-  useEffect(() => { fetchLookups(); }, [fetchLookups]);
 
   // Populate form (edit mode)
   useEffect(() => {
@@ -205,15 +181,19 @@ export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) 
 
           {/* Asset + Date */}
           <div className="grid grid-cols-2 gap-4">
-            <SearchableSelect
+            <LookupSelect
               label="Asset"
               required
-              options={assets.map((a) => ({ label: a.name, value: a.id }))}
+              endpoint="/api/assets?limit=100"
+              mapItem={(a) => ({ label: a.name as string, value: a.id as string })}
+              enabled={!isMechanic}
+              fallbackOptions={defect?.assetId ? [{ label: defect.assetName, value: defect.assetId }] : []}
               value={assetId || null}
               onValueChange={(val) => { setAssetId(val || ''); clearFieldError('assetId'); }}
               placeholder="Select asset"
               searchPlaceholder="Search assets..."
               emptyMessage="No assets found"
+              disabled={isMechanic}
               error={fieldErrors.assetId}
               isClearable
             />
@@ -229,14 +209,18 @@ export function DefectForm({ mode, defect, onClose, onSaved }: DefectFormProps) 
 
           {/* Driver + Severity */}
           <div className="grid grid-cols-2 gap-4">
-            <SearchableSelect
+            <LookupSelect
               label="Driver"
-              options={drivers.map((d) => ({ label: d.name, value: d.id }))}
+              endpoint="/api/drivers?limit=100"
+              mapItem={(d) => ({ label: `${(d.firstName as string) || ''} ${(d.lastName as string) || ''}`.trim() || (d.email as string) || '', value: d.id as string })}
+              enabled={!isMechanic}
+              fallbackOptions={defect?.driverId ? [{ label: defect.driverName || '', value: defect.driverId }] : []}
               value={driverId || null}
               onValueChange={(val) => setDriverId(val || '')}
               placeholder="Select driver (optional)"
               searchPlaceholder="Search drivers..."
               emptyMessage="No drivers found"
+              disabled={isMechanic}
               isClearable
             />
             <div>

@@ -48,6 +48,7 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
   // Lookup data
   const [assets, setAssets] = useState<AssetOption[]>([]);
   const [drivers, setDrivers] = useState<DriverOption[]>([]);
+  const [lookupsLoading, setLookupsLoading] = useState(true);
 
   // Form fields
   const [assetId, setAssetId] = useState('');
@@ -64,6 +65,7 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
 
   // Load assets & drivers for dropdowns
   const loadLookups = useCallback(async () => {
+    setLookupsLoading(true);
     try {
       const [assetsRes, driversRes] = await Promise.all([
         axios.get('/api/assets?limit=200', { withCredentials: true }),
@@ -90,6 +92,8 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
       );
     } catch {
       // Non-critical: dropdowns will be empty
+    } finally {
+      setLookupsLoading(false);
     }
   }, []);
 
@@ -232,6 +236,7 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
                   meta: [a.assetNumber ? `#${a.assetNumber}` : '', a.make, a.model].filter(Boolean).join(' · '),
                 }))}
                 value={assetId || null}
+                loading={lookupsLoading}
                 onValueChange={(v) => { setAssetId(v || ''); clearFieldError('assetId'); }}
                 placeholder="Search and select asset..."
                 searchPlaceholder="Search by name, number, make, or model..."
@@ -243,6 +248,7 @@ export function FuelForm({ mode, transaction, onClose, onSaved }: FuelFormProps)
               />
               <SearchableSelect
                 options={drivers.map((d) => ({ label: d.name, value: d.id }))}
+                loading={lookupsLoading}
                 value={driverId || null}
                 onValueChange={(v) => setDriverId(v || '')}
                 placeholder="Select driver (optional)"
