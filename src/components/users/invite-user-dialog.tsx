@@ -53,12 +53,14 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [roles, setRoles] = useState<RoleOption[]>([]);
+  const [rolesLoading, setRolesLoading] = useState(false);
   const [teams, setTeams] = useState<TeamOption[]>([]);
 
   // Fetch roles + teams for the dropdowns
   useEffect(() => {
     if (!open) return;
     async function loadRoles() {
+      setRolesLoading(true);
       try {
         const res = await axios.get('/api/roles?limit=100', { withCredentials: true });
         const items = res.data.data?.items || [];
@@ -73,6 +75,8 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
         );
       } catch {
         setRoles([]);
+      } finally {
+        setRolesLoading(false);
       }
     }
     async function loadTeams() {
@@ -243,6 +247,7 @@ export function InviteUserDialog({ open, onOpenChange, onSuccess }: InviteUserDi
             <Label>Role <span className="text-destructive">*</span></Label>
             <SearchableSelect
               options={roles.map((role) => ({ label: role.name, value: role.id }))}
+              loading={rolesLoading}
               value={form.roleId || null}
               onValueChange={(v) => {
                 // Switching to a company-wide role clears any chosen teams.

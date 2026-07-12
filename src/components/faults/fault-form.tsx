@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { AttachmentUploader, type UploadedFile } from '@/components/ui/attachment-uploader';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { LookupSelect } from '@/components/ui/lookup-select';
 import {
   Select,
   SelectContent,
@@ -20,7 +21,7 @@ import {
 } from '@/components/ui/select';
 import { getTodayDateString } from '@/lib/utils';
 import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
-import type { FaultRow, LookupOption } from './types';
+import type { FaultRow } from './types';
 import { useAuth } from '@/hooks/useAuth';
 
 interface UserLookup {
@@ -38,6 +39,9 @@ interface FaultFormProps {
 
 export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
   const { user } = useAuth();
+  // Mechanics keep full edit on faults except Asset/Reporter, which they can't
+  // access — those are shown disabled (seeded from the record).
+  const isMechanic = user?.tenant?.isMechanic === true;
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -54,23 +58,19 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
   const [takeOutOfService, setTakeOutOfService] = useState(false);
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
 
-  // Lookup data
-  const [assets, setAssets] = useState<LookupOption[]>([]);
+  // Members (for Reported By) are still fetched here because the create form
+  // pre-selects the logged-in user. Assets use <LookupSelect> directly.
   const [members, setMembers] = useState<UserLookup[]>([]);
+  const [membersLoading, setMembersLoading] = useState(!isMechanic);
 
-  // Fetch lookup data
+  // Fetch members
   const fetchLookups = useCallback(async () => {
+    // Mechanics can't access the users endpoint (403); Reported By is disabled
+    // and seeded from the fault instead.
+    if (isMechanic) { setMembersLoading(false); return; }
+    setMembersLoading(true);
     try {
-      const [assetsRes, usersRes] = await Promise.all([
-        axios.get('/api/assets?limit=100', { withCredentials: true }),
-        axios.get('/api/users?limit=100', { withCredentials: true }),
-      ]);
-
-      const assetItems = assetsRes.data.data?.items || assetsRes.data.data || [];
-      setAssets(assetItems.map((i: Record<string, unknown>) => ({
-        id: i.id as string,
-        name: i.name as string,
-      })));
+      const usersRes = await axios.get('/api/users?limit=100', { withCredentials: true });
 
       const userItems = usersRes.data.data?.items || usersRes.data.data || [];
       const mappedMembers = userItems.map((i: Record<string, unknown>) => ({
@@ -91,8 +91,10 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
       }
     } catch {
       // Silent
+    } finally {
+      setMembersLoading(false);
     }
-  }, [mode, user?.email]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, user?.email, isMechanic]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { fetchLookups(); }, [fetchLookups]);
 
@@ -192,7 +194,9 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
     }
   };
 
-  const reporterOptions = members.map((m) => ({ label: m.name, value: m.id }));
+  const reporterOptions = members.length
+    ? members.map((m) => ({ label: m.name, value: m.id }))
+    : (fault?.reportedById ? [{ label: fault.reportedByName, value: fault.reportedById }] : []);
 
   return (
     <div className="flex flex-col h-full">
@@ -238,15 +242,19 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
 
           {/* Asset + Reported At */}
           <div className="grid grid-cols-2 gap-4">
-            <SearchableSelect
+            <LookupSelect
               label="Asset"
               required
-              options={assets.map((a) => ({ label: a.name, value: a.id }))}
+              endpoint="/api/assets?limit=100"
+              mapItem={(a) => ({ label: a.name as string, value: a.id as string })}
+              enabled={!isMechanic}
+              fallbackOptions={fault?.assetId ? [{ label: fault.assetName, value: fault.assetId }] : []}
               value={assetId || null}
               onValueChange={(val) => { setAssetId(val || ''); clearFieldError('assetId'); }}
               placeholder="Select asset"
               searchPlaceholder="Search assets..."
               emptyMessage="No assets found"
+              disabled={isMechanic}
               error={fieldErrors.assetId}
               isClearable
             />
@@ -265,11 +273,13 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
             label="Reported By"
             required
             options={reporterOptions}
+            loading={membersLoading}
             value={reportedById || null}
             onValueChange={(val) => { setReportedById(val || ''); clearFieldError('reportedById'); }}
             placeholder="Select member"
             searchPlaceholder="Search..."
             emptyMessage="No options found"
+            disabled={isMechanic}
             error={fieldErrors.reportedById}
             isClearable
           />

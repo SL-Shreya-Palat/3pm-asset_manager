@@ -32,6 +32,11 @@ function fullGrantWithInspect(formId: string): SparseFormGrant {
   return { id: formId, v: 'ALL', c: true, e: 'ALL', ar: 'ALL', ins: 'ALL' };
 }
 
+/** Build a full-access grant WITHOUT create (view/edit/archive ALL, no create). */
+function fullGrantNoCreate(formId: string): SparseFormGrant {
+  return { id: formId, v: 'ALL', c: false, e: 'ALL', ar: 'ALL' };
+}
+
 /** Build a form grant with view-only access. */
 function viewOnlyGrant(formId: string): SparseFormGrant {
   return { id: formId, v: 'ALL', c: false, e: false };
@@ -224,27 +229,22 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
   {
     name: 'Mechanic',
     description:
-      'Mechanic — works defects, faults and work orders, with visibility of assets, stock and service tasks.',
+      'Mechanic — views and works on assigned defects, faults and work orders. Cannot create new records by default (mechanics have no access to the Assets/Drivers a new record requires); an admin can grant create via the Roles UI.',
     permissions: {
       v: 2,
       forms: [
-        viewOnlyGrant('assets.assets.asset'),
-        fullGrant('maintenance.defects.defect'),
-        fullGrant('maintenance.faults.fault'),
-        fullGrant('maintenance.workOrders.workOrder'),
-        viewOnlyGrant('maintenance.inventory.inventoryItem'),
-        viewOnlyGrant('maintenance.serviceTasks.serviceTask'),
-        viewOnlyGrant('maintenance.serviceSchedule.serviceSchedule'),
+        // View + edit + archive existing records, but no create. Mechanics have
+        // no Assets/Drivers access, which a new defect/fault/work order requires.
+        // An admin can grant create per-form via the Roles UI to enable it.
+        fullGrantNoCreate('maintenance.defects.defect'),
+        fullGrantNoCreate('maintenance.faults.fault'),
+        fullGrantNoCreate('maintenance.workOrders.workOrder'),
       ],
-      m: ['assets', 'maintenance'],
+      m: ['maintenance'],
       sm: [
-        'assets.assets',
         'maintenance.defects',
         'maintenance.faults',
         'maintenance.workOrders',
-        'maintenance.inventory',
-        'maintenance.serviceTasks',
-        'maintenance.serviceSchedule',
       ],
     },
     teamScoped: false,

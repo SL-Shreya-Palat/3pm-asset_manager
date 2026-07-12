@@ -7,6 +7,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { authorize } from '@/lib/authz';
+import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { getFormPermissionLevels } from '@/lib/server-permissions';
 import {
   getAllWorkOrderStatuses,
   getWorkOrderStatusById,
@@ -18,27 +20,44 @@ import {
 } from '@/controller/work-order-statuses';
 
 const FORM_ID = 'settings.workOrderStatuses.workOrderStatus';
+const WORK_ORDER_FORM_ID = 'maintenance.workOrders.workOrder';
 
 export async function GET(request: NextRequest) {
-  const auth = await authorize(request, FORM_ID, 'view');
-  if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  // Not gated with `authorize(FORM_ID, 'view')` because statuses are reference
+  // data needed to view/edit work orders: mechanics have no settings access but
+  // must still read the list to pick/change a WO's status. We authenticate here
+  // and resolve access manually below (settings viewer OR work-order viewer).
+  const user = await getAuthenticatedUser(request);
+  if (!user?.id || !user.currentTenantId) {
+    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
+  }
 
   const search = request.nextUrl.searchParams.get('search') || undefined;
   const showArchived = request.nextUrl.searchParams.get('showArchived') === 'true';
 
+  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
+
+  // Settings managers read scoped to their view level; anyone who can view work
+  // orders (e.g. mechanics, who have no settings access) may read the full list.
+  let createdBy = perms.view === 'OWN' ? user.id : undefined;
+  if (perms.view === 'NONE') {
+    const woPerms = await getFormPermissionLevels(user.id, user.currentTenantId, WORK_ORDER_FORM_ID);
+    if (woPerms.view === 'NONE') {
+      return NextResponse.json({ data: null, error: 'You do not have permission to view work order statuses' }, { status: 403 });
+    }
+    createdBy = undefined;
+  }
+
   // Lazily backfill the default statuses for tenants that predate default
   // seeding. One-time per tenant (guarded by a tenant flag) and only triggered
   // by users who can manage statuses, so a read-only viewer never causes writes.
-  if (auth.ctx.perms.create) {
+  if (perms.create) {
     try {
       await seedWorkOrderStatuses(user.currentTenantId, user.id);
     } catch (err) {
       console.error('[work-order-statuses] lazy default seeding failed (non-fatal):', err);
     }
   }
-
-  const createdBy = scope === 'OWN' ? user.id : undefined;
 
   const items = await getAllWorkOrderStatuses(user.currentTenantId, search, { showArchived, createdBy });
   return NextResponse.json({ data: items, error: null });
