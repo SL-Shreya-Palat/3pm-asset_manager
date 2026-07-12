@@ -108,10 +108,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export async function commandRequest<T = unknown>(
   path: string,
   authTenantId: string,
+  opts?: { timeoutMs?: number },
 ): Promise<CommandResult<T>> {
   const cfg = getConfig();
   if (!cfg) return fail('not_configured');
   if (!authTenantId) return fail('bad_request', undefined, 'Missing authTenantId');
+
+  const timeoutMs = opts?.timeoutMs ?? TIMEOUT_MS;
 
   // Circuit open for THIS tenant → fail fast (don't hammer a struggling Command).
   if (isOpen(authTenantId)) return fail('unreachable', undefined, 'circuit open');
@@ -129,7 +132,7 @@ export async function commandRequest<T = unknown>(
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
+    const timer = setTimeout(() => ac.abort(), timeoutMs);
     try {
       const res = await fetch(url, { method: 'GET', headers, signal: ac.signal, cache: 'no-store' });
       clearTimeout(timer);

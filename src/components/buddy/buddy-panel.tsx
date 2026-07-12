@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useBuddyStore } from "@/store/buddy/store";
 import { useAuth } from "@/hooks/useAuth";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import { Markdown } from "./markdown";
 import { ToolResultCards, isCardTool } from "./tool-result-cards";
 
@@ -112,6 +113,12 @@ export function BuddyPanel() {
   const fullPage = useBuddyStore((s) => s.fullPage);
   const setFullPage = useBuddyStore((s) => s.setFullPage);
   const { user } = useAuth();
+  // On phones there's no rail to dock next to (BuddyRail becomes a floating
+  // button there) and a fixed 430px panel would overflow the viewport, so
+  // always present the chat full-screen on mobile regardless of the
+  // fullPage toggle.
+  const isMobile = useIsMobile();
+  const effectiveFullPage = fullPage || isMobile;
 
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const activeThreadIdRef = useRef<string | null>(null);
@@ -229,12 +236,12 @@ export function BuddyPanel() {
   const firstName = user?.firstName;
   const last = messages[messages.length - 1];
   const showThinking = busy && (!last || last.role === "user");
-  const sidebarVisible = fullPage || showThreads;
+  const sidebarVisible = effectiveFullPage || showThreads;
 
   const ThreadList = (
     <div
       className={`flex flex-col border-r border-border bg-muted/30 ${
-        fullPage ? "w-64" : "w-56"
+        effectiveFullPage ? "w-64" : "w-56"
       }`}
     >
       <div className="p-2">
@@ -295,7 +302,7 @@ export function BuddyPanel() {
             Your fleet assistant
           </p>
         </div>
-        {!fullPage && (
+        {!effectiveFullPage && (
           <IconButton
             onClick={() => setShowThreads((v) => !v)}
             label="Conversation history"
@@ -304,12 +311,14 @@ export function BuddyPanel() {
             <History className="size-4" />
           </IconButton>
         )}
-        <IconButton
-          onClick={() => setFullPage(!fullPage)}
-          label={fullPage ? "Exit full screen" : "Full screen"}
-        >
-          {fullPage ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
-        </IconButton>
+        {!isMobile && (
+          <IconButton
+            onClick={() => setFullPage(!fullPage)}
+            label={fullPage ? "Exit full screen" : "Full screen"}
+          >
+            {fullPage ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+          </IconButton>
+        )}
         <IconButton
           onClick={() => {
             setFullPage(false);
@@ -422,7 +431,7 @@ export function BuddyPanel() {
   return (
     <div
       className={
-        fullPage
+        effectiveFullPage
           ? "fixed inset-0 z-50 flex bg-card animate-in fade-in"
           : "fixed right-16 top-0 bottom-0 z-40 flex w-[430px] border-l border-border bg-card shadow-xl animate-in slide-in-from-right"
       }

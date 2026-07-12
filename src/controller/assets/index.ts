@@ -142,6 +142,8 @@ export async function getAllAssets(
     createdBy?: string;
     /** When set (driver logins), restrict to assets whose driverAccessIds grants this driver id. */
     driverAccessId?: string;
+    /** Team-scoped roles: restrict to assets belonging to any of these teams. */
+    teamIds?: string[];
   },
 ) {
   // Fresh on every call: pull the latest Command assets BEFORE reading local, so
@@ -169,7 +171,13 @@ export async function getAllAssets(
     filter.status = options.status;
   }
 
-  if (options.teamId) {
+  // Team restriction (team-scoped roles) composes with the explicit teamId
+  // filter: an out-of-scope teamId request yields no results, never a leak.
+  if (options.teamIds) {
+    const allowed = options.teamIds.filter((id) => ObjectId.isValid(id));
+    const effective = options.teamId ? allowed.filter((id) => id === options.teamId) : allowed;
+    filter.teamIds = { $in: effective.map((id) => ObjectId.createFromHexString(id)) };
+  } else if (options.teamId) {
     filter.teamIds = ObjectId.createFromHexString(options.teamId);
   }
 
@@ -285,10 +293,15 @@ export async function getAllAssets(
 }
 
 /** Fleet-wide summary counts for the asset stat ribbon. */
-export async function getAssetSummary(tenantId: string) {
+export async function getAssetSummary(tenantId: string, options: { teamIds?: string[] } = {}) {
   const collection = await getAssetsCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
-  const activeFilter = { tenantId: tenantOid, isArchived: { $ne: true } };
+  const activeFilter: Record<string, unknown> = { tenantId: tenantOid, isArchived: { $ne: true } };
+  if (options.teamIds) {
+    activeFilter.teamIds = {
+      $in: options.teamIds.filter((id) => ObjectId.isValid(id)).map((id) => ObjectId.createFromHexString(id)),
+    };
+  }
 
   const [total, inService, outOfService] = await Promise.all([
     collection.countDocuments(activeFilter),
@@ -318,10 +331,15 @@ export async function getAssetSummary(tenantId: string) {
  * summary, so counts always match those views. `untracked` = active assets with
  * no expiry-bearing document.
  */
-export async function getComplianceBreakdown(tenantId: string) {
+export async function getComplianceBreakdown(tenantId: string, options: { teamIds?: string[] } = {}) {
   const collection = await getAssetsCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
-  const activeFilter = { tenantId: tenantOid, isArchived: { $ne: true } };
+  const activeFilter: Record<string, unknown> = { tenantId: tenantOid, isArchived: { $ne: true } };
+  if (options.teamIds) {
+    activeFilter.teamIds = {
+      $in: options.teamIds.filter((id) => ObjectId.isValid(id)).map((id) => ObjectId.createFromHexString(id)),
+    };
+  }
 
   const activeIds = await collection
     .find(activeFilter, { projection: { _id: 1 } })

@@ -101,6 +101,7 @@ export async function getAllFaults(
     assetId?: string;
     showArchived?: boolean;
     createdBy?: string;
+    teamIds?: string[];
   },
 ) {
   const collection = await getDefectsCollection();
@@ -134,7 +135,12 @@ export async function getAllFaults(
   if (options.priority) filter.priority = options.priority;
   if (options.severity) filter.severity = options.severity;
 
-  if (options.teamId) {
+  // Team restriction (team-scoped roles) composes with the explicit teamId filter.
+  if (options.teamIds) {
+    const allowed = options.teamIds.filter((id) => ObjectId.isValid(id));
+    const effective = options.teamId ? allowed.filter((id) => id === options.teamId) : allowed;
+    filter.teamIds = { $in: effective.map((id) => ObjectId.createFromHexString(id)) };
+  } else if (options.teamId) {
     filter.teamIds = ObjectId.createFromHexString(options.teamId);
   }
 
@@ -496,6 +502,7 @@ export async function bulkUpdateFaultStatus(
   userId: string,
   ids: string[],
   status: string,
+  scope?: { createdBy?: string; teamIds?: string[] },
 ) {
   if (!ids.length) return { data: null, error: 'No fault IDs provided' };
 
@@ -509,8 +516,23 @@ export async function bulkUpdateFaultStatus(
 
   // Map fault status → defect status before persisting
   const defectStatus = FAULT_TO_DEFECT_STATUS[status] || status;
-  const oids = ids.map((id) => ObjectId.createFromHexString(id));
+  let oids = ids.map((id) => ObjectId.createFromHexString(id));
   const RESOLVED = ['corrected', 'no_correction_needed'];
+
+  // OWN edit scope / team-scoped roles: drop out-of-scope ids so bulk edits
+  // can never touch records the caller's single-record access would deny.
+  if (scope?.createdBy || scope?.teamIds) {
+    const scopeFilter: Record<string, unknown> = { _id: { $in: oids }, tenantId: tenantOid, source: 'fault' };
+    if (scope.createdBy) scopeFilter.createdBy = ObjectId.createFromHexString(scope.createdBy);
+    if (scope.teamIds) {
+      scopeFilter.teamIds = {
+        $in: scope.teamIds.filter((id) => ObjectId.isValid(id)).map((id) => ObjectId.createFromHexString(id)),
+      };
+    }
+    const inScope = await collection.find(scopeFilter, { projection: { _id: 1 } }).toArray();
+    oids = inScope.map((d) => d._id as ObjectId);
+    if (!oids.length) return { data: { modifiedCount: 0 }, error: null };
+  }
 
   // Capture faults transitioning INTO a resolved state for the Command timeline.
   let transitioning: Array<{ assetId: ObjectId; defectNumber: unknown }> = [];

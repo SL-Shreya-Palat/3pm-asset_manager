@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronRight, User, Settings, LogOut, Search } from "lucide-react";
+import { ChevronRight, User, Settings, LogOut, Search, Menu } from "lucide-react";
 import { useRef, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { NotificationBell } from "@/components/layout/notification-bell";
 import { useGlobalSearch, type SearchResult } from "@/hooks/use-global-search";
 import { GlobalSearchDropdown } from "@/components/layout/global-search-dropdown";
 import { useRoleAccess } from "@/hooks/use-role-access";
+import { useSidebarStore } from "@/store/ui/sidebar-store";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -102,6 +103,7 @@ export function Header() {
   const router = useRouter();
   const { user } = useAuth();
   const { hasFullAccess } = useRoleAccess();
+  const toggleMobileSidebar = useSidebarStore((s) => s.toggleMobile);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -186,6 +188,16 @@ export function Header() {
 
   return (
     <header className="flex h-14 items-center border-b border-border bg-card px-3 md:px-6">
+      {/* Hamburger — opens the off-canvas sidebar drawer (phones only) */}
+      <button
+        type="button"
+        onClick={toggleMobileSidebar}
+        aria-label="Open menu"
+        className="mr-1 flex h-9 w-9 shrink-0 items-center justify-center rounded text-foreground transition-colors hover:bg-muted md:hidden"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+
       {/* Breadcrumb (hidden on phones — search takes the space) */}
       <nav className="hidden md:flex items-center gap-1 text-sm flex-1 min-w-0">
         {breadcrumbs.map((crumb, i) => (

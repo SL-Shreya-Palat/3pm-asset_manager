@@ -35,6 +35,7 @@ interface DirectoryItem {
 
 interface ImportSummary {
   invited: number;
+  driversCreated?: number;
   skippedNoEmail: number;
   skippedAlreadyMember: number;
   failed: number;
@@ -43,17 +44,22 @@ interface ImportSummary {
 
 /**
  * Import Command staff as Asset Manager members. Lists the tenant's Command
- * staff with their current status (member / invited / no email) and invites the
- * selected ones with a chosen role — each becomes a login on accept.
+ * staff with their current status (member / invited / no email) and invites
+ * the selected ones — each with their OWN role choice (Driver, Mechanic,
+ * Admin, …). People given a Driver role also get a driver profile completed
+ * from their Command staff details automatically.
  */
 export function ImportCommandStaffDialog({
   open,
   onOpenChange,
   onImported,
+  defaultRoleName,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onImported: () => void;
+  /** Preselect this role (by name, case-insensitive) as the default — e.g. "Driver" on the Drivers page. */
+  defaultRoleName?: string;
 }) {
   const [items, setItems] = useState<DirectoryItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -61,7 +67,8 @@ export function ImportCommandStaffDialog({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [roles, setRoles] = useState<RoleOption[]>([]);
-  const [roleId, setRoleId] = useState<string>('');
+  const [defaultRoleId, setDefaultRoleId] = useState<string>('');
+  const [roleById, setRoleById] = useState<Record<string, string>>({});
   const [summary, setSummary] = useState<ImportSummary | null>(null);
 
   useEffect(() => {
@@ -70,6 +77,7 @@ export function ImportCommandStaffDialog({
     setError(null);
     setSummary(null);
     setSelected(new Set());
+    setRoleById({});
     (async () => {
       try {
         const res = await axios.get('/api/users/command-directory', { withCredentials: true });
@@ -94,15 +102,21 @@ export function ImportCommandStaffDialog({
           .filter((r) => r.isActive !== false)
           .map((r) => ({ id: r.id, name: r.name }));
         setRoles(list);
-        // Default to a Member/Staff role when present, else the first role.
+        // Default: the caller's preset (e.g. "Driver" on the Drivers page),
+        // else a Member/Staff role when present, else the first role.
+        const preset = defaultRoleName
+          ? list.find((r) => r.name.toLowerCase() === defaultRoleName.toLowerCase())
+          : undefined;
         const fallback =
-          list.find((r) => ['member', 'staff'].includes(r.name.toLowerCase())) ?? list[0];
-        setRoleId(fallback?.id ?? '');
+          preset ??
+          list.find((r) => ['member', 'staff'].includes(r.name.toLowerCase())) ??
+          list[0];
+        setDefaultRoleId(fallback?.id ?? '');
       } catch {
         setRoles([]);
       }
     })();
-  }, [open]);
+  }, [open, defaultRoleName]);
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -113,13 +127,24 @@ export function ImportCommandStaffDialog({
     });
   }
 
+  /** Effective role for one person: their explicit pick, else the default. */
+  function roleFor(id: string): string {
+    return roleById[id] || defaultRoleId;
+  }
+
+  /** Bulk-apply the default role: clears per-person overrides. */
+  function applyDefaultToAll(newDefault: string) {
+    setDefaultRoleId(newDefault);
+    setRoleById({});
+  }
+
   async function doImport() {
     setSubmitting(true);
     setError(null);
     try {
       const res = await axios.post(
         '/api/users/import-command',
-        { ids: [...selected], roleId: roleId || undefined },
+        { assignments: [...selected].map((id) => ({ id, roleId: roleFor(id) })) },
         { withCredentials: true },
       );
       const s = res.data?.data as ImportSummary;
@@ -159,6 +184,9 @@ export function ImportCommandStaffDialog({
             <p className="font-medium">Import complete</p>
             <ul className="mt-1 space-y-0.5">
               {summary.invited > 0 && <li>{summary.invited} invited</li>}
+              {(summary.driversCreated ?? 0) > 0 && (
+                <li>{summary.driversCreated} driver profile{summary.driversCreated === 1 ? '' : 's'} created</li>
+              )}
               {summary.skippedAlreadyMember > 0 && <li>{summary.skippedAlreadyMember} already members</li>}
               {summary.skippedNoEmail > 0 && <li>{summary.skippedNoEmail} skipped (no email)</li>}
               {summary.failed > 0 && <li className="text-destructive">{summary.failed} failed</li>}
@@ -187,10 +215,11 @@ export function ImportCommandStaffDialog({
                 <ul className="divide-y">
                   {items.map((it) => {
                     const disabled = !it.invitable;
+                    const isSelected = selected.has(it.id);
                     return (
                       <li key={it.id} className="flex items-center gap-3 px-3 py-2.5">
                         <Checkbox
-                          checked={selected.has(it.id)}
+                          checked={isSelected}
                           disabled={disabled}
                           onCheckedChange={() => toggle(it.id)}
                           aria-label={`Select ${it.name}`}
@@ -210,6 +239,28 @@ export function ImportCommandStaffDialog({
                             No email
                           </Badge>
                         ) : null}
+                        {isSelected && !disabled && (
+                          <Select
+                            value={roleFor(it.id)}
+                            onValueChange={(v) =>
+                              setRoleById((prev) => ({ ...prev, [it.id]: v }))
+                            }
+                          >
+                            <SelectTrigger
+                              className="h-8 w-32 shrink-0 text-xs"
+                              aria-label={`Role for ${it.name}`}
+                            >
+                              <SelectValue placeholder="Role" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {roles.map((r) => (
+                                <SelectItem key={r.id} value={r.id}>
+                                  {r.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                       </li>
                     );
                   })}
@@ -222,8 +273,8 @@ export function ImportCommandStaffDialog({
             </p>
 
             <div className="space-y-1.5">
-              <Label>Assign role</Label>
-              <Select value={roleId} onValueChange={setRoleId}>
+              <Label>Default role</Label>
+              <Select value={defaultRoleId} onValueChange={applyDefaultToAll}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select a role" />
                 </SelectTrigger>
@@ -236,7 +287,9 @@ export function ImportCommandStaffDialog({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Everyone selected is invited with this role. You can change it per person later.
+                Applies to everyone selected — adjust individual people with the
+                dropdown next to their name. Anyone given a Driver role also gets
+                their driver profile filled in from Command automatically.
               </p>
             </div>
           </>

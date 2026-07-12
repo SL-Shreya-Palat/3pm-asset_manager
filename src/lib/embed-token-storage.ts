@@ -19,7 +19,11 @@
  */
 
 import { ObjectId } from 'mongodb';
-import { getEmbedTokensCollection } from '@/lib/mongodb';
+import {
+  getEmbedTokensCollection,
+  getTenantsCollection,
+  getUsersCollection,
+} from '@/lib/mongodb';
 import { FORM_BUILDER_APP_NAME } from '@/lib/form-builder-integration';
 
 function toObjectId(id: string | ObjectId): ObjectId {
@@ -29,9 +33,9 @@ function toObjectId(id: string | ObjectId): ObjectId {
 /**
  * Short, stable fingerprint of an embed token. Cached form-builder sessions
  * store this so a session minted against a DIFFERENT token/org is never
- * reused — e.g. when a tenant is switched to the shared org, its old
- * per-tenant session is automatically invalidated instead of failing with
- * "Form not found or not published".
+ * reused — e.g. after a token rotation or re-onboarding, the old session is
+ * automatically invalidated instead of failing with "Form not found or not
+ * published".
  */
 export function embedTokenFingerprint(token: string): string {
   let h = 0;
@@ -42,49 +46,19 @@ export function embedTokenFingerprint(token: string): string {
 }
 
 /**
- * Shared form-builder org override. When configured, EVERY tenant mints its
- * inspection session against ONE shared organization, so the seeded pre-start
- * forms are visible in every org (instead of each tenant onboarding its own
- * empty org and hitting "Form not found or not published").
+ * Get the stored embed token for a tenant + app. Returns null if none.
  *
- * Configure either (env):
- *   FORM_BUILDER_SHARED_EMBED_TOKEN — the embed token directly, or
- *   FORM_BUILDER_SHARED_ORG_ID      — the shared org id; the token is resolved
- *                                     from the stored embedTokens row for it.
+ * Strictly PER-TENANT (construction-portal pattern): every tenant onboards
+ * its own form-builder organization and the token lives in the tenant's
+ * embedTokens row. There is deliberately NO env-token / shared-org override —
+ * per-tenant seeding populates each org's pre-start forms, and a shared org
+ * would leak one tenant's forms/submissions structure to every other tenant.
  */
-async function getSharedFormBuilderToken(): Promise<string | null> {
-  const direct = process.env.FORM_BUILDER_SHARED_EMBED_TOKEN;
-  if (direct) return direct;
-
-  const orgId = process.env.FORM_BUILDER_SHARED_ORG_ID;
-  if (!orgId) return null;
-
-  try {
-    const collection = await getEmbedTokensCollection();
-    const doc = await collection.findOne({
-      organizationId: orgId,
-      appName: FORM_BUILDER_APP_NAME,
-    });
-    return doc?.token ?? null;
-  } catch (error) {
-    console.error('[EMBED_TOKEN_STORAGE] Error resolving shared embed token:', error);
-    return null;
-  }
-}
-
-/** Get the stored embed token for a tenant + app. Returns null if none. */
 export async function getEmbedTokenForTenant(
   tenantId: string | ObjectId,
   appName: string,
 ): Promise<string | null> {
   try {
-    // Inspection form-builder: honour the shared-org override so all tenants
-    // resolve to the org that holds the seeded pre-start forms.
-    if (appName === FORM_BUILDER_APP_NAME) {
-      const shared = await getSharedFormBuilderToken();
-      if (shared) return shared;
-    }
-
     const collection = await getEmbedTokensCollection();
     const doc = await collection.findOne({
       tenantId: toObjectId(tenantId),
@@ -126,6 +100,12 @@ export async function storeEmbedToken(
   token: string,
   tokenId: string,
   appName: string,
+  /**
+   * Email of the user the org was onboarded as — the one account guaranteed
+   * to exist in the external app. Needed later to provision OTHER members
+   * (an embed session can only be minted for an existing user).
+   */
+  ownerEmail?: string,
 ): Promise<void> {
   try {
     const collection = await getEmbedTokensCollection();
@@ -134,7 +114,13 @@ export async function storeEmbedToken(
     await collection.updateOne(
       { tenantId: toObjectId(tenantId), appName },
       {
-        $set: { organizationId, token, tokenId, updatedAt: now },
+        $set: {
+          organizationId,
+          token,
+          tokenId,
+          updatedAt: now,
+          ...(ownerEmail ? { ownerEmail: ownerEmail.toLowerCase().trim() } : {}),
+        },
         $setOnInsert: {
           tenantId: toObjectId(tenantId),
           appName,
@@ -146,5 +132,55 @@ export async function storeEmbedToken(
   } catch (error) {
     console.error('[EMBED_TOKEN_STORAGE] Error storing embed token:', error);
     throw error;
+  }
+}
+
+/**
+ * Resolve an email that ALREADY EXISTS as a member of the tenant's
+ * form-builder organization — the account we mint the provisioning session as
+ * when creating form-builder users for invited drivers/members.
+ *
+ * Same rule as construction-portal's member sync: act as the org onboarder /
+ * tenant owner. Form-builder's embed API only creates members via a session
+ * of an existing org user, so this resolution is the whole fix for
+ * "User with email '<driver>' not found" — the previous code minted the
+ * session for the missing driver's own email, which could never succeed.
+ *
+ * Resolution order:
+ *   1. The tenant's embedTokens row (`ownerEmail`, recorded at onboarding —
+ *      the account /api/embed/onboard created, guaranteed to exist).
+ *   2. The tenant owner's login email — the owner is the account the
+ *      onboarding flow runs as (construction-portal's convention).
+ */
+export async function getFormBuilderOwnerEmail(
+  tenantId: string | ObjectId,
+): Promise<string | null> {
+  try {
+    const collection = await getEmbedTokensCollection();
+    const doc = await collection.findOne({
+      tenantId: toObjectId(tenantId),
+      appName: FORM_BUILDER_APP_NAME,
+    });
+    if (doc?.ownerEmail) return String(doc.ownerEmail);
+
+    // Fallback: the tenant owner's login email.
+    const tenants = await getTenantsCollection();
+    const tenant = await tenants.findOne(
+      { _id: toObjectId(tenantId) },
+      { projection: { ownerId: 1 } },
+    );
+    if (tenant?.ownerId) {
+      const users = await getUsersCollection();
+      const owner = await users.findOne(
+        { _id: tenant.ownerId as ObjectId },
+        { projection: { email: 1 } },
+      );
+      if (owner?.email) return String(owner.email).toLowerCase().trim();
+    }
+
+    return null;
+  } catch (error) {
+    console.error('[EMBED_TOKEN_STORAGE] Error resolving FB owner email:', error);
+    return null;
   }
 }

@@ -13,7 +13,10 @@ import {
   FileText,
   Archive,
   ArchiveRestore,
+  Send,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { showSuccessToast, showErrorToast } from "@/lib/toastUtils";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -38,6 +41,7 @@ import {
   SourceBadge,
   CommandManagedBanner,
 } from "@/components/command/source-badge";
+import { ImportCommandStaffDialog } from "@/components/users/import-command-dialog";
 import { Spinner } from "@/components/ui/spinner";
 import { useAuth } from "@/hooks/useAuth";
 import { useRoleAccess } from "@/hooks/use-role-access";
@@ -110,6 +114,9 @@ export function DriversPage() {
     { formId: string; title: string }[]
   >([]);
 
+  // Import-from-Command dialog (drivers arrive with the Driver role preset).
+  const [importOpen, setImportOpen] = useState(false);
+
   // Archive state
   const [showArchived, setShowArchived] = useState(false);
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
@@ -174,6 +181,29 @@ export function DriversPage() {
     }
     loadTeams();
   }, []);
+
+  // Resend invitation (only for drivers whose member is still 'pending')
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const handleResendInvite = async (driver: DriverRow) => {
+    if (!driver.tenantMemberId || resendingId) return;
+    setResendingId(driver.id);
+    try {
+      await axios.post(
+        `/api/users/${driver.tenantMemberId}/resend-invite`,
+        {},
+        { withCredentials: true },
+      );
+      showSuccessToast("Invitation resent");
+    } catch (err: unknown) {
+      const message =
+        axios.isAxiosError(err) && typeof err.response?.data?.error === "string"
+          ? err.response.data.error
+          : "Failed to resend the invitation";
+      showErrorToast(message);
+    } finally {
+      setResendingId(null);
+    }
+  };
 
   // Archive handlers
   const handleOpenArchive = (driver: DriverRow) => {
@@ -444,6 +474,26 @@ export function DriversPage() {
       ),
     },
     {
+      key: "inviteStatus",
+      header: "Status",
+      label: "Status",
+      render: (driver) => {
+        // Driver activation follows the invitation: 'pending' until the
+        // driver accepts their invite email, 'active' afterwards.
+        if (!driver.memberStatus) {
+          return <span className="text-muted-foreground">—</span>;
+        }
+        if (driver.memberStatus === "pending") {
+          return driver.email ? (
+            <Badge variant="warning">Invited</Badge>
+          ) : (
+            <Badge variant="secondary">No email</Badge>
+          );
+        }
+        return <Badge variant="success">Active</Badge>;
+      },
+    },
+    {
       key: "source",
       header: "Source",
       label: "Source",
@@ -471,6 +521,15 @@ export function DriversPage() {
                   icon={<Eye />}
                   onClick={() => handleViewDriver(driver)}
                 />
+                {driver.email &&
+                  driver.tenantMemberId &&
+                  driver.memberStatus === "pending" && (
+                    <RowActionButton
+                      label={resendingId === driver.id ? "Sending…" : "Resend Invite"}
+                      icon={<Send />}
+                      onClick={() => handleResendInvite(driver)}
+                    />
+                  )}
                 {!isCommandRow && (
                   <>
                     {checkRecordOwnership(
@@ -563,7 +622,14 @@ export function DriversPage() {
         description="Manage driver profiles, licences, and asset assignments"
         count={pagination.total}
       >
-        {!connected && (
+        {connected ? (
+          hasFullAccess && (
+            <Button onClick={() => setImportOpen(true)}>
+              <Send className="h-4 w-4" />
+              Import from Command
+            </Button>
+          )
+        ) : (
           <PermissionGuard permission={Permissions.people.drivers.form.create}>
             <Button onClick={() => router.push("/people/drivers/new")}>
               <Plus className="h-4 w-4" />
@@ -572,6 +638,13 @@ export function DriversPage() {
           </PermissionGuard>
         )}
       </PageHeader>
+
+      <ImportCommandStaffDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        onImported={() => fetchDrivers(1)}
+        defaultRoleName="Driver"
+      />
 
       <div className="space-y-3 px-6 pb-3">
         {connected && <CommandManagedBanner />}

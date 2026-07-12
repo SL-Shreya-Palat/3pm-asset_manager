@@ -162,19 +162,22 @@ export async function createFormBuilderSession(params: {
 }
 
 /**
- * Create a user in form-builder-portal under the owner's organization.
+ * Create a user in form-builder-portal under the embed token's organization.
  *
- * Flow (matching construction-portal):
- *   1. Mint a session against form-builder's POST /api/embed/sessions, passing
- *      the per-tenant `embedToken` so the session is bound to a specific
- *      organizationId — not resolved by email lookup.
- *   2. Call POST /api/embed/users with only X-Session-Id; form-builder reads
- *      the org from `session.organizationId`. No email→org disambiguation.
+ * Form-builder's embed API only creates members through the session of an
+ * EXISTING org user, so:
+ *   1. Mint a session for `ownerEmail` — an account that already exists in
+ *      the target org (resolve it with `getFormBuilderOwnerEmail`; NEVER pass
+ *      the new member's own email — a session can't be minted for a user that
+ *      doesn't exist yet, which is exactly the bug this signature prevents).
+ *   2. POST /api/embed/users with X-Session-Id; form-builder reads the org
+ *      from `session.organizationId`.
  */
 export async function createFormBuilderMember(params: {
   email: string;
   firstName: string;
   lastName: string;
+  /** An EXISTING member of the org (the onboarder/owner) — not the new user. */
   ownerEmail: string;
   embedToken: string;
   role?: 'owner' | 'admin' | 'user';
@@ -193,7 +196,19 @@ export async function createFormBuilderMember(params: {
     return false;
   }
 
-  // 1. Mint a session for the owner so we can authenticate the user creation
+  if (
+    !params.ownerEmail ||
+    params.ownerEmail.toLowerCase().trim() === params.email.toLowerCase().trim()
+  ) {
+    console.error(
+      '[FORM_BUILDER_MEMBER] ownerEmail missing or equals the new member email — ' +
+        'a provisioning session must belong to an EXISTING org user (the tenant ' +
+        'owner / onboarder). Resolve it with getFormBuilderOwnerEmail().',
+    );
+    return false;
+  }
+
+  // 1. Mint a session for the owner so we can authenticate the user creation.
   const sessionResult = await createFormBuilderSession({
     userEmail: params.ownerEmail,
     embedToken: params.embedToken,
@@ -208,7 +223,7 @@ export async function createFormBuilderMember(params: {
     return false;
   }
 
-  // 2. Create the user using the owner's session ID
+  // 2. Create the user using the owner's session ID.
   try {
     const response = await fetch(`${NEXT_PUBLIC_FORM_BUILDER_URL}/api/embed/users`, {
       method: 'POST',
@@ -224,6 +239,7 @@ export async function createFormBuilderMember(params: {
       }),
     });
 
+    // 409 = already a member — the desired end state, treat as success.
     if (response.ok || response.status === 409) {
       return true;
     }
@@ -258,19 +274,22 @@ export async function fetchLiveFormSchema(
   userName: string,
   formId: string,
   embedToken: string,
+  /** Existing org member to provision `userEmail` as, when they don't exist yet. */
+  ownerEmail?: string | null,
 ): Promise<LiveFormSchema | null> {
   try {
-    // Mint a session; create the builder member on first use (404 = unknown user).
+    // Mint a session; create the builder member on first use (404 = unknown
+    // user) — possible only when the caller supplied a usable owner email.
     let session = await createFormBuilderSession({ userEmail, embedToken });
-    if (!session.ok && session.status === 404) {
+    if (!session.ok && session.status === 404 && ownerEmail) {
       const parts = (userName || userEmail).split(' ');
       await createFormBuilderMember({
         email: userEmail,
         firstName: parts[0] || userEmail.split('@')[0],
         lastName: parts.slice(1).join(' ') || '-',
-        ownerEmail: userEmail,
+        ownerEmail,
         embedToken,
-        role: 'owner',
+        role: 'user',
       });
       session = await createFormBuilderSession({ userEmail, embedToken });
     }

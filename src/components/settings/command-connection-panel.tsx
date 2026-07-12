@@ -79,7 +79,9 @@ export function CommandConnectionPanel() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/command/connection');
+      // impact=1: this settings panel is the only consumer of the
+      // disconnect-impact counts, so only it pays for them.
+      const res = await fetch('/api/command/connection?impact=1');
       const body = await res.json();
       if (body.error) setError(body.error);
       else setData(body.data);

@@ -5,13 +5,18 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthenticatedUser } from '@/lib/auth-helper';
-import { resolveConnection } from '@/controller/command-connection';
+import { resolveConnection, userCanManageConnection } from '@/controller/command-connection';
 import { commandStaffDirectory } from '@/controller/command-connection/command-staff-directory';
 
 export async function GET(request: NextRequest) {
   const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
+  if (!user?.id || !user.currentTenantId) {
     return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Same gate as the import routes this picker feeds (owner/admin only).
+  if (!(await userCanManageConnection(user.id, user.currentTenantId))) {
+    return NextResponse.json({ data: null, error: 'Forbidden' }, { status: 403 });
   }
 
   const connection = await resolveConnection(user.currentTenantId);

@@ -7,7 +7,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { authorize } from '@/lib/authz';
+import { authorize, inTeamScope } from '@/lib/authz';
+import { getDriversCollection } from '@/lib/mongodb';
 import { clearDriverFitnessFlag } from '@/controller/drivers';
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -16,11 +17,22 @@ export async function POST(req: NextRequest, context: RouteContext) {
   try {
     const auth = await authorize(req, 'people.drivers.driver', 'edit');
     if (!auth.ok) return auth.res;
-    const { user } = auth.ctx;
+    const { user, teamIds } = auth.ctx;
 
     const { id: driverId } = await context.params;
     if (!ObjectId.isValid(driverId)) {
       return NextResponse.json({ data: null, error: 'Invalid driver ID' }, { status: 400 });
+    }
+
+    if (teamIds) {
+      const collection = await getDriversCollection();
+      const driver = await collection.findOne(
+        { _id: ObjectId.createFromHexString(driverId), tenantId: ObjectId.createFromHexString(user.currentTenantId!) },
+        { projection: { teamId: 1 } },
+      );
+      if (!driver || !inTeamScope(teamIds, driver.teamId)) {
+        return NextResponse.json({ data: null, error: 'Driver not found' }, { status: 404 });
+      }
     }
 
     const body = await req.json().catch(() => ({}));

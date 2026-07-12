@@ -22,9 +22,23 @@ function countsToRecord(
   return out;
 }
 
-export async function getDashboardSummary(tenantId: string) {
+export async function getDashboardSummary(
+  tenantId: string,
+  options: { teamIds?: string[] } = {},
+) {
   const tenantOid = ObjectId.createFromHexString(tenantId);
-  const base = { tenantId: tenantOid, isArchived: { $ne: true } };
+  // Team-scoped roles only see their teams' records. Assets, faults and work
+  // orders all carry teamIds directly; defect/asset/fuel summaries scope through
+  // their own controllers (fuel via the asset). `undefined` = unrestricted.
+  const { teamIds } = options;
+  const teamMatch = teamIds
+    ? {
+        teamIds: {
+          $in: teamIds.filter((id) => ObjectId.isValid(id)).map((id) => ObjectId.createFromHexString(id)),
+        },
+      }
+    : {};
+  const base = { tenantId: tenantOid, isArchived: { $ne: true }, ...teamMatch };
 
   const faultsCol = await getFaultsCollection();
   const woCol = await getWorkOrdersCollection();
@@ -39,10 +53,10 @@ export async function getDashboardSummary(tenantId: string) {
     woOpen,
     woCompleted,
   ] = await Promise.all([
-    getAssetSummary(tenantId),
-    getComplianceBreakdown(tenantId),
-    getDefectSummary(tenantId),
-    getFuelAnalytics(tenantId, {}),
+    getAssetSummary(tenantId, { teamIds }),
+    getComplianceBreakdown(tenantId, { teamIds }),
+    getDefectSummary(tenantId, { teamIds }),
+    getFuelAnalytics(tenantId, { teamIds }),
     faultsCol
       .aggregate<{ _id: unknown; count: number }>([
         { $match: base },

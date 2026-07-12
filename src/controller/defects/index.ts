@@ -24,7 +24,7 @@ const RESOLVED_STATUSES = ['corrected', 'no_correction_needed'];
 
 export async function getAllDefects(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; status?: string; priority?: string; severity?: string; teamId?: string; assetId?: string; source?: string; showArchived?: boolean; createdBy?: string },
+  options: { page?: number; limit?: number; search?: string; status?: string; priority?: string; severity?: string; teamId?: string; assetId?: string; source?: string; showArchived?: boolean; createdBy?: string; teamIds?: string[] },
 ) {
   const collection = await getDefectsCollection();
   const page = Math.max(1, options.page || 1);
@@ -69,8 +69,14 @@ export async function getAllDefects(
     }
   }
 
-  // Filter by team: use direct teamIds array on defect documents
-  if (options.teamId) {
+  // Filter by team: use direct teamIds array on defect documents.
+  // A team-scoped role's restriction (options.teamIds) composes with the
+  // explicit teamId filter — an out-of-scope teamId yields no results.
+  if (options.teamIds) {
+    const allowed = options.teamIds.filter((id) => ObjectId.isValid(id));
+    const effective = options.teamId ? allowed.filter((id) => id === options.teamId) : allowed;
+    filter.teamIds = { $in: effective.map((id) => ObjectId.createFromHexString(id)) };
+  } else if (options.teamId) {
     filter.teamIds = ObjectId.createFromHexString(options.teamId);
   }
 
@@ -121,11 +127,16 @@ export async function getAllDefects(
 
 // ─── Exception summary (Exception Report KPIs) ───────────────────────────────
 
-export async function getDefectSummary(tenantId: string) {
+export async function getDefectSummary(tenantId: string, options: { teamIds?: string[] } = {}) {
   const col = await getDefectsCollection();
   const assetsCol = await getAssetsCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
-  const base = { tenantId: tenantOid, isArchived: { $ne: true } };
+  const base: Record<string, unknown> = { tenantId: tenantOid, isArchived: { $ne: true } };
+  if (options.teamIds) {
+    base.teamIds = {
+      $in: options.teamIds.filter((id) => ObjectId.isValid(id)).map((id) => ObjectId.createFromHexString(id)),
+    };
+  }
 
   const [total, newCount, inProgress, corrected, noCorrection, criticalOpen, outOfService] =
     await Promise.all([
@@ -135,7 +146,7 @@ export async function getDefectSummary(tenantId: string) {
       col.countDocuments({ ...base, status: 'corrected' }),
       col.countDocuments({ ...base, status: 'no_correction_needed' }),
       col.countDocuments({ ...base, status: { $in: ['new', 'in_progress'] }, severity: { $in: ['high', 'critical'] } }),
-      assetsCol.countDocuments({ tenantId: tenantOid, status: 'out_of_service', isArchived: { $ne: true } }),
+      assetsCol.countDocuments({ tenantId: tenantOid, status: 'out_of_service', isArchived: { $ne: true }, ...(base.teamIds ? { teamIds: base.teamIds } : {}) }),
     ]);
 
   return {
@@ -160,7 +171,7 @@ export async function getDefectSummary(tenantId: string) {
  */
 export async function getExceptionsByAsset(
   tenantId: string,
-  options: { status?: string; severity?: string; search?: string } = {},
+  options: { status?: string; severity?: string; search?: string; teamIds?: string[] } = {},
 ) {
   const col = await getDefectsCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
@@ -169,6 +180,12 @@ export async function getExceptionsByAsset(
     tenantId: tenantOid,
     isArchived: { $ne: true },
   };
+
+  if (options.teamIds) {
+    match.teamIds = {
+      $in: options.teamIds.filter((id) => ObjectId.isValid(id)).map((id) => ObjectId.createFromHexString(id)),
+    };
+  }
 
   // 'open' is a virtual status = new + in_progress; 'all' means no status filter.
   if (options.status === 'open') {
@@ -560,6 +577,7 @@ export async function bulkUpdateDefectStatus(
   userId: string,
   ids: string[],
   status: string,
+  scope?: { createdBy?: string; teamIds?: string[] },
 ) {
   if (!ids.length) return { data: null, error: 'No defect IDs provided' };
 
@@ -571,7 +589,22 @@ export async function bulkUpdateDefectStatus(
   const collection = await getDefectsCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
   const now = new Date();
-  const oids = ids.map((id) => ObjectId.createFromHexString(id));
+  let oids = ids.map((id) => ObjectId.createFromHexString(id));
+
+  // OWN edit scope / team-scoped roles: silently drop out-of-scope ids so the
+  // caller can never bulk-edit records their single-record access would deny.
+  if (scope?.createdBy || scope?.teamIds) {
+    const scopeFilter: Record<string, unknown> = { _id: { $in: oids }, tenantId: tenantOid };
+    if (scope.createdBy) scopeFilter.createdBy = ObjectId.createFromHexString(scope.createdBy);
+    if (scope.teamIds) {
+      scopeFilter.teamIds = {
+        $in: scope.teamIds.filter((id) => ObjectId.isValid(id)).map((id) => ObjectId.createFromHexString(id)),
+      };
+    }
+    const inScope = await collection.find(scopeFilter, { projection: { _id: 1 } }).toArray();
+    oids = inScope.map((d) => d._id as ObjectId);
+    if (!oids.length) return { data: { modifiedCount: 0 }, error: null };
+  }
 
   // Capture which defects will actually transition INTO a resolved state, so we
   // push exactly one fault_resolved per newly-resolved defect (Command timeline).

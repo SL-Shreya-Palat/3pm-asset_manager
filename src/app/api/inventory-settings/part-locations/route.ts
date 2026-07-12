@@ -1,27 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { getAllPartLocations, createPartLocation, updatePartLocation, deletePartLocation, archivePartLocation } from '@/controller/inventory-settings';
-import { getFormPermissionLevels } from '@/lib/server-permissions';
 
 const FORM_ID = 'settings.partLocations.partLocation';
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
+  const auth = await authorize(request, FORM_ID, 'view');
+  if (!auth.ok) return auth.res;
+  const { user, scope } = auth.ctx;
 
   const search = request.nextUrl.searchParams.get('search') || undefined;
   const showArchived = request.nextUrl.searchParams.get('showArchived') === 'true';
 
-  const perms = await getFormPermissionLevels(user.id, user.currentTenantId, FORM_ID);
-  const createdBy = perms.view === 'OWN' ? user.id : undefined;
+  const createdBy = scope === 'OWN' ? user.id : undefined;
 
   const items = await getAllPartLocations(user.currentTenantId, search, { showArchived, createdBy, userId: user.id });
   return NextResponse.json({ data: items, error: null });
 }
 
 export async function POST(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
+  const auth = await authorize(request, FORM_ID, 'create');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const body = await request.json();
@@ -34,8 +34,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
+  const auth = await authorize(request, FORM_ID, 'edit');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const body = await request.json();
@@ -50,8 +51,9 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
+  const auth = await authorize(request, FORM_ID, 'delete');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   const id = request.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ data: null, error: 'ID is required' }, { status: 400 });
@@ -61,8 +63,9 @@ export async function DELETE(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
+  const auth = await authorize(request, FORM_ID, 'archive');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   try {
     const body = await request.json();

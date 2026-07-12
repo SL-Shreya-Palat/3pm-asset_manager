@@ -5,18 +5,30 @@
  * entry when scheduled work was fulfilled.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { authorize } from '@/lib/authz';
-import { completeWorkOrder } from '@/controller/work-orders';
+import { authorize, inTeamScope } from '@/lib/authz';
+import { completeWorkOrder, getWorkOrderById } from '@/controller/work-orders';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function PUT(request: NextRequest, context: RouteContext) {
   const auth = await authorize(request, 'maintenance.workOrders.workOrder', 'edit');
   if (!auth.ok) return auth.res;
-  const { user } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   try {
     const { id } = await context.params;
+
+    if (scope === 'OWN' || teamIds) {
+      const existing = await getWorkOrderById(user.currentTenantId!, id);
+      if (
+        !existing ||
+        (scope === 'OWN' && existing.createdBy !== user.id) ||
+        !inTeamScope(teamIds, existing.teamIds)
+      ) {
+        return NextResponse.json({ data: null, error: 'Work order not found' }, { status: 404 });
+      }
+    }
+
     const body = await request.json().catch(() => ({}));
     const result = await completeWorkOrder(user.currentTenantId!, user.id, id, {
       servicePlanId: typeof body.servicePlanId === 'string' ? body.servicePlanId : undefined,

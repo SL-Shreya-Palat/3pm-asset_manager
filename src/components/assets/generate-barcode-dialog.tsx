@@ -27,6 +27,7 @@ import {
   type BarcodeType,
   type LabelSize,
 } from '@/lib/barcode-pdf';
+import { getAppUrl } from '@/lib/app-url';
 /* ── Props ────────────────────────────────────────────────────────── */
 
 export interface BarcodeItem {
@@ -124,6 +125,20 @@ export function GenerateBarcodeDialog({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
 
+  // Printed labels outlive the browser session that generated them — prefer
+  // the configured public URL so a label printed from a dev machine never
+  // permanently encodes a localhost link. getAppUrl() ignores a misconfigured
+  // (localhost-pointing) NEXT_PUBLIC_APP_URL instead of baking it into every
+  // printed QR label — falls back to this browser's real origin, which is
+  // always correct for whoever is actually generating the label.
+  const windowOrigin = typeof window !== 'undefined' ? window.location.origin : null;
+  let labelOrigin: string;
+  try {
+    labelOrigin = getAppUrl(windowOrigin);
+  } catch {
+    labelOrigin = windowOrigin || '';
+  }
+
   // Regenerate preview when options change
   useEffect(() => {
     if (!open || items.length === 0) return;
@@ -131,7 +146,7 @@ export function GenerateBarcodeDialog({
 
     const text =
       barcodeType === 'applink' && appLinkBase
-        ? `${window.location.origin}${appLinkBase}/${items[0].id}`
+        ? `${labelOrigin}${appLinkBase}/${items[0].id}`
         : items[0].code || items[0].name;
 
     setPreviewUrl(null);
@@ -157,7 +172,7 @@ export function GenerateBarcodeDialog({
         labelQuantity,
         labelSize,
         appLink: appLinkBase
-          ? (id) => `${window.location.origin}${appLinkBase}/${id}`
+          ? (id) => `${labelOrigin}${appLinkBase}/${id}`
           : undefined,
       });
 

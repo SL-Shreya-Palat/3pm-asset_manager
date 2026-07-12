@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronsUpDown,
   LogOut,
+  Truck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useEffect, useMemo, useState } from 'react';
@@ -27,6 +28,7 @@ import { useConnection } from '@/hooks/use-connection';
 import { useIsMobile } from '@/hooks/use-is-mobile';
 import { useAuth } from '@/hooks/useAuth';
 import { useAuthStore } from '@/store/auth/store';
+import { useSidebarStore } from '@/store/ui/sidebar-store';
 
 function useFilteredNavItems() {
   const { loading, isMobileOnly, canAccessModule, canAccessSubModule } = useRoleAccess();
@@ -96,9 +98,17 @@ export function Sidebar() {
   const { loading, items: filteredItems } = useFilteredNavItems();
   const [manualCollapsed, setManualCollapsed] = useState(false);
   const isMobile = useIsMobile();
-  // On phones the sidebar is always the icon rail — screen space goes to content.
-  const collapsed = isMobile || manualCollapsed;
+  const mobileOpen = useSidebarStore((s) => s.mobileOpen);
+  const setMobileOpen = useSidebarStore((s) => s.setMobileOpen);
+  // Desktop can collapse to an icon rail; on phones the sidebar is a hidden
+  // off-canvas drawer that always shows full labels when opened.
+  const collapsed = isMobile ? false : manualCollapsed;
   const { user } = useAuth();
+
+  // Close the mobile drawer on navigation (a nav item was tapped).
+  useEffect(() => {
+    if (isMobile) setMobileOpen(false);
+  }, [pathname, isMobile, setMobileOpen]);
 
   // Tenant (organization) switcher — mirrors the construction portal footer.
   const tenants = useAuthStore((s) => s.tenants);
@@ -214,10 +224,24 @@ export function Sidebar() {
   };
 
   return (
+    <>
+    {/* Mobile drawer backdrop — tap to close */}
+    {isMobile && mobileOpen && (
+      <div
+        className="fixed inset-0 z-40 bg-black/50"
+        aria-hidden
+        onClick={() => setMobileOpen(false)}
+      />
+    )}
     <aside
       className={cn(
-        'flex flex-col border-r border-sidebar-border bg-sidebar transition-all duration-200',
-        collapsed ? 'w-[68px]' : 'w-[240px]',
+        'flex flex-col border-r border-sidebar-border bg-sidebar duration-200',
+        isMobile
+          ? cn(
+              'fixed inset-y-0 left-0 z-50 w-[264px] max-w-[82vw] transition-transform',
+              mobileOpen ? 'translate-x-0' : '-translate-x-full',
+            )
+          : cn('transition-all', collapsed ? 'w-[68px]' : 'w-[240px]'),
       )}
     >
       {/* Logo / brand */}
@@ -228,8 +252,8 @@ export function Sidebar() {
         )}
       >
         <Link href="/dashboard" className="flex items-center gap-x-3 overflow-hidden">
-          <div className="flex h-8 min-w-8 shrink-0 items-center justify-center rounded-md bg-primary px-1.5 text-[11px] font-bold text-primary-foreground shadow-sm">
-            3PM
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm">
+            <Truck className="h-4.5 w-4.5" strokeWidth={2.25} aria-hidden="true" />
           </div>
           {!collapsed && (
             <span className="brand-wordmark truncate text-lg font-bold leading-none">
@@ -404,5 +428,6 @@ export function Sidebar() {
         )}
       </div>
     </aside>
+    </>
   );
 }

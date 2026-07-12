@@ -4,6 +4,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSignOutUrl } from '@/lib/auth-3pm';
+import { getAppUrl, getRequestOrigin } from '@/lib/app-url';
 
 function clearCookiesOnResponse(response: NextResponse) {
   // Delete by setting maxAge=0 with explicit path to ensure browser removes them
@@ -24,7 +25,7 @@ function clearCookiesOnResponse(response: NextResponse) {
 }
 
 export async function GET(request: NextRequest) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+  const appUrl = getAppUrl(getRequestOrigin(request));
   // After IdP sign-out, come back to app root — middleware will redirect
   // to the IdP authorize page since there's no session cookie.
   const signOutUrl = getSignOutUrl(appUrl);

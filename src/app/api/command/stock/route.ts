@@ -7,16 +7,16 @@
  * Only meaningful in connected mode — returns 409 otherwise.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { getOptions } from '@/lib/command/fetchers';
 import { getCommandStockLevels } from '@/lib/command/stock';
 import { getEnabledConnectionAuthTenantId } from '@/controller/command-connection/guard';
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  // Feeds the work-order part pickers — gate on work-order edit.
+  const auth = await authorize(request, 'maintenance.workOrders.workOrder', 'edit');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   const authTenantId = await getEnabledConnectionAuthTenantId(user.currentTenantId);
   if (!authTenantId) {

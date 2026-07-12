@@ -46,6 +46,24 @@ export interface ConnectionInfo {
 /** How long a resolved state is trusted before a re-check (ms). */
 const TTL_MS = 5 * 60 * 1000;
 
+/**
+ * In-memory cache of the fully-resolved ConnectionInfo, per tenant.
+ *
+ * `resolveConnection` used to live-ping Command (5s timeout × retries) on
+ * EVERY call — and it's called by /api/command/connection (mounted by the
+ * sidebar + every list page via useConnection) and by every connector-gated
+ * API route. One ping per tenant per minute is plenty; between checks the
+ * cached state is authoritative. `force` (the settings panel's recheck /
+ * connect / disconnect actions) always bypasses and refreshes the cache.
+ * Stored on globalThis so dev HMR doesn't reset it.
+ */
+const CONN_CACHE_TTL_MS = 60 * 1000;
+const gConn = globalThis as typeof globalThis & {
+  _amConnCache?: Map<string, { at: number; info: ConnectionInfo }>;
+};
+const connCache: Map<string, { at: number; info: ConnectionInfo }> = (gConn._amConnCache ??=
+  new Map());
+
 function standalone(
   authTenantId: string | null,
   lastVerifiedAt: Date | null,
@@ -90,6 +108,13 @@ export async function resolveConnection(
         : null;
   if (!id) return standalone(null, null);
 
+  // Serve the recently-resolved state without re-pinging Command.
+  const cacheKey = id.toHexString();
+  if (!opts.force) {
+    const cached = connCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < CONN_CACHE_TTL_MS) return cached.info;
+  }
+
   const tenants = await getTenantsCollection();
   const tenant: any = await tenants.findOne(
     { _id: id },
@@ -111,7 +136,9 @@ export async function resolveConnection(
   // No bridge id or Command not configured → always standalone.
   if (!authTenantId || !isCommandConfigured()) {
     await persist(tenants, id, { entitled: false, state: 'standalone', verifiedNow: false });
-    return standalone(authTenantId, lastVerifiedAt);
+    const info = standalone(authTenantId, lastVerifiedAt);
+    connCache.set(cacheKey, { at: Date.now(), info });
+    return info;
   }
 
   // ── Entitlement (3PM, authoritative) — only when stale or forced ──
@@ -132,7 +159,9 @@ export async function resolveConnection(
   // Not entitled, or the owner manually disconnected → standalone.
   if (!entitled || disabled) {
     await persist(tenants, id, { entitled, state: 'standalone', verifiedNow });
-    return standalone(authTenantId, verifiedAtOut, { entitled, disabled });
+    const info = standalone(authTenantId, verifiedAtOut, { entitled, disabled });
+    connCache.set(cacheKey, { at: Date.now(), info });
+    return info;
   }
 
   // ── Reachability (Command ping) → connected vs degraded ──
@@ -140,7 +169,7 @@ export async function resolveConnection(
   const state: ConnectionState = reachable ? 'connected' : 'degraded';
   await persist(tenants, id, { entitled: true, state, verifiedNow });
 
-  return {
+  const info: ConnectionInfo = {
     state,
     entitled: true,
     connected: true,
@@ -148,6 +177,8 @@ export async function resolveConnection(
     authTenantId,
     lastVerifiedAt: verifiedAtOut ? verifiedAtOut.toISOString() : null,
   };
+  connCache.set(cacheKey, { at: Date.now(), info });
+  return info;
 }
 
 /** Owner toggle: manually disconnect / reconnect (kept even while entitled). */

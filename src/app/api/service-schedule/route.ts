@@ -2,14 +2,13 @@
  * GET /api/service-schedule -- Computed service schedule view (read-only)
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { getServiceSchedule } from '@/controller/service-schedule';
 
 export async function GET(request: NextRequest) {
-  const user = await getAuthenticatedUser(request);
-  if (!user?.currentTenantId) {
-    return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-  }
+  const auth = await authorize(request, 'maintenance.serviceSchedule.serviceSchedule', 'view');
+  if (!auth.ok) return auth.res;
+  const { user } = auth.ctx;
 
   const { searchParams } = request.nextUrl;
   const page = parseInt(searchParams.get('page') || '1', 10);

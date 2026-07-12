@@ -53,6 +53,8 @@ export interface PerScheduleServiceInfo {
   serviceGroup: number | null;
   /** Lower-order schedules implicitly completed when this one is serviced. */
   completedSchedules: string[];
+  /** Service task this schedule performs, if one is linked — powers "Create Work Order". */
+  serviceTaskId: string | null;
 }
 
 // ─── Thresholds (identical to Command) ──────────────────────────────────────
@@ -289,6 +291,7 @@ export function calculateAllScheduleServices(
       currentReading,
       serviceGroup: schedule.serviceGroup ?? null,
       completedSchedules: getCompletedSchedules(scheduleName),
+      serviceTaskId: schedule.serviceTaskId ? String(schedule.serviceTaskId) : null,
     };
     perSchedule.push(info);
 

@@ -16,6 +16,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSignOutUrl } from '@/lib/auth-3pm';
+import { getAppUrl, getRequestOrigin } from '@/lib/app-url';
 
 /** Only allow returning to our own app or the trusted IdP (no open redirect). */
 function isSafeNext(next: string, appUrl: string, idpUrl: string): boolean {
@@ -49,7 +50,7 @@ function clearCookiesOnResponse(response: NextResponse) {
 }
 
 export async function GET(request: NextRequest) {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+  const appUrl = getAppUrl(getRequestOrigin(request));
   const idpUrl = process.env.IDP_URL || '';
 
   const rawNext = request.nextUrl.searchParams.get('next');

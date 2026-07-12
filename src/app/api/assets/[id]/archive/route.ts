@@ -3,7 +3,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
-import { authorize } from '@/lib/authz';
+import { authorize, inTeamScope } from '@/lib/authz';
 import { getAssetsCollection } from '@/lib/mongodb';
 
 const FORM_ID = 'assets.assets.asset';
@@ -13,7 +13,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function PATCH(request: NextRequest, context: RouteContext) {
   const auth = await authorize(request, FORM_ID, 'archive');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   try {
     const { id } = await context.params;
@@ -29,10 +29,14 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const tenantOid = ObjectId.createFromHexString(user.currentTenantId!);
     const docOid = ObjectId.createFromHexString(id);
 
-    if (scope === 'OWN') {
+    if (scope === 'OWN' || teamIds) {
       const existing = await collection.findOne({ _id: docOid, tenantId: tenantOid });
-      if (!existing || existing.createdBy?.toString() !== user.id) {
-        return NextResponse.json({ data: null, error: 'You can only archive records you created' }, { status: 403 });
+      if (
+        !existing ||
+        (scope === 'OWN' && existing.createdBy?.toString() !== user.id) ||
+        !inTeamScope(teamIds, existing.teamIds)
+      ) {
+        return NextResponse.json({ data: null, error: 'You can only archive records within your scope' }, { status: 403 });
       }
     }
 

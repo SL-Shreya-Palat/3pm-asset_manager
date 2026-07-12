@@ -182,8 +182,34 @@ async function resolveMembersByScopeAndRole(
   }
   if (roleKeys.length > 0) {
     const roleIds = await resolveRoleIdsByKeys(rolesCol, tenantOid, roleKeys);
-    if (roleIds.length === 0) return []; // role requested but no such role exists
-    query.roleId = { $in: roleIds };
+    const allowed = new Map<string, ObjectId>();
+    for (const id of roleIds) allowed.set(id.toString(), id);
+
+    // Team-scoped alerts also reach CUSTOM team-scoped roles on the responsible
+    // team. Such a role carries no built-in flag (so the rule's role list can't
+    // name it), but a role deliberately scoped to a team should be alerted about
+    // its team's events — mirroring how it already SEES that team's records.
+    // Company-scope alerts and the built-in roles are unaffected.
+    if (!companyScope) {
+      const customTeamRoles = await rolesCol
+        .find(
+          {
+            tenantId: tenantOid,
+            teamScoped: true,
+            isManager: { $ne: true },
+            isTeamManager: { $ne: true },
+            isMechanic: { $ne: true },
+            isAdmin: { $ne: true },
+            isDriver: { $ne: true },
+          },
+          { projection: { _id: 1 } },
+        )
+        .toArray();
+      for (const r of customTeamRoles) allowed.set(r._id.toString(), r._id as ObjectId);
+    }
+
+    if (allowed.size === 0) return []; // role requested but no such role exists
+    query.roleId = { $in: Array.from(allowed.values()) };
   }
 
   const members = await membersCol.find(query, { projection: { userId: 1 } }).toArray();

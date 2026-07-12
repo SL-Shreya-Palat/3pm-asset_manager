@@ -166,9 +166,17 @@ export interface CommandStaff {
   name: string;
   email: string | null;
   phone: string | null;
+  /** Extra profile fields used to complete driver records on import. */
+  businessPhone: string | null;
+  employeeNumber: string | null;
+  jobTitle: string | null;
+  photoUrl: string | null;
+  licenseNumber: string | null;
+  /** Date of birth from the Command drivers licence block (ISO string). */
+  dateOfBirth: string | null;
 }
 
-/* Command `/api/staff` row (only the fields we need). */
+/* Command `/api/staff?view=directory` row (lean connector shape). */
 interface CommandStaffRow {
   _id?: string;
   id?: string;
@@ -179,15 +187,30 @@ interface CommandStaffRow {
   email?: string;
   phone?: string;
   mobile?: string;
+  businessPhone?: string;
+  internalEmployeeNumber?: string;
+  jobTitle?: string;
+  profileImageUrl?: string;
+  driversLicence?: {
+    licenceNumber?: string | null;
+    dob?: string | Date | null;
+    versionNumber?: string | null;
+  } | null;
 }
 
-/** Fetch the tenant's Command staff (up to 500), normalized for driver import. */
+/**
+ * Fetch the tenant's Command staff (up to 500), normalized for user/driver
+ * import. Uses Command's lean `view=directory` mode (no utilization/leave
+ * computation) with a generous timeout — the full staff list is a heavy
+ * aggregation that can exceed the default 5s transport timeout on real data.
+ */
 export async function getCommandStaff(
   authTenantId: string,
 ): Promise<CommandResult<CommandStaff[]>> {
   const res = await commandRequest<{ data?: { staff?: CommandStaffRow[] } }>(
-    '/api/staff?limit=500',
+    '/api/staff?view=directory&limit=500',
     authTenantId,
+    { timeoutMs: 15_000 },
   );
   if (!res.ok) return res;
   const raw = res.data?.data?.staff;
@@ -200,7 +223,25 @@ export async function getCommandStaff(
         `${firstName} ${lastName}`.trim() || String(r.name ?? r.fullName ?? '').trim();
       const email = r.email ? String(r.email).toLowerCase().trim() : null;
       const phone = r.phone || r.mobile ? String(r.phone ?? r.mobile).trim() : null;
-      return { id: String(r._id ?? r.id ?? ''), firstName, lastName, name, email, phone };
+      const dobRaw = r.driversLicence?.dob;
+      return {
+        id: String(r._id ?? r.id ?? ''),
+        firstName,
+        lastName,
+        name,
+        email,
+        phone,
+        businessPhone: r.businessPhone ? String(r.businessPhone).trim() : null,
+        employeeNumber: r.internalEmployeeNumber
+          ? String(r.internalEmployeeNumber).trim()
+          : null,
+        jobTitle: r.jobTitle ? String(r.jobTitle).trim() : null,
+        photoUrl: r.profileImageUrl ? String(r.profileImageUrl).trim() : null,
+        licenseNumber: r.driversLicence?.licenceNumber
+          ? String(r.driversLicence.licenceNumber).trim()
+          : null,
+        dateOfBirth: dobRaw ? new Date(dobRaw).toISOString() : null,
+      };
     })
     .filter((s) => s.id && (s.name || s.email));
   return { ok: true, data: staff };

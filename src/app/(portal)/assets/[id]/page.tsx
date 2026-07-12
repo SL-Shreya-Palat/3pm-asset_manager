@@ -583,7 +583,7 @@ export default function AssetDetailPage() {
       {activeTab === 'details' && (
         <div className="space-y-6">
           {/* Key metrics */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-4">
             <StatCard label="Odometer (km)" value={odo != null ? odo.toLocaleString() : '—'} icon={<Gauge />} />
             <StatCard label="Engine Hours" value={engineHours != null ? engineHours.toLocaleString() : '—'} icon={<Clock />} />
             <StatCard label="Estimated Cost" value={estCost != null ? `${currency} ${estCost.toLocaleString()}` : '—'} icon={<DollarSign />} />

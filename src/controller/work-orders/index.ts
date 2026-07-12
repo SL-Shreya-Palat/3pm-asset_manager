@@ -43,7 +43,7 @@ async function resolveWorkOrderAssetTeamIds(
 
 export async function getAllWorkOrders(
   tenantId: string,
-  options: { page?: number; limit?: number; search?: string; statusId?: string; assigneeId?: string; assetId?: string; showArchived?: boolean; createdBy?: string },
+  options: { page?: number; limit?: number; search?: string; statusId?: string; assigneeId?: string; assetId?: string; showArchived?: boolean; createdBy?: string; teamIds?: string[] },
 ) {
   const col = await getWorkOrdersCollection();
   const tenantOid = ObjectId.createFromHexString(tenantId);
@@ -55,6 +55,13 @@ export async function getAllWorkOrders(
   // "OWN" view scope — only show records created by this user
   if (options.createdBy) {
     filter.createdBy = ObjectId.createFromHexString(options.createdBy);
+  }
+
+  // Team-scoped roles: restrict to work orders whose asset belongs to the caller's teams.
+  if (options.teamIds) {
+    filter.teamIds = {
+      $in: options.teamIds.filter((id) => ObjectId.isValid(id)).map((id) => ObjectId.createFromHexString(id)),
+    };
   }
 
   if (options.showArchived) {
@@ -254,7 +261,7 @@ export async function createWorkOrder(
   let source: string = input.source || 'manual';
   if (faultOids.length > 0 && source !== 'defect') source = 'fault';
   else if (defectOids.length > 0) source = 'defect';
-  if (!['manual', 'defect', 'fault'].includes(source)) source = 'manual';
+  if (!['manual', 'defect', 'fault', 'service'].includes(source)) source = 'manual';
 
   // Parts → denormalized lines + total (local stock deducted after insert;
   // Command stock lines are pushed to Command at completion, not here).

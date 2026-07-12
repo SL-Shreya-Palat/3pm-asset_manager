@@ -3,7 +3,7 @@
  * DELETE /api/teams/:id/defects — Remove a defect from a team
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { authorize } from '@/lib/authz';
+import { authorize, inTeamScope } from '@/lib/authz';
 import { addTeamToDefects, removeTeamFromDefect } from '@/controller/defects';
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -11,10 +11,13 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function POST(request: NextRequest, context: RouteContext) {
   const auth = await authorize(request, 'people.teams.team', 'view');
   if (!auth.ok) return auth.res;
-  const { user } = auth.ctx;
+  const { user, teamIds } = auth.ctx;
 
   try {
     const { id: teamId } = await context.params;
+    if (!inTeamScope(teamIds, teamId)) {
+      return NextResponse.json({ data: null, error: 'Team not found' }, { status: 404 });
+    }
     const body = await request.json();
     const defectIds: string[] = body.defectIds;
 
@@ -32,10 +35,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
 export async function DELETE(request: NextRequest, context: RouteContext) {
   const auth = await authorize(request, 'people.teams.team', 'view');
   if (!auth.ok) return auth.res;
-  const { user } = auth.ctx;
+  const { user, teamIds } = auth.ctx;
 
   try {
     const { id: teamId } = await context.params;
+    if (!inTeamScope(teamIds, teamId)) {
+      return NextResponse.json({ data: null, error: 'Team not found' }, { status: 404 });
+    }
     const { searchParams } = request.nextUrl;
     const defectId = searchParams.get('defectId');
 

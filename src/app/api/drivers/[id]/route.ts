@@ -5,7 +5,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getDriverById, updateDriver, deleteDriver } from '@/controller/drivers';
-import { authorize } from '@/lib/authz';
+import { authorize, inTeamScope } from '@/lib/authz';
 
 const FORM_ID = 'people.drivers.driver';
 
@@ -14,7 +14,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function GET(request: NextRequest, context: RouteContext) {
   const auth = await authorize(request, FORM_ID, 'view');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   const { id } = await context.params;
   const driver = await getDriverById(user.currentTenantId!, id);
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ data: null, error: 'Driver not found' }, { status: 404 });
   }
 
-  if (scope === 'OWN' && driver.createdBy !== user.id) {
+  if ((scope === 'OWN' && driver.createdBy !== user.id) || !inTeamScope(teamIds, driver.teamId)) {
     return NextResponse.json({ data: null, error: 'Driver not found' }, { status: 404 });
   }
 
@@ -32,16 +32,19 @@ export async function GET(request: NextRequest, context: RouteContext) {
 export async function PUT(request: NextRequest, context: RouteContext) {
   const auth = await authorize(request, FORM_ID, 'edit');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   try {
     const { id } = await context.params;
 
-    // "OWN" edit: verify the user created this driver
-    if (scope === 'OWN') {
+    if (scope === 'OWN' || teamIds) {
       const existing = await getDriverById(user.currentTenantId!, id);
-      if (!existing || existing.createdBy !== user.id) {
-        return NextResponse.json({ data: null, error: 'You can only edit drivers you created' }, { status: 403 });
+      if (
+        !existing ||
+        (scope === 'OWN' && existing.createdBy !== user.id) ||
+        !inTeamScope(teamIds, existing.teamId)
+      ) {
+        return NextResponse.json({ data: null, error: 'Driver not found' }, { status: 404 });
       }
     }
 
@@ -62,15 +65,18 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 export async function DELETE(request: NextRequest, context: RouteContext) {
   const auth = await authorize(request, FORM_ID, 'delete');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   const { id } = await context.params;
 
-  // "OWN" delete: verify the user created this driver
-  if (scope === 'OWN') {
+  if (scope === 'OWN' || teamIds) {
     const existing = await getDriverById(user.currentTenantId!, id);
-    if (!existing || existing.createdBy !== user.id) {
-      return NextResponse.json({ data: null, error: 'You can only delete drivers you created' }, { status: 403 });
+    if (
+      !existing ||
+      (scope === 'OWN' && existing.createdBy !== user.id) ||
+      !inTeamScope(teamIds, existing.teamId)
+    ) {
+      return NextResponse.json({ data: null, error: 'Driver not found' }, { status: 404 });
     }
   }
 

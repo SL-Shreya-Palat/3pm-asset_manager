@@ -11,7 +11,9 @@ import {
   Archive,
   ArchiveRestore,
   Cable,
+  Send,
 } from 'lucide-react';
+import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 import { Button } from '@/components/ui/button';
 import { RowActions, RowActionButton } from '@/components/ui/row-actions';
 import { SearchInput } from '@/components/ui/search-input';
@@ -136,6 +138,25 @@ export function UsersPage() {
     fetchUsers(1);
   };
 
+  // Resend invitation (only for members still 'pending')
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const handleResendInvite = async (user: UserRow) => {
+    if (resendingId) return;
+    setResendingId(user.id);
+    try {
+      await axios.post(`/api/users/${user.id}/resend-invite`, {}, { withCredentials: true });
+      showSuccessToast('Invitation resent');
+    } catch (err: unknown) {
+      const message =
+        axios.isAxiosError(err) && typeof err.response?.data?.error === 'string'
+          ? err.response.data.error
+          : 'Failed to resend the invitation';
+      showErrorToast(message);
+    } finally {
+      setResendingId(null);
+    }
+  };
+
   // Filters (Role, Status) — reuses the shared toolbar Filters control.
   const userFilterDefs: DataTableFilterDef[] = useMemo(() => {
     const roleOptions = Array.from(
@@ -230,6 +251,13 @@ export function UsersPage() {
           {!showArchived && (
             <>
               <RowActionButton label="View" tone="primary" icon={<Eye />} onClick={() => router.push(`/people/users/${user.id}`)} />
+              {user.status === 'pending' && (
+                <RowActionButton
+                  label={resendingId === user.id ? 'Sending…' : 'Resend Invite'}
+                  icon={<Send />}
+                  onClick={() => handleResendInvite(user)}
+                />
+              )}
               <RowActionButton label="Archive" icon={<Archive />} onClick={() => handleOpenArchive(user)} />
             </>
           )}

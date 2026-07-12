@@ -24,6 +24,9 @@ export interface DriverRow {
   createdAt: string;
   /** 'command' when mastered in Command (read-only, auto-synced), else 'local'. */
   source?: string;
+  /** Linked tenantMember status — 'pending' until the driver accepts their
+   *  invitation email, 'active' afterwards. Null when no member is linked. */
+  memberStatus?: string | null;
 }
 
 export interface TeamOption {

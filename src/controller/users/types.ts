@@ -19,6 +19,11 @@ export interface TenantMemberDocument {
   portalUser: boolean;
   status: 'pending' | 'active';
 
+  /** Team memberships — grants team scope to team-scoped roles. `role` is an
+   *  informational label on the membership (see [[team RBAC]]); access is driven
+   *  by the presence of the membership, not its role value. */
+  teamMemberships?: Array<{ teamId: ObjectId; role: 'managing' | 'following' }>;
+
   invitedBy?: ObjectId;
   invitedAt?: Date;
 
@@ -33,6 +38,9 @@ export interface InviteUserInput {
   email: string;
   roleId: string;
   mobileNumber?: string;
+  /** Teams to place the user on. Required (client + server) when the chosen
+   *  role is team-scoped, otherwise the user would have no scope at all. */
+  teamIds?: string[];
 }
 
 /** Input for updating a tenant member. */

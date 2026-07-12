@@ -22,6 +22,7 @@ import {
 } from '@/lib/form-builder-integration';
 import {
   getEmbedTokenForTenant,
+  getFormBuilderOwnerEmail,
   storeEmbedToken,
 } from '@/lib/embed-token-storage';
 import {
@@ -76,26 +77,42 @@ async function resolveEmbedToken(
     onboardResult.token,
     onboardResult.tokenId,
     FORM_BUILDER_APP_NAME,
+    // The onboarder is the one account guaranteed to exist in the new org —
+    // recorded so future members can be provisioned via their session.
+    userEmail,
   );
 
   return onboardResult.token;
 }
 
-/** Mint a form-builder session for the user (create the member on first use). */
+/**
+ * Mint a form-builder session for the user. If the user doesn't exist in the
+ * org yet (404), create them via a session of `ownerEmail` — an EXISTING org
+ * member (the onboarder) — then retry. Without a usable ownerEmail the 404 is
+ * surfaced as-is (creating a member requires an existing user's session; the
+ * missing user's own email can never work).
+ */
 export async function getOrCreateFbSession(
   userEmail: string,
   userName: string,
   embedToken: string,
+  ownerEmail?: string | null,
 ): Promise<{ sessionId: string; organizationId: string }> {
   let result = await createFormBuilderSession({ userEmail, embedToken });
-  if (!result.ok && result.status === 404) {
+  if (
+    !result.ok &&
+    result.status === 404 &&
+    ownerEmail &&
+    ownerEmail.toLowerCase().trim() !== userEmail.toLowerCase().trim()
+  ) {
     const parts = (userName || userEmail).split(' ');
     await createFormBuilderMember({
       email: userEmail,
       firstName: parts[0] || userEmail.split('@')[0],
       lastName: parts.slice(1).join(' ') || '-',
-      ownerEmail: userEmail,
+      ownerEmail,
       embedToken,
+      // Seeding contexts create/publish forms — needs elevated org access.
       role: 'owner',
     });
     result = await createFormBuilderSession({ userEmail, embedToken });
@@ -147,7 +164,12 @@ export async function cleanupDuplicateFormBuilderForms(params: {
   userName: string;
 }): Promise<number> {
   const embedToken = await resolveEmbedToken(params.tenantId, params.userEmail, params.userName);
-  const { sessionId } = await getOrCreateFbSession(params.userEmail, params.userName, embedToken);
+  const { sessionId } = await getOrCreateFbSession(
+    params.userEmail,
+    params.userName,
+    embedToken,
+    await getFormBuilderOwnerEmail(params.tenantId),
+  );
   let removed = 0;
   try {
     const fbForms = await fbFetch('/forms', sessionId, 'GET');
@@ -255,13 +277,29 @@ export async function seedInspectionForms(params: {
     (d) => (d.templateSchemaVersion ?? 1) < PRESTART_TEMPLATE_SCHEMA_VERSION,
   );
 
+  // FAST PATH: everything already seeded at the current schema version →
+  // return WITHOUT any form-builder network calls. This runs on every login
+  // (ensureLocalRecords), and the session-mint + /forms fetch below were
+  // adding two cross-service round-trips (plus a form-builder cold start on
+  // Render) to every sign-in. Orphan repair (an FB form deleted underneath a
+  // local row) still happens whenever seeding has real work to do — a missing
+  // template or a schema-version bump takes the full path below.
+  if (!hasStale && templates.every((t) => seededTitles.has(t.title))) {
+    return templates.map((t) => ({ title: t.title, status: 'already_seeded' as const }));
+  }
+
   // Auto-update stale forms before seeding new ones.
   if (hasStale) {
     await updateInspectionForms({ tenantId, userId, userEmail, userName });
   }
 
   const embedToken = await resolveEmbedToken(tenantId, userEmail, userName);
-  const { sessionId, organizationId } = await getOrCreateFbSession(userEmail, userName, embedToken);
+  const { sessionId, organizationId } = await getOrCreateFbSession(
+    userEmail,
+    userName,
+    embedToken,
+    await getFormBuilderOwnerEmail(tenantId),
+  );
 
   // Ensure the org→tenant mapping exists.
   if (organizationId) {
@@ -444,7 +482,12 @@ export async function updateInspectionForms(params: {
   }
 
   const embedToken = await resolveEmbedToken(tenantId, userEmail, userName);
-  const { sessionId } = await getOrCreateFbSession(userEmail, userName, embedToken);
+  const { sessionId } = await getOrCreateFbSession(
+    userEmail,
+    userName,
+    embedToken,
+    await getFormBuilderOwnerEmail(tenantId),
+  );
 
   const results: FormUpdateResult[] = [];
 

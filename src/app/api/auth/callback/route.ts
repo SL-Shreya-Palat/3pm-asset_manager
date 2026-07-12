@@ -13,12 +13,15 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { exchangeToken, getLoginUrl, SESSION_COOKIE, TENANT_COOKIE } from '@/lib/auth-3pm';
+import { getAppUrl, getRequestOrigin } from '@/lib/app-url';
 import { ensureLocalRecords } from '@/lib/provisioning';
 import {
   getAcceptedInvitationByEmail,
   completeInvitation,
   getPending3PMInviteByEmail,
   completePending3PMInvitationFromAccept,
+  validateInvitationToken,
+  acceptInvitation,
 } from '@/controller/invitations';
 
 export async function GET(request: NextRequest) {
@@ -28,6 +31,9 @@ export async function GET(request: NextRequest) {
   // Set by the invitation flow: the email the invited user is expected to
   // authenticate as. Used to detect IdP session bleed-through (see guard below).
   const expectedEmail = searchParams.get('expectedEmail');
+  // Legacy invitation token — the invitation is marked accepted here, AFTER
+  // the authenticated email is verified, never before authentication.
+  const inviteToken = searchParams.get('inviteToken');
   const reauthTried = searchParams.get('reauthTried') === '1';
 
   if (!guid) {
@@ -46,7 +52,7 @@ export async function GET(request: NextRequest) {
       expectedEmail &&
       user.email.toLowerCase().trim() !== expectedEmail.toLowerCase().trim()
     ) {
-      const appUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
+      const appUrl = getAppUrl(getRequestOrigin(request));
 
       if (!reauthTried) {
         // Re-initiate the invited login once, after clearing local + IdP
@@ -55,6 +61,7 @@ export async function GET(request: NextRequest) {
           `${appUrl}/api/auth/callback` +
           `?returnUrl=${encodeURIComponent(returnUrl)}` +
           `&expectedEmail=${encodeURIComponent(expectedEmail)}` +
+          (inviteToken ? `&inviteToken=${encodeURIComponent(inviteToken)}` : '') +
           `&reauthTried=1`;
         const loginUrl = getLoginUrl(retryCallback);
         const switchUrl = `${appUrl}/api/auth/switch-account?next=${encodeURIComponent(loginUrl)}`;
@@ -62,24 +69,42 @@ export async function GET(request: NextRequest) {
       }
 
       // Already retried once and still the wrong account — surface a clear
-      // message rather than looping or logging in the wrong person.
-      return NextResponse.redirect(
-        new URL('/invite/accept?error=account-mismatch', appUrl),
-      );
+      // message rather than looping or logging in the wrong person. The
+      // invitation was never marked accepted, so its link remains usable.
+      const mismatchUrl = new URL('/invite/accept?error=account-mismatch', appUrl);
+      if (inviteToken) mismatchUrl.searchParams.set('token', inviteToken);
+      return NextResponse.redirect(mismatchUrl);
     }
 
     // ── Check for pending invitations ────────────────────────────────
-    // 3PM flow: invitation created via Data API (status: 'invited')
-    let pending3PMInvite = null;
-    try {
-      pending3PMInvite = await getPending3PMInviteByEmail(user.email);
-    } catch (err) {
-      console.warn('[callback] Pending 3PM invite lookup failed:', err);
+    const normalizedUserEmail = user.email.toLowerCase().trim();
+
+    // Legacy flow (token): the user arrived via /invite/accept?token=xxx.
+    // Now that they are authenticated AND the email guard passed, verify the
+    // token still matches a pending invitation for THIS email and mark it
+    // accepted. Anything else (expired, consumed, different email) is ignored.
+    let acceptedLegacyInvite = null;
+    if (inviteToken) {
+      const tokenInvite = await validateInvitationToken(inviteToken);
+      if (tokenInvite && tokenInvite.email === normalizedUserEmail) {
+        await acceptInvitation(inviteToken);
+        acceptedLegacyInvite = tokenInvite;
+      }
     }
 
-    // Legacy flow: invitation accepted via /invite/accept page (status: 'accepted')
-    let acceptedLegacyInvite = null;
-    if (!pending3PMInvite) {
+    // 3PM flow: invitation created via Data API (status: 'invited')
+    let pending3PMInvite = null;
+    if (!acceptedLegacyInvite) {
+      try {
+        pending3PMInvite = await getPending3PMInviteByEmail(user.email);
+      } catch (err) {
+        console.warn('[callback] Pending 3PM invite lookup failed:', err);
+      }
+    }
+
+    // Legacy flow (fallback): invitation already marked 'accepted' by an
+    // earlier visit — completes on the invited user's next login.
+    if (!acceptedLegacyInvite && !pending3PMInvite) {
       acceptedLegacyInvite = await getAcceptedInvitationByEmail(user.email);
     }
 

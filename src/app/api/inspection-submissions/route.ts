@@ -5,15 +5,15 @@
  * form-builder webhook (or the sync fallback), so there's no direct submit here.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/auth-helper';
+import { authorize } from '@/lib/authz';
 import { listInspectionSubmissions } from '@/controller/inspection-submissions';
 
 export async function GET(req: NextRequest) {
   try {
-    const user = await getAuthenticatedUser(req);
-    if (!user?.currentTenantId) {
-      return NextResponse.json({ data: null, error: 'Unauthorized' }, { status: 401 });
-    }
+    const auth = await authorize(req, 'inspections.inspectionHistory.inspection', 'view');
+    if (!auth.ok) return auth.res;
+    const { user, scope, teamIds } = auth.ctx;
+
     const sp = req.nextUrl.searchParams;
     const result = await listInspectionSubmissions(user.currentTenantId, {
       page: sp.get('page') ? parseInt(sp.get('page')!, 10) : undefined,
@@ -22,6 +22,8 @@ export async function GET(req: NextRequest) {
       result: sp.get('result') || undefined,
       assetId: sp.get('assetId') || undefined,
       teamId: sp.get('teamId') || undefined,
+      ownUserId: scope === 'OWN' ? user.id : undefined,
+      teamIds: teamIds ?? undefined,
     });
     return NextResponse.json({ data: result, error: null });
   } catch (error) {

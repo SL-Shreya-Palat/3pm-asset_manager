@@ -55,7 +55,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   const user = auth.user;
 
   const { id } = await context.params;
-  const deactivated = await deactivateTenantMember(user.currentTenantId!, id);
+  const deactivated = await deactivateTenantMember(user.currentTenantId!, id, user.id);
 
   if (!deactivated) {
     return NextResponse.json({ data: null, error: 'User not found' }, { status: 404 });

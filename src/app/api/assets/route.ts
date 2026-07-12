@@ -13,7 +13,7 @@ const FORM_ID = 'assets.assets.asset';
 export async function GET(request: NextRequest) {
   const auth = await authorize(request, FORM_ID, 'view');
   if (!auth.ok) return auth.res;
-  const { user, scope } = auth.ctx;
+  const { user, scope, teamIds } = auth.ctx;
 
   const { searchParams } = request.nextUrl;
   const page = parseInt(searchParams.get('page') || '1', 10);
@@ -23,14 +23,15 @@ export async function GET(request: NextRequest) {
   const teamId = searchParams.get('teamId') || undefined;
   const complianceStatus = searchParams.get('complianceStatus') || undefined;
   const showArchived = searchParams.get('showArchived') === 'true';
-  const createdBy = scope === 'OWN' ? user.id : undefined;
+  let createdBy = scope === 'OWN' ? user.id : undefined;
 
-  // Driver-scoped access: a driver only sees assets explicitly granted to them
-  // via the asset's "Driver Access". Map the login to their driver record; if
-  // there's no matching driver record (so no grants), return an empty list.
+  // Driver logins honor the role's view level: 'ALL' shows the fleet; 'OWN'
+  // means the assets granted to them via the asset's "Driver Access" (a driver
+  // never *created* assets, so created-by would always be empty for them).
+  // No linked driver record with 'OWN' → no grants → empty list.
   let driverAccessId: string | undefined;
   const role = await getUserRoleForTenant(user.id, user.currentTenantId!);
-  if (role?.isDriver) {
+  if (role?.isDriver && scope === 'OWN') {
     const driverId = await getDriverIdByEmail(user.currentTenantId!, String(user.email || ''));
     if (!driverId) {
       return NextResponse.json({
@@ -39,9 +40,10 @@ export async function GET(request: NextRequest) {
       });
     }
     driverAccessId = driverId;
+    createdBy = undefined;
   }
 
-  const result = await getAllAssets(user.currentTenantId!, { page, limit, search, status, teamId, complianceStatus, showArchived, createdBy, userId: user.id, driverAccessId });
+  const result = await getAllAssets(user.currentTenantId!, { page, limit, search, status, teamId, complianceStatus, showArchived, createdBy, userId: user.id, driverAccessId, teamIds: teamIds ?? undefined });
   return NextResponse.json({ data: result, error: null });
 }
 

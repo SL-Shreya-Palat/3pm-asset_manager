@@ -8,7 +8,7 @@
  * - Updates sessions.currentTenantId for mobile users
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { getAuthenticatedUser, CURRENT_TENANT_ID_COOKIE } from '@/lib/auth-helper';
+import { getAuthenticatedUser, CURRENT_TENANT_ID_COOKIE, ACTIVE_MEMBER_FILTER } from '@/lib/auth-helper';
 import { getSessionToken, call3PMTenantSwitch } from '@/lib/auth-3pm';
 import { getTenantMembersCollection, getTenantsCollection } from '@/lib/mongodb';
 import { updateSessionActivity } from '@/lib/session';
@@ -40,12 +40,11 @@ export async function POST(request: NextRequest) {
     const tenantMembersCollection = await getTenantMembersCollection();
     const tenantsCollection = await getTenantsCollection();
 
-    // Verify membership
+    // Verify membership (active, not archived, not still pending acceptance)
     const tenantMember = await tenantMembersCollection.findOne({
       userId: userObjectId,
       tenantId: tenantObjectId,
-      isActive: true,
-      portalUser: { $ne: false },
+      ...ACTIVE_MEMBER_FILTER,
     });
 
     if (!tenantMember) {
