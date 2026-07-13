@@ -249,8 +249,11 @@ export function Header() {
         </div>
       </div>
 
-      {/* Notifications + Profile */}
-      <div className="flex items-center gap-1 flex-1 justify-end min-w-0">
+      {/* Notifications + Profile — natural width on phones (the breadcrumb
+          counterweight is hidden there, so this side shouldn't also claim an
+          equal flex-1 share and starve the search box); mirrors the hidden
+          breadcrumb's flex-1 again from md: up to keep search truly centered. */}
+      <div className="flex items-center gap-1 justify-end shrink-0 md:flex-1 md:min-w-0">
         <NotificationBell />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

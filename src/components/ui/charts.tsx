@@ -76,19 +76,21 @@ export interface LegendItem {
   value?: React.ReactNode;
 }
 
-/** Swatch + label rows. Text stays in ink tokens; colour is carried by the chip. */
+/** Swatch + label rows. Text stays in ink tokens; colour is carried by the chip.
+ *  Labels wrap instead of clipping — a name never gets cut mid-word to fit a
+ *  narrow card; the row just grows to a second line when it must. */
 export function ChartLegend({ items, className }: { items: LegendItem[]; className?: string }) {
   return (
-    <ul className={cn('flex flex-col gap-1.5', className)}>
+    <ul className={cn('flex min-w-0 flex-col gap-2', className)}>
       {items.map((it, i) => (
-        <li key={i} className="flex items-center justify-between gap-3 text-xs">
-          <span className="flex items-center gap-2 min-w-0">
+        <li key={i} className="flex items-start justify-between gap-3 text-xs">
+          <span className="flex min-w-0 items-start gap-2">
             <span
-              className="inline-block h-2.5 w-2.5 shrink-0 rounded-[3px]"
+              className="mt-0.5 inline-block h-2.5 w-2.5 shrink-0 rounded-[3px]"
               style={{ backgroundColor: it.color }}
               aria-hidden
             />
-            <span className="truncate text-muted-foreground">{it.label}</span>
+            <span className="text-muted-foreground leading-snug">{it.label}</span>
           </span>
           {it.value != null && (
             <span className="shrink-0 font-medium text-foreground tabular-nums">{it.value}</span>

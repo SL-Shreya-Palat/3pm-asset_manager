@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   X, Trash2, Plus, Package,
-  Truck, Wrench, Users, Paperclip, AlertTriangle,
+  Truck, Wrench, Users, Paperclip, AlertTriangle, Gauge,
 } from 'lucide-react';
 import { Button, LoadingButton } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { PhoneInput, parseE164, phoneToE164, isValidPhoneForCountry, DEFAULT_COUNTRY_KEY } from '@/components/ui/phone-input';
+import { MeterTypeSelect } from '@/components/maintenance/service-fields';
 import { useAuth } from '@/hooks/useAuth';
 import type {
   WorkOrderRow,
@@ -176,6 +177,11 @@ export function WorkOrderForm({
   const [showThirdPartyFields, setShowThirdPartyFields] = useState(false);
   const [dueDate, setDueDate] = useState(mode === 'create' ? todayLocalISO() : '');
   const [statusId, setStatusId] = useState('');
+  // Optional meter reading — only surfaced when the chosen status completes the
+  // WO. Resets mileage/engine-hours-based service due dates on completion;
+  // without it, only the calendar-based baseline resets.
+  const [meterType, setMeterType] = useState('odometer');
+  const [meterReading, setMeterReading] = useState('');
   const [description, setDescription] = useState(mode === 'create' ? (initialDescription || '') : '');
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
 
@@ -549,6 +555,11 @@ export function WorkOrderForm({
     return base.stock - (allocatedNow - savedBefore);
   };
 
+  // The chosen status completes the WO (status.type === 'completed') — surface
+  // the optional meter-reading fields so mileage/engine-hours service due dates
+  // can reset here too, same as the Complete & Sign Off dialog.
+  const isCompletingStatus = statuses.find((s) => s.id === statusId)?.type === 'completed';
+
   const handleSubmit = async () => {
     setError('');
     setFieldErrors({});
@@ -594,6 +605,11 @@ export function WorkOrderForm({
       ),
       assigneeType: assigneeTab,
       statusId,
+      // Optional — only meaningful (and only shown) when this status completes
+      // the WO; a blank reading is simply omitted.
+      ...(isCompletingStatus && meterReading.trim()
+        ? { meterType, meterAtService: Number(meterReading) }
+        : {}),
       dueDate: dueDate || undefined,
       description: description.trim() || undefined,
       attachments: attachments.map((a) => ({
@@ -1116,6 +1132,36 @@ export function WorkOrderForm({
               </button>
             </p>
           </div>
+
+          {/* ── Meter Reading (optional — only when this status completes the WO) ── */}
+          {isCompletingStatus && (
+            <div className="rounded-md border border-border px-3 py-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Gauge className="h-4 w-4 text-muted-foreground" />
+                <Label className="text-sm font-medium">Meter Reading (optional)</Label>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Meter Type</Label>
+                  <MeterTypeSelect value={meterType} onChange={setMeterType} />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Reading</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={meterReading}
+                    onChange={(e) => setMeterReading(e.target.value)}
+                    placeholder="e.g. 50000"
+                    className="mt-1.5"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Recording a reading also resets mileage/engine-hours-based service due dates.
+              </p>
+            </div>
+          )}
 
           {/* ── Description ── */}
           <div>

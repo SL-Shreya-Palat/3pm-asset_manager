@@ -7,12 +7,12 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronsUpDown,
-  LogOut,
   Truck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -223,6 +223,20 @@ export function Sidebar() {
     });
   };
 
+  // Collapsed-rail hover flyout — shows a parent's sub-modules on hover so they
+  // stay reachable without expanding the whole sidebar. A short close delay lets
+  // the pointer travel from the icon to the flyout without it flickering shut.
+  const [openFlyoutHref, setOpenFlyoutHref] = useState<string | null>(null);
+  const closeFlyoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openFlyout = (href: string) => {
+    if (closeFlyoutTimer.current) clearTimeout(closeFlyoutTimer.current);
+    setOpenFlyoutHref(href);
+  };
+  const scheduleFlyoutClose = () => {
+    if (closeFlyoutTimer.current) clearTimeout(closeFlyoutTimer.current);
+    closeFlyoutTimer.current = setTimeout(() => setOpenFlyoutHref(null), 150);
+  };
+
   return (
     <>
     {/* Mobile drawer backdrop — tap to close */}
@@ -241,17 +255,17 @@ export function Sidebar() {
               'fixed inset-y-0 left-0 z-50 w-[264px] max-w-[82vw] transition-transform',
               mobileOpen ? 'translate-x-0' : '-translate-x-full',
             )
-          : cn('transition-all', collapsed ? 'w-[68px]' : 'w-[240px]'),
+          : cn('transition-all', collapsed ? 'w-[76px]' : 'w-[240px]'),
       )}
     >
       {/* Logo / brand */}
       <div
         className={cn(
-          'flex h-14 items-center border-b border-sidebar-border px-4',
-          collapsed && 'justify-center',
+          'flex h-14 items-center justify-between border-b border-sidebar-border',
+          collapsed ? 'px-2' : 'px-4',
         )}
       >
-        <Link href="/dashboard" className="flex items-center gap-x-3 overflow-hidden">
+        <Link href="/dashboard" className="flex min-w-0 items-center gap-x-3 overflow-hidden">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground shadow-sm">
             <Truck className="h-4.5 w-4.5" strokeWidth={2.25} aria-hidden="true" />
           </div>
@@ -261,6 +275,19 @@ export function Sidebar() {
             </span>
           )}
         </Link>
+        {!isMobile && (
+          <button
+            onClick={() => setManualCollapsed(!manualCollapsed)}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-sidebar-foreground hover:bg-gray-100 transition-colors"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
+          </button>
+        )}
       </div>
 
       {/* Navigation */}
@@ -324,6 +351,68 @@ export function Sidebar() {
               );
             }
 
+            // Collapsed rail + item has children: hover flyout listing the
+            // sub-modules, so they stay reachable without expanding the sidebar.
+            if (hasChildren && collapsed) {
+              const flyoutOpen = openFlyoutHref === item.href;
+              return (
+                <Popover
+                  key={item.href}
+                  open={flyoutOpen}
+                  onOpenChange={(open) => { if (!open) setOpenFlyoutHref(null); }}
+                >
+                  <PopoverTrigger asChild>
+                    <Link
+                      href={item.children![0].href}
+                      onMouseEnter={() => openFlyout(item.href)}
+                      onMouseLeave={scheduleFlyoutClose}
+                      className={cn(
+                        'flex items-center justify-center rounded px-2 py-2.5 transition-colors',
+                        isActive
+                          ? 'bg-sidebar-primary text-sidebar-primary-foreground shadow-sm ring-1 ring-sidebar-primary/10'
+                          : 'text-sidebar-foreground hover:bg-gray-100',
+                      )}
+                    >
+                      <Icon className="h-5 w-5 shrink-0" />
+                    </Link>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    side="right"
+                    align="start"
+                    sideOffset={8}
+                    onMouseEnter={() => openFlyout(item.href)}
+                    onMouseLeave={scheduleFlyoutClose}
+                    className="w-56 p-1.5"
+                  >
+                    <p className="px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {item.label}
+                    </p>
+                    <div className="flex flex-col gap-0.5">
+                      {item.children!.map((child) => {
+                        const isChildActive =
+                          pathname === child.href || pathname.startsWith(child.href + '/');
+                        return (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            onClick={() => setOpenFlyoutHref(null)}
+                            className={cn(
+                              'rounded px-2.5 py-1.5 text-sm transition-colors',
+                              isChildActive
+                                ? 'bg-sidebar-primary/10 font-medium text-sidebar-primary'
+                                : 'text-foreground hover:bg-muted',
+                            )}
+                          >
+                            {child.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              );
+            }
+
             // Standard link (no children or collapsed)
             const linkContent = (
               <Link
@@ -362,32 +451,6 @@ export function Sidebar() {
       {/* Footer — tenant (organization) switcher */}
       <div className="border-t border-sidebar-border p-2">
         <Separator className="mb-2" />
-        <div className="flex items-center justify-between">
-          {!collapsed && (
-            <a
-              href="/api/auth/logout"
-              className="flex items-center gap-2 rounded px-3 py-2 text-sm font-medium text-sidebar-foreground hover:bg-gray-100 transition-colors flex-1"
-            >
-              <LogOut className="h-4 w-4" />
-              <span>Sign Out</span>
-            </a>
-          )}
-          {!isMobile && (
-            <button
-              onClick={() => setManualCollapsed(!manualCollapsed)}
-              className={cn(
-                'flex items-center justify-center rounded p-2 text-sidebar-foreground hover:bg-gray-100 transition-colors',
-                collapsed && 'w-full',
-              )}
-            >
-              {collapsed ? (
-                <ChevronRight className="h-4 w-4" />
-              ) : (
-                <ChevronLeft className="h-4 w-4" />
-              )}
-            </button>
-          )}
-        </div>
 
         {currentTenant && (
           <DropdownMenu>
