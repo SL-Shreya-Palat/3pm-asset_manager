@@ -210,10 +210,11 @@ export async function createWorkOrder(
   const assetName = (asset?.name as string) || '';
   const assetTeamIds = (asset?.teamIds as ObjectId[]) ?? [];
 
-  // Resolve status label
+  // Resolve status label + type (type drives status-triggered completion below).
   const statusCol = await getWorkOrderStatusesCollection();
   const status = await statusCol.findOne({ _id: ObjectId.createFromHexString(input.statusId) });
   const statusLabel = (status?.label as string) || '';
+  const statusType = status?.type as string | undefined;
 
   // Resolve assignee details
   let assigneeName = '';
@@ -247,6 +248,15 @@ export async function createWorkOrder(
     }
   } else if (input.assigneeType === 'third_party') {
     assigneeName = input.thirdPartyName?.trim() || '';
+  }
+
+  // A phone entered on the form overrides the contact's on-file phone (and lets
+  // you record one for a contact that has none). '' explicitly clears it.
+  if (
+    input.assigneePhone !== undefined &&
+    (input.assigneeType === 'vendor' || input.assigneeType === 'mechanic')
+  ) {
+    assigneePhone = input.assigneePhone.trim() || undefined;
   }
 
   // Source + linked defects/faults.
@@ -411,6 +421,13 @@ export async function createWorkOrder(
     },
   });
 
+  // Created directly with a 'completed'-type status → complete it now (full
+  // sign-off: corrects linked defects/faults, returns the asset to service,
+  // logs service history, locks the WO from edits). Idempotent.
+  if (statusType === 'completed') {
+    return await completeWorkOrder(tenantId, userId, result.insertedId.toString());
+  }
+
   return {
     data: serializeWorkOrder({ ...doc, _id: result.insertedId }),
     error: null,
@@ -438,6 +455,13 @@ export async function updateWorkOrder(
   });
 
   if (!existing) return { data: null, error: 'Work order not found' };
+
+  // Completed work orders are locked — they can't be edited (only archived).
+  // The completing edit itself is allowed because the WO isn't completed yet at
+  // that point; this only blocks edits once isCompleted is set.
+  if (existing.isCompleted) {
+    return { data: null, error: 'Completed work orders can’t be edited.' };
+  }
 
   const $set: Record<string, unknown> = {
     // An AM-side edit freezes the doc against history re-import refreshes
@@ -503,12 +527,25 @@ export async function updateWorkOrder(
     }
   }
 
+  // A phone entered on the form overrides the contact's on-file phone for
+  // vendor/mechanic assignees ('' clears it). Applied after the assignee block
+  // so it wins over the value looked up from the vendor/mechanic record.
+  if (
+    input.assigneePhone !== undefined &&
+    (input.assigneeType === 'vendor' || input.assigneeType === 'mechanic')
+  ) {
+    $set.assigneePhone = input.assigneePhone.trim() || undefined;
+  }
+
   // Status
+  let newStatusType: string | undefined;
   if (input.statusId !== undefined) {
     $set.statusId = ObjectId.createFromHexString(input.statusId);
     const statusCol = await getWorkOrderStatusesCollection();
     const status = await statusCol.findOne({ _id: ObjectId.createFromHexString(input.statusId) });
     $set.statusLabel = (status?.label as string) || '';
+    // Drives status-triggered completion below (status.type === 'completed').
+    newStatusType = status?.type as string | undefined;
   }
 
   // Due date
@@ -522,16 +559,10 @@ export async function updateWorkOrder(
   }
 
   // Parts — recompute lines + total; inventory delta applied after the write.
-  // Completed WOs are cost-frozen: partsCost was snapshotted into service
-  // history at completion and Command lines were already consumed, so parts
-  // edits are ignored (every other field still saves normally).
+  // (Completed WOs never reach here — they're rejected by the lock above.)
   let partsBefore: WOPart[] | null = null;
   let partsAfter: WOPart[] | null = null;
-  let warning: string | undefined;
-  if (input.parts !== undefined && existing.isCompleted) {
-    warning =
-      'This work order is completed — its stock lines and cost are locked and were not changed.';
-  } else if (input.parts !== undefined) {
+  if (input.parts !== undefined) {
     const existingParts = (existing.parts as WOPart[]) || [];
     let local = await resolveWorkOrderParts(tenantOid, input.parts);
     const hasCommandLines =
@@ -638,11 +669,18 @@ export async function updateWorkOrder(
     await applyInventoryDelta(tenantOid, partsBefore, partsAfter, ObjectId.createFromHexString(userId));
   }
 
+  // Moving to a status whose type is 'completed' completes the work order:
+  // run the full sign-off (corrects linked defects/faults, returns the asset to
+  // service, logs service history, pushes any Command stock) and set the
+  // isCompleted flag that locks the WO from further edits. Idempotent.
+  if (newStatusType === 'completed') {
+    return await completeWorkOrder(tenantId, userId, woId);
+  }
+
   const updated = await col.findOne({ _id: woOid });
   return {
     data: updated ? serializeWorkOrder(updated as Record<string, unknown>) : null,
     error: null,
-    ...(warning ? { warning } : {}),
   };
 }
 

@@ -158,7 +158,6 @@ export async function createPart(tenantId: string, userId: string, input: Create
     tenantId: tenantOid,
     name: input.name.trim(),
     partNumber,
-    upc: input.upc?.trim() || undefined,
     description: input.description?.trim() || undefined,
     photoUrl: input.photoUrl || undefined,
     manufacturerId: input.manufacturerId ? ObjectId.createFromHexString(input.manufacturerId) : undefined,
@@ -243,7 +242,6 @@ export async function updatePart(
     $set.partNumber = trimmed;
   }
 
-  if (input.upc !== undefined) $set.upc = input.upc?.trim() || undefined;
   if (input.description !== undefined) $set.description = input.description?.trim() || undefined;
   if (input.photoUrl !== undefined) $set.photoUrl = input.photoUrl || undefined;
   if (input.manufacturerId !== undefined) $set.manufacturerId = input.manufacturerId ? ObjectId.createFromHexString(input.manufacturerId) : undefined;

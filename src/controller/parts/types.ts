@@ -23,7 +23,6 @@ export interface Part {
 
   name: string;
   partNumber: string;
-  upc?: string;
   description?: string;
   photoUrl?: string;
 
@@ -57,7 +56,6 @@ export interface Part {
 export interface CreatePartInput {
   name: string;
   partNumber: string;
-  upc?: string;
   description?: string;
   photoUrl?: string;
   manufacturerId?: string;

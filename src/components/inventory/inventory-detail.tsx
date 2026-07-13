@@ -183,7 +183,6 @@ export function InventoryDetail() {
         <DetailCard icon={Package} title="Stock Details" columns={3}>
           <DetailField label="Name" value={part.name} />
           <DetailField label="Stock Number" value={part.partNumber} />
-          <DetailField label="UPC" value={part.upc} />
           <DetailField label="Category" value={categoryName} />
           <DetailField label="Description" value={part.description} className="col-span-full" />
         </DetailCard>

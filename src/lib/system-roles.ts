@@ -236,6 +236,10 @@ export const SYSTEM_ROLE_DEFS: SystemRoleDef[] = [
         // View + edit + archive existing records, but no create. Mechanics have
         // no Assets/Drivers access, which a new defect/fault/work order requires.
         // An admin can grant create per-form via the Roles UI to enable it.
+        // NOTE: mechanics have no inventory grant, yet they CAN pick stock while
+        // editing a work order — the stock picker reads from the work-order-scoped
+        // /api/work-orders/stock-options endpoint (gated by the WO edit grant
+        // above), so no inventory permission is required.
         fullGrantNoCreate('maintenance.defects.defect'),
         fullGrantNoCreate('maintenance.faults.fault'),
         fullGrantNoCreate('maintenance.workOrders.workOrder'),

@@ -15,7 +15,6 @@ export interface PartRow {
   id: string;
   name: string;
   partNumber: string;
-  upc?: string;
   description?: string;
   photoUrl?: string;
 

@@ -59,6 +59,8 @@ interface WorkOrderStatusItem {
   sequence: number;
   workOrderCount: number;
   createdBy?: string | null;
+  /** Default lifecycle status seeded for every tenant — can't be archived/deleted. */
+  isSystem?: boolean;
 }
 
 const DEFAULT_COLOR = '#3B82F6';
@@ -188,14 +190,6 @@ export function WorkOrderStatusesList() {
       ),
     },
     {
-      key: 'sequence',
-      header: 'Sequence',
-      align: 'center',
-      render: (item) => (
-        <span className="text-muted-foreground">{item.sequence}</span>
-      ),
-    },
-    {
       key: 'workOrderCount',
       header: 'No. of Work Orders',
       align: 'center',
@@ -221,7 +215,7 @@ export function WorkOrderStatusesList() {
                   />
                 </PermissionGuard>
               )}
-              {checkRecordOwnership(deleteLevel, item.createdBy, user?.id) && (
+              {!item.isSystem && checkRecordOwnership(deleteLevel, item.createdBy, user?.id) && (
                 <PermissionGuard permission={Permissions.settings.workOrderStatuses.form.delete}>
                   <RowActionButton
                     label="Delete"
@@ -239,7 +233,7 @@ export function WorkOrderStatusesList() {
                   <RowActionButton label="Edit" icon={<Edit />} onClick={() => openEditDialog(item)} />
                 </PermissionGuard>
               )}
-              {checkRecordOwnership(archiveLevel, item.createdBy, user?.id) && (
+              {!item.isSystem && checkRecordOwnership(archiveLevel, item.createdBy, user?.id) && (
                 <PermissionGuard permission={Permissions.settings.workOrderStatuses.form.archive}>
                   <RowActionButton
                     label="Archive"

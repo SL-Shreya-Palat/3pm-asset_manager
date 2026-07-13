@@ -447,7 +447,8 @@ export function WorkOrdersPage() {
                   router.push(`/maintenance/work-orders/${order.id}`)
                 }
               />
-              {checkRecordOwnership(editLevel, order.createdBy, user?.id) && (
+              {/* Completed work orders are locked — no Edit action. */}
+              {!order.isCompleted && checkRecordOwnership(editLevel, order.createdBy, user?.id) && (
                 <PermissionGuard permission={Permissions.maintenance.workOrders.form.edit}>
                   <RowActionButton
                     label="Edit"

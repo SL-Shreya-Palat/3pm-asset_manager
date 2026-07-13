@@ -52,6 +52,9 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
   const [reportedAt, setReportedAt] = useState(getTodayDateString());
   const [assetId, setAssetId] = useState('');
   const [reportedById, setReportedById] = useState('');
+  // "Severity" in the UI maps to the fault's `priority` field (same as defects,
+  // and what the list/detail views read); the server mirrors it onto `severity`.
+  const [priority, setPriority] = useState('');
   const [status, setStatus] = useState('open');
   const [meterType, setMeterType] = useState('');
   const [meterReading, setMeterReading] = useState('');
@@ -106,6 +109,7 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
       setReportedAt(fault.reportedAt ? fault.reportedAt.split('T')[0] : '');
       setAssetId(fault.assetId || '');
       setReportedById(fault.reportedById || '');
+      setPriority(fault.priority || '');
       setStatus(fault.status || 'open');
       setMeterType(fault.meterType || '');
       setMeterReading(fault.meterReading != null ? String(fault.meterReading) : '');
@@ -137,6 +141,7 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
     if (!reportedAt) errors.reportedAt = 'Reported date is required';
     if (!assetId) errors.assetId = 'Asset is required';
     if (!reportedById) errors.reportedById = 'Reporter is required';
+    if (!priority) errors.priority = 'Severity is required';
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -150,6 +155,7 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
       assetId,
       reportedByType: 'member',
       reportedById,
+      priority,
       meterType: meterType || undefined,
       meterReading: meterReading ? Number(meterReading) : undefined,
       takeOutOfService,
@@ -268,21 +274,42 @@ export function FaultForm({ mode, fault, onClose, onSaved }: FaultFormProps) {
             />
           </div>
 
-          {/* Reported By */}
-          <SearchableSelect
-            label="Reported By"
-            required
-            options={reporterOptions}
-            loading={membersLoading}
-            value={reportedById || null}
-            onValueChange={(val) => { setReportedById(val || ''); clearFieldError('reportedById'); }}
-            placeholder="Select member"
-            searchPlaceholder="Search..."
-            emptyMessage="No options found"
-            disabled={isMechanic}
-            error={fieldErrors.reportedById}
-            isClearable
-          />
+          {/* Reported By + Severity */}
+          <div className="grid grid-cols-2 gap-4">
+            <SearchableSelect
+              label="Reported By"
+              required
+              options={reporterOptions}
+              loading={membersLoading}
+              value={reportedById || null}
+              onValueChange={(val) => { setReportedById(val || ''); clearFieldError('reportedById'); }}
+              placeholder="Select member"
+              searchPlaceholder="Search..."
+              emptyMessage="No options found"
+              disabled={isMechanic}
+              error={fieldErrors.reportedById}
+              isClearable
+            />
+            <div>
+              <Label className="mb-1.5 block">
+                Severity <span className="text-destructive">*</span>
+              </Label>
+              <Select
+                value={priority || undefined}
+                onValueChange={(val) => { setPriority(val); clearFieldError('priority'); }}
+              >
+                <SelectTrigger className={fieldErrors.priority ? 'border-destructive' : ''}>
+                  <SelectValue placeholder="Select severity" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                </SelectContent>
+              </Select>
+              {fieldErrors.priority && <p className="text-sm text-destructive mt-1">{fieldErrors.priority}</p>}
+            </div>
+          </div>
 
           {/* Status (edit mode only) */}
           {mode === 'edit' && (

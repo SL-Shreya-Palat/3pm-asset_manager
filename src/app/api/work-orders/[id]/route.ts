@@ -59,11 +59,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ data: null, error: result.error }, { status });
     }
 
-    return NextResponse.json({
-      data: result.data,
-      error: null,
-      ...('warning' in result && result.warning ? { warning: result.warning } : {}),
-    });
+    return NextResponse.json({ data: result.data, error: null });
   } catch {
     return NextResponse.json({ data: null, error: 'Invalid request body' }, { status: 400 });
   }

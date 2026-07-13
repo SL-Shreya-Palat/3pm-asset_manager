@@ -25,13 +25,6 @@ export function validateCreatePartInput(input: CreatePartInput): ValidationResul
     errors.partNumber = 'Stock number must be at most 80 characters';
   }
 
-  if (input.upc) {
-    const trimmed = input.upc.trim();
-    if (!/^\d{12}$/.test(trimmed)) {
-      errors.upc = 'UPC must be exactly 12 digits';
-    }
-  }
-
   if (input.description && input.description.trim().length > 2000) {
     errors.description = 'Description must be at most 2000 characters';
   }
@@ -96,7 +89,6 @@ export function serializePart(doc: Record<string, unknown>): Record<string, unkn
     id: doc._id?.toString(),
     name: doc.name,
     partNumber: doc.partNumber,
-    upc: doc.upc || undefined,
     description: doc.description || undefined,
     photoUrl: doc.photoUrl || undefined,
     manufacturerId: doc.manufacturerId ? (doc.manufacturerId as { toString(): string }).toString() : undefined,
