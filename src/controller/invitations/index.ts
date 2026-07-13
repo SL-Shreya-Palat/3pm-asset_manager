@@ -170,6 +170,12 @@ export async function createInvitation3PM(
 /**
  * Find a pending 3PM invitation by email (across all tenants).
  * Used during auth callback to detect if the user is accepting an invitation.
+ *
+ * NOTE: an email can have pending invites to MULTIPLE tenants at once — this
+ * returns an arbitrary one (whichever Mongo returns first). Callers that need
+ * to safely pick which one to actually complete should use
+ * `getAllPending3PMInvitesByEmail` and cross-check against confirmed 3pm-auth
+ * membership instead of trusting a single unscoped lookup.
  */
 export async function getPending3PMInviteByEmail(
   email: string,
@@ -181,6 +187,27 @@ export async function getPending3PMInviteByEmail(
     source: '3pm',
     status: 'invited',
   })) as InvitationDocument | null;
+}
+
+/**
+ * Return every pending 3PM invitation for an email — across all tenants.
+ * The auth callback uses this so it can complete ONLY the invitation(s) whose
+ * tenant the user actually became a confirmed member of on the 3pm-auth side.
+ * Other pending invites for the same email stay 'invited'. Mirrors
+ * construction-portal's getAllPending3PMInvitesByEmail.
+ */
+export async function getAllPending3PMInvitesByEmail(
+  email: string,
+): Promise<InvitationDocument[]> {
+  const collection = await getInvitationsCollection();
+
+  return (await collection
+    .find({
+      email: email.toLowerCase().trim(),
+      source: '3pm',
+      status: 'invited',
+    })
+    .toArray()) as InvitationDocument[];
 }
 
 /**

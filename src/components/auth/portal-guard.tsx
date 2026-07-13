@@ -7,6 +7,7 @@ import { getFlatNavItems } from '@/constants/navigation';
 import { ShieldOff } from 'lucide-react';
 import { DriverInspectionGate } from '@/components/inspections/driver-inspection-gate';
 import { FleetAppLoader } from '@/components/loaders/fleet-app-loader';
+import { NoOrganizationAccess } from '@/components/auth/no-organization-access';
 
 /**
  * Layout-level route guard for the portal.
@@ -17,12 +18,29 @@ import { FleetAppLoader } from '@/components/loaders/fleet-app-loader';
  */
 export function PortalGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { initialized } = useAuth();
+  const { initialized, user } = useAuth();
   const { loading, hasFullAccess, canAccessModule, canAccessSubModule } =
     useRoleAccess();
 
-  // 1. Loading state — show the fleet loader
-  if (!initialized || loading) {
+  // 1. Still hydrating the session — show the fleet loader.
+  if (!initialized) {
+    return <FleetAppLoader />;
+  }
+
+  // 2. Initialized but no usable tenant context — either a valid session that
+  // carries no (active) organization (user present, tenant null) OR the client
+  // /api/auth/me probe failed so we have no user at all. The portal layout
+  // already bounced fully-unauthenticated visitors to the IdP, so this is a
+  // recoverable state, not "logged out". Show the recovery screen (one-shot
+  // silent re-auth, then an actionable message) instead of spinning forever —
+  // useRoleAccess reports loading:true here, which previously dead-ended on the
+  // loader.
+  if (!user || !user.tenant) {
+    return <NoOrganizationAccess tenantStatus={user?.tenantStatus} />;
+  }
+
+  // 3. Permissions still resolving for a tenant'd user.
+  if (loading) {
     return <FleetAppLoader />;
   }
 
@@ -30,7 +48,7 @@ export function PortalGuard({ children }: { children: React.ReactNode }) {
   // PWA is this product's mobile surface and uses the same web session.
   // Their access is limited by role permission grants (M3 below + server RBAC).
 
-  // 2. Route-level permission check (M3)
+  // 4. Route-level permission check (M3)
   if (!hasFullAccess) {
     const gate = resolveRouteGate(pathname);
     if (gate) {

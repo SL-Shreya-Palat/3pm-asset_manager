@@ -342,7 +342,7 @@ export async function getAuthenticatedUser(req?: NextRequest) {
     }
     const userId = localUser?._id?.toString() ?? session.id;
 
-    const { currentTenantId, authTenantId } = await resolveCurrentTenantFor3PM(
+    const { currentTenantId, authTenantId, tenantStatus } = await resolveCurrentTenantFor3PM(
       req ?? null,
       userId,
       session.tenantId,
@@ -357,6 +357,10 @@ export async function getAuthenticatedUser(req?: NextRequest) {
       sessionToken: null,
       currentTenantId: currentTenantId ?? null,
       authTenantId: authTenantId ?? null,
+      // Distinguishes "no membership anywhere" (none) from "member of only
+      // deactivated tenants" (deactivated) so the client can show the right
+      // recovery message instead of an infinite spinner.
+      tenantStatus,
     };
   } catch (error) {
     console.error('Error in getAuthenticatedUser:', error);

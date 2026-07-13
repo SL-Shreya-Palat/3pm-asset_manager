@@ -43,6 +43,8 @@ export interface AuthContext {
   image: string | null | undefined;
   sessionToken: string | undefined;
   currentTenantId: string | null;
+  /** How tenant resolution ended: active membership, only-deactivated, or none. */
+  tenantStatus?: 'active' | 'deactivated' | 'none';
 }
 
 /** User profile returned by getUserProfile(). */
@@ -80,6 +82,8 @@ export interface UserProfile {
     isDriver: boolean | null;
     mobileOnly?: boolean;
   } | null;
+  /** Set on the /api/auth/me payload so the client can pick a recovery screen. */
+  tenantStatus?: 'active' | 'deactivated' | 'none';
   workspaces: Array<{
     id: string;
     name: string;

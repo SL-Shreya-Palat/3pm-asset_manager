@@ -206,3 +206,63 @@ export async function getSessionToken(): Promise<string | null> {
   const cookieStore = await cookies();
   return cookieStore.get(SESSION_COOKIE)?.value ?? null;
 }
+
+/** The IdP's own session cookie name (used only as a forwarded request header). */
+const SESSION_COOKIE_3PM = '3pm_session';
+
+/** One tenant the authenticated user belongs to (from GET /api/tenant/list). */
+export interface TenantListItem {
+  id: string;
+  name: string;
+  slug?: string;
+  role?: 'owner' | 'admin' | 'member';
+  isActive?: boolean;
+}
+
+interface TenantListResponse {
+  data?: {
+    tenants: TenantListItem[];
+    activeTenantId?: string;
+  } | null;
+  error?: string | null;
+}
+
+/**
+ * Fetch ALL tenants the authenticated user belongs to from 3pm-auth.
+ *
+ * Token exchange (`exchangeToken`) only returns a SINGLE `tenant` — and only
+ * when the user has an active app subscription for THIS clientId at that moment.
+ * That single object is absent for e.g. an org whose subscription became active
+ * after the JWT was minted, which strands the user with no local tenant. This
+ * endpoint returns the full membership list regardless of per-app subscription,
+ * so the callback can still provision the user's org(s). Mirrors
+ * construction-portal's fetch3PMTenantList (proven in production). Best-effort:
+ * returns null on any failure — never throws.
+ */
+export async function fetch3PMTenantList(
+  sessionJwt: string,
+): Promise<{ tenants: TenantListItem[]; activeTenantId: string | null } | null> {
+  if (!IDP_URL || !sessionJwt) return null;
+  try {
+    const res = await fetch(`${IDP_URL}/api/tenant/list`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${sessionJwt}`,
+        'Content-Type': 'application/json',
+        // The IdP's /api/tenant/list authenticates via getCurrentSession(),
+        // which reads its own 3pm_session cookie — forward the JWT as that.
+        Cookie: `${SESSION_COOKIE_3PM}=${sessionJwt}`,
+      },
+      cache: 'no-store',
+    });
+    const result = (await res.json()) as TenantListResponse;
+    if (result.error || !result.data?.tenants) return null;
+    return {
+      tenants: result.data.tenants,
+      activeTenantId: result.data.activeTenantId ?? null,
+    };
+  } catch (err) {
+    console.error('[auth-3pm] tenant list fetch failed:', err);
+    return null;
+  }
+}

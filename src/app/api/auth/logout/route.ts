@@ -35,8 +35,18 @@ export async function GET(request: NextRequest) {
   return response;
 }
 
-export async function POST() {
-  const response = NextResponse.json({ data: { message: 'Logged out' }, error: null });
+export async function POST(request: NextRequest) {
+  // Clearing only local cookies leaves the IdP's own 3pm_session alive, so the
+  // next /authorize silently re-issues a session ("log out, bounce back in").
+  // Return the IdP sign-out URL so a programmatic caller can complete a FULL
+  // logout (redirect the browser to signOutUrl), matching GET's behaviour.
+  const appUrl = getAppUrl(getRequestOrigin(request));
+  const signOutUrl = getSignOutUrl(appUrl);
+
+  const response = NextResponse.json({
+    data: { message: 'Logged out', signOutUrl },
+    error: null,
+  });
   clearCookiesOnResponse(response);
   return response;
 }
