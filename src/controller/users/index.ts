@@ -232,6 +232,69 @@ export async function inviteUser(tenantId: string, invitedByUserId: string, inpu
   const existingUser = await usersCol.findOne({ email: normalizedEmail });
   const isAlreadyVerified = existingUser?.emailVerified === true;
 
+  // 3pm-auth is the ONLY invitation path — resolve it BEFORE creating any
+  // local state. Fail loud on misconfiguration (matches construction-portal:
+  // a tenant with no authTenantId link must surface a clear error, never
+  // silently create a "pending" member with no invite ever sent).
+  const tenantsCol = await getTenantsCollection();
+  const tenantDoc = await tenantsCol.findOne({ _id: tenantOid });
+  const authTenantId = (tenantDoc as { authTenantId?: ObjectId })?.authTenantId?.toString();
+  if (!authTenantId) {
+    console.error('[inviteUser] Tenant has no authTenantId — cannot create 3PM invitation');
+    return {
+      data: null,
+      error: { email: 'This organization is not connected to 3PM Auth — contact support' },
+    };
+  }
+
+  // Resolve role name for the invite email + response.
+  const roleMap = await getRoleMap(tenantOid);
+  const roleName = roleMap.get(input.roleId);
+
+  // Pre-register the user in 3pm-auth so they can log in directly (skip the
+  // registration/secondary-verification flow). Safe to call every time —
+  // returns status: "skipped" if the email already exists. Non-fatal: the
+  // invitation can still be sent even if pre-registration fails; the user
+  // would just hit the registration flow on first login as a fallback.
+  try {
+    await create3PMUser({
+      email: normalizedEmail,
+      firstName: input.firstName.trim(),
+      lastName: input.lastName.trim(),
+      mobile: input.mobileNumber?.trim(),
+    });
+  } catch (userCreateError) {
+    console.warn('[inviteUser] Failed to pre-register user in 3pm-auth:', userCreateError);
+  }
+
+  // Resolve inviter name for the email context.
+  const inviter = await usersCol.findOne({ _id: invitedByOid });
+  const inviterName = inviter
+    ? `${inviter.firstName || ''} ${inviter.lastName || ''}`.trim()
+    : undefined;
+
+  // Create the invitation on 3pm-auth FIRST — it's the only invitation path
+  // and the only thing that actually sends an email. Fail loud here (no
+  // tenantMember is created) instead of the previous behavior, which inserted
+  // the tenantMember unconditionally and only console.error'd a 3PM failure —
+  // leaving a "pending" member the invited person could never actually accept
+  // into, with the admin UI reporting success regardless.
+  let threePMInvite;
+  try {
+    threePMInvite = await create3PMInvitation({
+      tenantId: authTenantId,
+      email: normalizedEmail,
+      role: 'member',
+      recipientName: `${input.firstName.trim()} ${input.lastName.trim()}`.trim(),
+      inviterName,
+      roleLabel: roleName || 'Member',
+    });
+  } catch (inviteError) {
+    console.error('[inviteUser] Failed to create 3PM invitation:', inviteError);
+    const message = inviteError instanceof Error ? inviteError.message : 'Failed to send invitation';
+    return { data: null, error: { email: message } };
+  }
+
   // Insert tenantMember. Always start as 'pending' ("Invited") — the status only
   // flips to 'active' when the invited user actually logs in (the login /
   // provisioning flow activates the membership). The userId is still linked
@@ -256,68 +319,27 @@ export async function inviteUser(tenantId: string, invitedByUserId: string, inpu
 
   const tmResult = await tenantMembersCol.insertOne(tmDoc);
 
-  // Resolve role name for response
-  const roleMap = await getRoleMap(tenantOid);
-  const roleName = roleMap.get(input.roleId);
-
-  // 3. Create invitation via 3PM Data API (3pm-auth sends the email)
+  // Store local mirror so the auth callback can complete it. Non-fatal: the
+  // REAL invitation already exists on 3pm-auth and its email was already
+  // sent — losing the local mirror only means the callback can't
+  // auto-complete it (a resend would recreate the mirror). Failing the whole
+  // request here would falsely report an error for an invite that DID go out.
   try {
-    const tenantsCol = await getTenantsCollection();
-    const tenant = await tenantsCol.findOne({ _id: tenantOid });
-    const authTenantId = (tenant as { authTenantId?: ObjectId })?.authTenantId?.toString();
-
-    if (!authTenantId) {
-      console.error('[inviteUser] Tenant has no authTenantId — cannot create 3PM invitation');
-    } else {
-      // Resolve inviter name for the email context
-      const inviter = await usersCol.findOne({ _id: invitedByOid });
-      const inviterName = inviter
-        ? `${inviter.firstName || ''} ${inviter.lastName || ''}`.trim()
-        : undefined;
-
-      // Pre-register the user in 3pm-auth so they can log in directly
-      // (skip the registration/secondary-verification flow).
-      // Safe to call every time — returns status: "skipped" if email exists.
-      try {
-        await create3PMUser({
-          email: normalizedEmail,
-          firstName: input.firstName.trim(),
-          lastName: input.lastName.trim(),
-          mobile: input.mobileNumber?.trim(),
-        });
-      } catch (userCreateError) {
-        // Non-fatal: the invitation can still be sent; user would just
-        // hit the registration flow on first login as a fallback.
-        console.warn('[inviteUser] Failed to pre-register user in 3pm-auth:', userCreateError);
-      }
-
-      // Create invitation on 3pm-auth — 3pm-auth sends the email
-      const threePMInvite = await create3PMInvitation({
-        tenantId: authTenantId,
-        email: normalizedEmail,
-        role: 'member',
-        recipientName: `${input.firstName.trim()} ${input.lastName.trim()}`.trim(),
-        inviterName,
-        roleLabel: roleName || 'Member',
-      });
-
-      // Store local mirror so the auth callback can complete it
-      await createInvitation3PM(
-        tenantOid,
-        normalizedEmail,
-        threePMInvite.id,
-        {
-          firstName: input.firstName.trim(),
-          lastName: input.lastName.trim(),
-          roleId: input.roleId,
-          mobileNumber: input.mobileNumber?.trim(),
-        },
-        invitedByOid,
-        threePMInvite.expiresAt,
-      );
-    }
-  } catch (inviteError) {
-    console.error('[inviteUser] Failed to create 3PM invitation:', inviteError);
+    await createInvitation3PM(
+      tenantOid,
+      normalizedEmail,
+      threePMInvite.id,
+      {
+        firstName: input.firstName.trim(),
+        lastName: input.lastName.trim(),
+        roleId: input.roleId,
+        mobileNumber: input.mobileNumber?.trim(),
+      },
+      invitedByOid,
+      threePMInvite.expiresAt,
+    );
+  } catch (mirrorError) {
+    console.error('[inviteUser] Failed to store local 3PM invitation mirror:', mirrorError);
   }
 
   return {

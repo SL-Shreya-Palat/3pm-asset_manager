@@ -7,18 +7,29 @@
  *
  * Supports two invitation flows:
  * - 3PM flow (new): invitation created via Data API, detected by
- *   getPending3PMInviteByEmail(). Mirrors construction-portal pattern.
+ *   getAllPending3PMInvitesByEmail() and cross-checked against confirmed
+ *   3pm-auth membership before completing one. Mirrors construction-portal.
  * - Legacy flow: invitation accepted via /invite/accept page, detected by
  *   getAcceptedInvitationByEmail(). Kept for backward compatibility.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { exchangeToken, getLoginUrl, SESSION_COOKIE, TENANT_COOKIE } from '@/lib/auth-3pm';
+import {
+  exchangeToken,
+  fetch3PMTenantList,
+  getLoginUrl,
+  SESSION_COOKIE,
+  TENANT_COOKIE,
+} from '@/lib/auth-3pm';
 import { getAppUrl, getRequestOrigin } from '@/lib/app-url';
-import { ensureLocalRecords } from '@/lib/provisioning';
+import { getTenantsCollection } from '@/lib/mongodb';
+import {
+  ensureLocalRecords,
+  ensureLocalRecordsFromTenantList,
+} from '@/lib/provisioning';
 import {
   getAcceptedInvitationByEmail,
   completeInvitation,
-  getPending3PMInviteByEmail,
+  getAllPending3PMInvitesByEmail,
   completePending3PMInvitationFromAccept,
   validateInvitationToken,
   acceptInvitation,
@@ -92,11 +103,43 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 3PM flow: invitation created via Data API (status: 'invited')
+    // 3PM flow: invitation created via Data API (status: 'invited'). An email
+    // can have PENDING INVITES TO MULTIPLE TENANTS at once — fetch all of them
+    // and only ever act on the one 3pm-auth CONFIRMS the user is now a member
+    // of, never an arbitrary/unscoped pick. Mirrors construction-portal's
+    // getAllPending3PMInvitesByEmail + allSyncedLocalIds cross-check: clicking
+    // one invite link must accept exactly that org, never a different pending
+    // one picked at random by Mongo's document order.
     let pending3PMInvite = null;
     if (!acceptedLegacyInvite) {
       try {
-        pending3PMInvite = await getPending3PMInviteByEmail(user.email);
+        const candidates = await getAllPending3PMInvitesByEmail(user.email);
+        if (candidates.length === 1) {
+          // Single candidate — no ambiguity to resolve, skip the extra
+          // 3pm-auth round-trip and accept it directly (matches prior
+          // behavior for the overwhelmingly common case).
+          pending3PMInvite = candidates[0];
+        } else if (candidates.length > 1) {
+          const list = await fetch3PMTenantList(jwt);
+          const confirmedAuthIds = new Set((list?.tenants ?? []).map((t) => t.id));
+          const tenantsCollection = await getTenantsCollection();
+          for (const candidate of candidates) {
+            const localTenant = await tenantsCollection.findOne(
+              { _id: candidate.tenantId },
+              { projection: { authTenantId: 1 } },
+            );
+            const authTenantId = (localTenant as { authTenantId?: { toString(): string } } | null)
+              ?.authTenantId?.toString();
+            if (authTenantId && confirmedAuthIds.has(authTenantId)) {
+              pending3PMInvite = candidate;
+              break;
+            }
+          }
+          // If the tenant-list fetch failed or confirmed none of them, don't
+          // guess — leave pending3PMInvite null so nothing completes this
+          // login. The invite(s) stay 'invited' and resolve correctly on a
+          // later login once 3pm-auth membership can actually be confirmed.
+        }
       } catch (err) {
         console.warn('[callback] Pending 3PM invite lookup failed:', err);
       }
@@ -117,13 +160,33 @@ export async function GET(request: NextRequest) {
     // ── Provision local records ──────────────────────────────────────
     // When an invitation exists, pass invitedTenantId so provisioning
     // skips the owner tenant sync (prevents personal tenant creation).
-    const provisioned = await ensureLocalRecords({
+    let provisioned = await ensureLocalRecords({
       user,
       tenant,
       ...(hasPendingInvite
         ? { invitedTenantId, invitedRoleId }
         : {}),
     });
+
+    // Fallback: token exchange only returns a `tenant` when the user has an
+    // active app subscription for THIS clientId at mint time — absent for e.g.
+    // an org whose subscription activated after the JWT was issued, which
+    // leaves the user provisioned with NO tenant (the infinite-spinner
+    // dead-end). When that happens (and this isn't an invite accept), pull the
+    // user's full tenant list from 3pm-auth and provision from it, so anyone
+    // who belongs to an active org can get in regardless of per-clientId
+    // subscription timing. Non-fatal — a failure just leaves the recovery
+    // screen to handle it client-side.
+    if (!hasPendingInvite && !provisioned?.localTenantId) {
+      const list = await fetch3PMTenantList(jwt);
+      if (list?.tenants?.length) {
+        provisioned = await ensureLocalRecordsFromTenantList({
+          user,
+          tenants: list.tenants,
+          activeTenantId: list.activeTenantId,
+        });
+      }
+    }
 
     // ── Complete the invitation ──────────────────────────────────────
     let completedTenantId: string | null = null;
@@ -163,11 +226,15 @@ export async function GET(request: NextRequest) {
     });
 
     // Tenant cookie — prefer invited tenant when user just accepted an invitation.
-    // resolveCurrentTenantFor3PM() expects a local ObjectId in this cookie.
+    // resolveCurrentTenantFor3PM() expects a LOCAL ObjectId here, so only ever
+    // write a resolved local tenant id. (Previously this fell back to
+    // `tenant?.id`, the 3pm-auth tenant id, which never matches a local `_id`
+    // and silently mis-set the cookie.) When no local tenant resolved, leave
+    // the cookie unset — resolveCurrentTenantFor3PM's JWT/membership fallbacks
+    // take over, and the client recovery screen handles a true no-tenant state.
     const tenantCookieValue =
       completedTenantId
       ?? provisioned?.localTenantId?.toString()
-      ?? tenant?.id
       ?? null;
 
     if (tenantCookieValue) {

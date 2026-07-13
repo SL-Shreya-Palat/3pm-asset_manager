@@ -61,6 +61,185 @@ function mapAuthRole(authRole: string): {
 }
 
 /**
+ * Upsert one local tenant + its role + the caller's membership from 3pm-auth
+ * tenant data. Single source of truth for tenant provisioning, shared by the
+ * normal single-tenant callback flow AND the tenant-list flow (used when token
+ * exchange returned no tenant), so the two paths can never drift. Idempotent.
+ * Returns the local tenant `_id`, or null if the tenant upsert failed.
+ */
+async function upsertTenantRoleAndMember(
+  localUserId: ObjectId,
+  authUserId: ObjectId,
+  tenantInfo: { id: string; name: string; role?: string },
+  user: { firstName: string; lastName: string },
+  normalizedEmail: string,
+  now: Date,
+): Promise<ObjectId | null> {
+  const tenantsCollection = await getTenantsCollection();
+  const authTenantId = ObjectId.createFromHexString(tenantInfo.id);
+  const isOwner = tenantInfo.role === 'owner';
+
+  const tenantResult = await tenantsCollection.findOneAndUpdate(
+    { authTenantId },
+    {
+      $set: {
+        name: tenantInfo.name,
+        ...(isOwner ? { ownerId: localUserId, authOwnerId: authUserId } : {}),
+        updatedAt: now,
+      },
+      $setOnInsert: {
+        authTenantId,
+        description: `Tenant for ${normalizedEmail}`,
+        logoUrl: null,
+        isActive: true,
+        createdAt: now,
+        ...(!isOwner ? { ownerId: null, authOwnerId: null } : {}),
+      },
+    },
+    { upsert: true, returnDocument: 'after' },
+  );
+
+  const localTenantId = (tenantResult?._id as ObjectId) ?? null;
+  if (!localTenantId) return null;
+
+  // Seed canonical system roles (Admin / Manager / Driver). Idempotent.
+  await seedSystemRoles(localTenantId, localUserId);
+
+  // Upsert the role matching the 3pm-auth role string.
+  let roleId: ObjectId | null = null;
+  if (tenantInfo.role) {
+    const rolesCollection = await getRolesCollection();
+    const roleInfo = mapAuthRole(tenantInfo.role);
+    const nameLower = roleInfo.name.toLowerCase();
+
+    const roleResult = await rolesCollection.findOneAndUpdate(
+      { tenantId: localTenantId, nameLower },
+      {
+        $set: {
+          updatedAt: now,
+          type: roleInfo.type,
+        },
+        $setOnInsert: {
+          tenantId: localTenantId,
+          name: roleInfo.name,
+          nameLower,
+          description: roleInfo.description,
+          permissions: { v: 2, forms: ['*'], m: ['*'], sm: [] },
+          teamScoped: false,
+          mobileOnly: false,
+          isSystem: roleInfo.isSystem,
+          isAdmin: nameLower === 'owner' || nameLower === 'admin' ? true : null,
+          isActive: true,
+          createdAt: now,
+        },
+      },
+      { upsert: true, returnDocument: 'after' },
+    );
+
+    if (roleResult) {
+      roleId = roleResult._id as ObjectId;
+    }
+  }
+
+  // Upsert the tenantMember.
+  const tenantMembersCol = await getTenantMembersCollection();
+  await tenantMembersCol.findOneAndUpdate(
+    { userId: localUserId, tenantId: localTenantId },
+    {
+      $set: {
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: normalizedEmail,
+        isActive: true,
+        portalUser: true,
+        status: 'active',
+        updatedAt: now,
+      },
+      $setOnInsert: {
+        userId: localUserId,
+        tenantId: localTenantId,
+        ...(roleId ? { roleId } : {}),
+        createdAt: now,
+      },
+    },
+    { upsert: true },
+  );
+
+  return localTenantId;
+}
+
+/**
+ * Upsert the local user record from a 3pm-auth user (matched by authUserId,
+ * email fallback for pre-integration records). Returns the local user `_id`.
+ * Shared by both provisioning entry points.
+ */
+async function upsertLocalUser(
+  user: ProvisioningInput['user'],
+  now: Date,
+): Promise<ObjectId | null> {
+  const usersCollection = await getUsersCollection();
+  const authUserId = ObjectId.createFromHexString(user.id);
+  const normalizedEmail = user.email.toLowerCase().trim();
+
+  let existingUser = await usersCollection.findOne({ authUserId });
+  if (!existingUser) {
+    existingUser = await usersCollection.findOne({ email: normalizedEmail });
+  }
+
+  const userResult = await usersCollection.findOneAndUpdate(
+    existingUser ? { _id: existingUser._id } : { authUserId },
+    {
+      $set: {
+        authUserId,
+        email: normalizedEmail,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        profileImageUrl: user.profilePicUrl || null,
+        lastLoginAt: now,
+        updatedAt: now,
+      },
+      $setOnInsert: {
+        phoneNumber: null,
+        isActive: true,
+        emailVerified: true,
+        createdAt: now,
+      },
+    },
+    { upsert: true, returnDocument: 'after' },
+  );
+
+  return (userResult?._id as ObjectId) ?? null;
+}
+
+/**
+ * Seed a tenant's default pre-start inspection forms + work order statuses.
+ * Idempotent and non-fatal (a form-builder outage must never block login).
+ * Shared by both provisioning entry points.
+ */
+async function seedTenantDefaults(
+  localTenantId: ObjectId,
+  localUserId: ObjectId,
+  userEmail: string,
+  userName: string,
+): Promise<void> {
+  try {
+    await seedInspectionForms({
+      tenantId: localTenantId.toHexString(),
+      userId: localUserId.toHexString(),
+      userEmail,
+      userName,
+    });
+  } catch (seedErr) {
+    console.error('[provisioning] Prestart form seeding failed (non-fatal):', seedErr);
+  }
+  try {
+    await seedWorkOrderStatuses(localTenantId.toHexString(), localUserId.toHexString());
+  } catch (seedErr) {
+    console.error('[provisioning] Work order status seeding failed (non-fatal):', seedErr);
+  }
+}
+
+/**
  * Upsert local user, tenant, role, and tenantMember records from 3pm-auth data.
  *
  * - User: matched by `authUserId`, with email fallback for pre-existing records.
@@ -87,41 +266,11 @@ export async function ensureLocalRecords(
     const now = new Date();
 
     // ── 1. Upsert user ──────────────────────────────────────────────
-    // Check by authUserId first, then by email (handles pre-existing records
-    // created before 3pm-auth was integrated).
-    let existingUser = await usersCollection.findOne({ authUserId });
-    if (!existingUser) {
-      existingUser = await usersCollection.findOne({ email: normalizedEmail });
-    }
-
-    const userResult = await usersCollection.findOneAndUpdate(
-      existingUser ? { _id: existingUser._id } : { authUserId },
-      {
-        $set: {
-          authUserId,
-          email: normalizedEmail,
-          firstName: input.user.firstName,
-          lastName: input.user.lastName,
-          profileImageUrl: input.user.profilePicUrl || null,
-          lastLoginAt: now,
-          updatedAt: now,
-        },
-        $setOnInsert: {
-          phoneNumber: null,
-          isActive: true,
-          emailVerified: true,
-          createdAt: now,
-        },
-      },
-      { upsert: true, returnDocument: 'after' },
-    );
-
-    if (!userResult) {
+    const localUserId = await upsertLocalUser(input.user, now);
+    if (!localUserId) {
       console.error('[provisioning] User upsert returned null');
       return null;
     }
-
-    const localUserId = userResult._id as ObjectId;
 
     // ── 2. Tenant + role + tenantMember provisioning ─────────────────
     let localTenantId: ObjectId | null = null;
@@ -222,104 +371,15 @@ export async function ensureLocalRecords(
           `[provisioning] User already has active membership — using existing tenant=${localTenantId}`,
         );
       } else {
-        // Provision the user's own tenant from 3pm-auth.
-        const tenantsCollection = await getTenantsCollection();
-        const authTenantId = ObjectId.createFromHexString(input.tenant.id);
-        const isOwner = input.tenant.role === 'owner';
-
-        const tenantResult = await tenantsCollection.findOneAndUpdate(
-          { authTenantId },
-          {
-            $set: {
-              name: input.tenant.name,
-              ...(isOwner ? { ownerId: localUserId, authOwnerId: authUserId } : {}),
-              updatedAt: now,
-            },
-            $setOnInsert: {
-              authTenantId,
-              description: `Tenant for ${normalizedEmail}`,
-              logoUrl: null,
-              isActive: true,
-              createdAt: now,
-              ...(!isOwner ? { ownerId: null, authOwnerId: null } : {}),
-            },
-          },
-          { upsert: true, returnDocument: 'after' },
+        // Provision the user's own tenant from 3pm-auth (tenant + role + member).
+        localTenantId = await upsertTenantRoleAndMember(
+          localUserId,
+          authUserId,
+          { id: input.tenant.id, name: input.tenant.name, role: input.tenant.role },
+          { firstName: input.user.firstName, lastName: input.user.lastName },
+          normalizedEmail,
+          now,
         );
-
-        if (tenantResult) {
-          localTenantId = tenantResult._id as ObjectId;
-        }
-
-        // ── Seed canonical system roles (Admin / Manager / Driver) ───
-        // Always available once the org exists. Idempotent.
-        if (localTenantId) {
-          await seedSystemRoles(localTenantId, localUserId);
-        }
-
-        // ── 3. Upsert role ──────────────────────────────────────────
-        let roleId: ObjectId | null = null;
-
-        if (localTenantId && input.tenant?.role) {
-          const rolesCollection = await getRolesCollection();
-          const roleInfo = mapAuthRole(input.tenant.role);
-          const nameLower = roleInfo.name.toLowerCase();
-
-          const roleResult = await rolesCollection.findOneAndUpdate(
-            { tenantId: localTenantId, nameLower },
-            {
-              $set: {
-                updatedAt: now,
-                type: roleInfo.type,
-              },
-              $setOnInsert: {
-                tenantId: localTenantId,
-                name: roleInfo.name,
-                nameLower,
-                description: roleInfo.description,
-                permissions: { v: 2, forms: ['*'], m: ['*'], sm: [] },
-                teamScoped: false,
-                mobileOnly: false,
-                isSystem: roleInfo.isSystem,
-                isAdmin: nameLower === 'owner' || nameLower === 'admin' ? true : null,
-                isActive: true,
-                createdAt: now,
-              },
-            },
-            { upsert: true, returnDocument: 'after' },
-          );
-
-          if (roleResult) {
-            roleId = roleResult._id as ObjectId;
-          }
-        }
-
-        // ── 4. Upsert tenantMember ──────────────────────────────────
-        if (localTenantId) {
-          const tenantMembersCol = await getTenantMembersCollection();
-
-          await tenantMembersCol.findOneAndUpdate(
-            { userId: localUserId, tenantId: localTenantId },
-            {
-              $set: {
-                firstName: input.user.firstName,
-                lastName: input.user.lastName,
-                email: normalizedEmail,
-                isActive: true,
-                portalUser: true,
-                status: 'active',
-                updatedAt: now,
-              },
-              $setOnInsert: {
-                userId: localUserId,
-                tenantId: localTenantId,
-                ...(roleId ? { roleId } : {}),
-                createdAt: now,
-              },
-            },
-            { upsert: true },
-          );
-        }
       }
     }
 
@@ -362,35 +422,12 @@ export async function ensureLocalRecords(
     // form-builder calls) and non-fatal: a form-builder outage must not
     // block login, and the lazy seed-prestart triggers remain as a fallback.
     if (localTenantId && !input.invitedTenantId) {
-      try {
-        await seedInspectionForms({
-          tenantId: localTenantId.toHexString(),
-          userId: localUserId.toHexString(),
-          userEmail: normalizedEmail,
-          userName:
-            `${input.user.firstName || ''} ${input.user.lastName || ''}`.trim() ||
-            normalizedEmail,
-        });
-      } catch (seedErr) {
-        console.error(
-          '[provisioning] Prestart form seeding failed (non-fatal):',
-          seedErr,
-        );
-      }
-
-      // Seed the default work order statuses for a brand-new tenant.
-      // Idempotent (skips when the tenant already has statuses) and non-fatal.
-      try {
-        await seedWorkOrderStatuses(
-          localTenantId.toHexString(),
-          localUserId.toHexString(),
-        );
-      } catch (seedErr) {
-        console.error(
-          '[provisioning] Work order status seeding failed (non-fatal):',
-          seedErr,
-        );
-      }
+      await seedTenantDefaults(
+        localTenantId,
+        localUserId,
+        normalizedEmail,
+        `${input.user.firstName || ''} ${input.user.lastName || ''}`.trim() || normalizedEmail,
+      );
     }
 
     console.log(
@@ -399,6 +436,84 @@ export async function ensureLocalRecords(
     return { localUserId, localTenantId };
   } catch (error) {
     console.error('[provisioning] Failed to ensure local records:', error);
+    return null;
+  }
+}
+
+/**
+ * Provision local records from the user's FULL 3pm-auth tenant list.
+ *
+ * The callback's primary path (`ensureLocalRecords`) depends on the single
+ * `tenant` object returned by token exchange — which is absent whenever the
+ * user has no active app subscription for THIS clientId at token-mint time,
+ * silently leaving them with a user record but no tenant/member (the
+ * infinite-spinner dead-end). This fallback fetches every tenant the user
+ * belongs to (`fetch3PMTenantList`) and provisions them all, so login works as
+ * long as the user is a member of ANY active organization. Mirrors
+ * construction-portal's syncOwner/MemberTenantsFrom3PM. Idempotent, non-fatal.
+ *
+ * Returns the CHOSEN default local tenant (the IdP's active tenant when it maps
+ * to one we provisioned, else the first), plus the local user id.
+ */
+export async function ensureLocalRecordsFromTenantList(input: {
+  user: ProvisioningInput['user'];
+  tenants: Array<{ id: string; name: string; role?: string }>;
+  activeTenantId?: string | null;
+}): Promise<ProvisioningResult | null> {
+  try {
+    if (!input.user.id || !ObjectId.isValid(input.user.id)) {
+      console.warn('[provisioning] Invalid 3pm user id (list):', input.user.id);
+      return null;
+    }
+    const now = new Date();
+    const localUserId = await upsertLocalUser(input.user, now);
+    if (!localUserId) {
+      console.error('[provisioning] User upsert returned null (list)');
+      return null;
+    }
+
+    const authUserId = ObjectId.createFromHexString(input.user.id);
+    const normalizedEmail = input.user.email.toLowerCase().trim();
+
+    let chosenTenantId: ObjectId | null = null;
+    let firstTenantId: ObjectId | null = null;
+
+    for (const t of input.tenants) {
+      if (!t?.id || !ObjectId.isValid(t.id)) continue;
+      const localTenantId = await upsertTenantRoleAndMember(
+        localUserId,
+        authUserId,
+        { id: t.id, name: t.name, role: t.role },
+        { firstName: input.user.firstName, lastName: input.user.lastName },
+        normalizedEmail,
+        now,
+      );
+      if (!localTenantId) continue;
+      if (!firstTenantId) firstTenantId = localTenantId;
+      // The IdP's activeTenantId is a 3pm-auth tenant id === t.id.
+      if (input.activeTenantId && t.id === input.activeTenantId) {
+        chosenTenantId = localTenantId;
+      }
+    }
+
+    const localTenantId = chosenTenantId ?? firstTenantId;
+
+    // Seed defaults for the landing tenant only (idempotent, non-fatal).
+    if (localTenantId) {
+      await seedTenantDefaults(
+        localTenantId,
+        localUserId,
+        normalizedEmail,
+        `${input.user.firstName || ''} ${input.user.lastName || ''}`.trim() || normalizedEmail,
+      );
+    }
+
+    console.log(
+      `[provisioning] OK (from tenant list) — user=${localUserId} tenants=${input.tenants.length} chosen=${localTenantId}`,
+    );
+    return { localUserId, localTenantId };
+  } catch (error) {
+    console.error('[provisioning] Failed to ensure local records from tenant list:', error);
     return null;
   }
 }
