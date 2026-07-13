@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import {
   X, Trash2, Plus, Package,
-  Truck, Wrench, Users, Calendar, Flag, AlignLeft, Paperclip, AlertTriangle,
+  Truck, Wrench, Users, Paperclip, AlertTriangle,
 } from 'lucide-react';
 import { Button, LoadingButton } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,7 @@ import {
 import { cn } from '@/lib/utils';
 import { showSuccessToast, showErrorToast } from '@/lib/toastUtils';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { PhoneInput, parseE164, phoneToE164, isValidPhoneForCountry, DEFAULT_COUNTRY_KEY } from '@/components/ui/phone-input';
 import { useAuth } from '@/hooks/useAuth';
 import type {
   WorkOrderRow,
@@ -51,6 +52,32 @@ interface PartLine {
 /** Stable row key — direct Command lines have no local partId. */
 const partLineKey = (p: { partId: string | null; commandStockId?: string | null }) =>
   p.partId || p.commandStockId || '';
+
+/** Today as a local "yyyy-MM-dd" string — used to default new WOs' due date. */
+const todayLocalISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/** Map raw /api/parts items to the stock-picker option shape. Shared by the
+ *  full lookup fetch and the mechanic's lighter edit-mode seeding. */
+const mapPartLookups = (items: Array<Record<string, unknown>>): PartLookup[] =>
+  items.map((i) => {
+    const vendors = (i.vendors as Array<{ unitCost: number }>) || [];
+    const stockLocations = (i.stockLocations as Array<{ quantity: number }>) || [];
+    const isCommand = i.source === 'command';
+    return {
+      id: i.id as string,
+      name: i.name as string,
+      partNumber: (i.partNumber as string) || '',
+      // Command-imported stock has no vendors[] — its cost basis is Command's
+      // costPrice snapshot (commandUnitCost), never 0.
+      unitCost: isCommand ? Number(i.commandUnitCost ?? 0) : vendors[0]?.unitCost ?? 0,
+      stock: stockLocations.reduce((sum, s) => sum + (s.quantity || 0), 0),
+      source: (i.source as string) || 'local',
+      commandStockId: (i.commandStockId as string) || null,
+    };
+  });
 
 /** An open defect that this WO can be created to correct. */
 interface DefectLookup {
@@ -147,7 +174,7 @@ export function WorkOrderForm({
   const [thirdPartyName, setThirdPartyName] = useState('');
   const [thirdPartyEmail, setThirdPartyEmail] = useState('');
   const [showThirdPartyFields, setShowThirdPartyFields] = useState(false);
-  const [dueDate, setDueDate] = useState('');
+  const [dueDate, setDueDate] = useState(mode === 'create' ? todayLocalISO() : '');
   const [statusId, setStatusId] = useState('');
   const [description, setDescription] = useState(mode === 'create' ? (initialDescription || '') : '');
   const [attachments, setAttachments] = useState<UploadedFile[]>([]);
@@ -165,10 +192,14 @@ export function WorkOrderForm({
   const [availableFaults, setAvailableFaults] = useState<FaultLookup[]>([]);
   const [selectedFaultIds, setSelectedFaultIds] = useState<string[]>(initialFaultIds || []);
 
-  // Prepopulated assignee fields (read-only)
+  // Assignee contact snapshot — contact/email prefill read-only from the chosen
+  // vendor/mechanic; phone is editable (reusable PhoneInput) so a number can be
+  // recorded for a contact that has none on file. Phone is kept as country key +
+  // national number and combined to E.164 on submit.
   const [assigneeContact, setAssigneeContact] = useState('');
   const [assigneeEmail, setAssigneeEmail] = useState('');
   const [assigneePhone, setAssigneePhone] = useState('');
+  const [assigneePhoneCountry, setAssigneePhoneCountry] = useState(DEFAULT_COUNTRY_KEY);
 
   // Lookup data
   const [assets, setAssets] = useState<LookupOption[]>([]);
@@ -182,8 +213,9 @@ export function WorkOrderForm({
 
   // Fetch lookup data
   const fetchLookups = useCallback(async () => {
-    // Mechanics can't access these lookup endpoints (assets/vendors/users/parts
-    // all 403); their disabled fields are seeded separately, so skip the fetch.
+    // Mechanics can't access most of these lookup endpoints (assets/vendors/users
+    // all 403); their fields are seeded separately in the effect below (which
+    // also loads the parts list for the editable stock picker), so skip here.
     if (isMechanic) return;
     setLookupsLoading(true);
     try {
@@ -235,24 +267,7 @@ export function WorkOrderForm({
       })));
 
       const partItems = partsRes.data.data?.items || partsRes.data.data || [];
-      setAvailableParts(partItems.map((i: Record<string, unknown>) => {
-        const vendors = (i.vendors as Array<{ unitCost: number }>) || [];
-        const stockLocations = (i.stockLocations as Array<{ quantity: number }>) || [];
-        const isCommand = i.source === 'command';
-        return {
-          id: i.id as string,
-          name: i.name as string,
-          partNumber: (i.partNumber as string) || '',
-          // Command-imported stock has no vendors[] — its cost basis is
-          // Command's costPrice snapshot (commandUnitCost), never 0.
-          unitCost: isCommand
-            ? Number(i.commandUnitCost ?? 0)
-            : vendors[0]?.unitCost ?? 0,
-          stock: stockLocations.reduce((sum, s) => sum + (s.quantity || 0), 0),
-          source: (i.source as string) || 'local',
-          commandStockId: (i.commandStockId as string) || null,
-        };
-      }));
+      setAvailableParts(mapPartLookups(partItems));
     } catch {
       // Silent
     } finally {
@@ -262,20 +277,36 @@ export function WorkOrderForm({
 
   useEffect(() => { fetchLookups(); }, [fetchLookups]);
 
-  // Mechanics can't hit the lookup endpoints (assets/vendors/users/parts all
-  // 403), so seed the disabled fields' options straight from the work order and
-  // load the status list (allowed for WO viewers) so Status stays editable.
+  // New work orders default to the "Open"-type status once statuses load.
+  // Keyed on type (not label) so it survives status renames; the functional
+  // update leaves any status the user has already picked untouched.
+  useEffect(() => {
+    if (mode !== 'create') return;
+    const open = statuses.find((s) => s.type === 'open');
+    if (open) setStatusId((prev) => prev || open.id);
+  }, [statuses, mode]);
+
+  // Mechanics can't hit the assets/vendors/users lookup endpoints (all 403), so
+  // seed those disabled fields' options straight from the work order. Status is
+  // readable for WO viewers, and the stock picker reads from the work-order-scoped
+  // stock-options endpoint (gated by WO edit, so no inventory grant is needed) —
+  // load both here.
   useEffect(() => {
     if (!isMechanic || mode !== 'edit' || !workOrder) return;
     let cancelled = false;
     (async () => {
-      const [woRes, statusRes] = await Promise.allSettled([
+      const [woRes, statusRes, partsRes] = await Promise.allSettled([
         axios.get(`/api/work-orders/${workOrder.id}`, { withCredentials: true }),
         axios.get('/api/work-order-statuses', { withCredentials: true }),
+        axios.get('/api/work-orders/stock-options?limit=100', { withCredentials: true }),
       ]);
       if (cancelled) return;
       if (statusRes.status === 'fulfilled') {
         setStatuses((statusRes.value.data?.data || []) as WOStatusOption[]);
+      }
+      if (partsRes.status === 'fulfilled') {
+        const partItems = partsRes.value.data.data?.items || partsRes.value.data.data || [];
+        setAvailableParts(mapPartLookups(partItems));
       }
       const full = (woRes.status === 'fulfilled' ? woRes.value.data?.data : null) as WorkOrderRow | null;
       const src = full || workOrder;
@@ -291,14 +322,7 @@ export function WorkOrderForm({
     return () => { cancelled = true; };
   }, [isMechanic, mode, workOrder]);
 
-  // New work orders default the due date to today (local date).
-  useEffect(() => {
-    if (mode === 'create') {
-      const d = new Date();
-      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      setDueDate(today);
-    }
-  }, [mode]);
+  // Due date defaults to today for new WOs via the initial state above.
 
   // Open, unlinked defects for the chosen asset — powers the "Defects to correct"
   // picker (create mode only; editing a WO's defect links isn't supported).
@@ -356,7 +380,9 @@ export function WorkOrderForm({
       setThirdPartyName(workOrder.thirdPartyName || '');
       setThirdPartyEmail(workOrder.thirdPartyEmail || '');
       setShowThirdPartyFields(!!(workOrder.thirdPartyName || workOrder.thirdPartyEmail));
-      setDueDate(workOrder.dueDate ? workOrder.dueDate.split('T')[0] : '');
+      // Fall back to today when the work order has no stored due date, so the
+      // field is always prefilled with a current date (matches the create form).
+      setDueDate(workOrder.dueDate ? workOrder.dueDate.split('T')[0] : todayLocalISO());
       setStatusId(workOrder.statusId || '');
       setDescription(workOrder.description || '');
       setAttachments(
@@ -370,7 +396,11 @@ export function WorkOrderForm({
       );
       setAssigneeContact(workOrder.assigneeContact || '');
       setAssigneeEmail(workOrder.assigneeEmail || '');
-      setAssigneePhone(workOrder.assigneePhone || '');
+      {
+        const parsed = parseE164(workOrder.assigneePhone || '');
+        setAssigneePhoneCountry(parsed.countryKey);
+        setAssigneePhone(parsed.localNumber);
+      }
       setParts(
         (workOrder.parts || []).map((p) => ({
           partId: p.partId,
@@ -402,10 +432,13 @@ export function WorkOrderForm({
     if (vendor) {
       setAssigneeContact(vendor.contactName || '');
       setAssigneeEmail(vendor.email || '');
-      setAssigneePhone(vendor.phone || '');
+      const parsed = parseE164(vendor.phone || '');
+      setAssigneePhoneCountry(parsed.countryKey);
+      setAssigneePhone(parsed.localNumber);
     } else {
       setAssigneeContact('');
       setAssigneeEmail('');
+      setAssigneePhoneCountry(DEFAULT_COUNTRY_KEY);
       setAssigneePhone('');
     }
   };
@@ -418,10 +451,13 @@ export function WorkOrderForm({
     if (user) {
       setAssigneeContact(user.name || '');
       setAssigneeEmail(user.email || '');
-      setAssigneePhone(user.phoneNumber || '');
+      const parsed = parseE164(user.phoneNumber || '');
+      setAssigneePhoneCountry(parsed.countryKey);
+      setAssigneePhone(parsed.localNumber);
     } else {
       setAssigneeContact('');
       setAssigneeEmail('');
+      setAssigneePhoneCountry(DEFAULT_COUNTRY_KEY);
       setAssigneePhone('');
     }
   };
@@ -433,6 +469,7 @@ export function WorkOrderForm({
     setAssigneeContact('');
     setAssigneeEmail('');
     setAssigneePhone('');
+    setAssigneePhoneCountry(DEFAULT_COUNTRY_KEY);
     setThirdPartyName('');
     setThirdPartyEmail('');
     setShowThirdPartyFields(false);
@@ -443,21 +480,12 @@ export function WorkOrderForm({
 
   // Service task helpers removed — now handled by SearchableSelect.
 
-  // A WO can correct one or more of the asset's defects, chosen from the dropdown.
-  const addDefect = (defectId: string) => {
-    if (!defectId) return;
-    setSelectedDefectIds((prev) => (prev.includes(defectId) ? prev : [...prev, defectId]));
-    clearFieldError('serviceTaskIds');
-  };
+  // A WO can correct one or more of the asset's defects — the multi-select owns
+  // add/toggle; this just powers the summary list's remove button.
   const removeDefect = (defectId: string) =>
     setSelectedDefectIds((prev) => prev.filter((id) => id !== defectId));
 
-  // A WO can resolve one or more of the asset's faults, chosen from the dropdown.
-  const addFault = (faultId: string) => {
-    if (!faultId) return;
-    setSelectedFaultIds((prev) => (prev.includes(faultId) ? prev : [...prev, faultId]));
-    clearFieldError('serviceTaskIds');
-  };
+  // A WO can resolve one or more of the asset's faults — same pattern as defects.
   const removeFault = (faultId: string) =>
     setSelectedFaultIds((prev) => prev.filter((id) => id !== faultId));
 
@@ -499,6 +527,28 @@ export function WorkOrderForm({
 
   const partsCost = parts.reduce((sum, p) => sum + p.unitCost * p.quantity, 0);
 
+  // Live "remaining in stock" preview for the stock picker. The fetched stock
+  // already reflects quantities saved on THIS work order (edit mode), so only
+  // the NET increase over what was already committed is subtracted — otherwise
+  // re-opening an existing line would double-count it. Create mode has no saved
+  // lines, so this reduces to (stock − allocated). Command-sourced lines are
+  // excluded: they draw down Command's ledger, not local inventory.
+  const remainingStockFor = (partId: string | null): number | null => {
+    if (!partId) return null;
+    const base = availableParts.find((a) => a.id === partId);
+    if (!base) return null;
+    const allocatedNow = parts
+      .filter((p) => p.partId === partId && p.source !== 'command')
+      .reduce((sum, p) => sum + p.quantity, 0);
+    const savedBefore =
+      mode === 'edit'
+        ? (workOrder?.parts || [])
+            .filter((p) => p.partId === partId && p.source !== 'command')
+            .reduce((sum, p) => sum + p.quantity, 0)
+        : 0;
+    return base.stock - (allocatedNow - savedBefore);
+  };
+
   const handleSubmit = async () => {
     setError('');
     setFieldErrors({});
@@ -510,6 +560,12 @@ export function WorkOrderForm({
     }
     if (assigneeTab === 'vendor' && !assigneeId) errors.assigneeId = 'Vendor is required';
     if (assigneeTab === 'mechanic' && !assigneeId) errors.assigneeId = 'Mechanic is required';
+    if (
+      (assigneeTab === 'vendor' || assigneeTab === 'mechanic') &&
+      !isValidPhoneForCountry(assigneePhoneCountry, assigneePhone)
+    ) {
+      errors.assigneePhone = 'Enter a valid phone number';
+    }
     if (assigneeTab === 'third_party' && showThirdPartyFields) {
       if (!thirdPartyName.trim()) errors.thirdPartyName = 'Name is required';
       if (!thirdPartyEmail.trim()) errors.thirdPartyEmail = 'Email is required';
@@ -551,6 +607,9 @@ export function WorkOrderForm({
 
     if (assigneeTab === 'vendor' || assigneeTab === 'mechanic') {
       payload.assigneeId = assigneeId;
+      // Editable phone snapshot (E.164). Empty string clears it server-side —
+      // send it explicitly so the server doesn't fall back to the contact's phone.
+      payload.assigneePhone = phoneToE164(assigneePhoneCountry, assigneePhone);
     } else if (assigneeTab === 'third_party') {
       payload.thirdPartyName = thirdPartyName.trim();
       payload.thirdPartyEmail = thirdPartyEmail.trim();
@@ -693,19 +752,17 @@ export function WorkOrderForm({
                 <Label>Defects</Label>
                 <div className="mt-1.5">
                   <SearchableSelect
-                    options={availableDefects
-                      .filter((d) => !selectedDefectIds.includes(d.id))
-                      .map((d) => ({
-                        label: `${d.defectNumber ? `${d.defectNumber} · ` : ''}${d.name}${d.status ? ` (${d.status.replace(/_/g, ' ')})` : ''}`,
-                        value: d.id,
-                      }))}
-                    value={null}
-                    onValueChange={(v) => { if (v) addDefect(v); }}
-                    placeholder={assetId ? 'Select a defect' : 'Select an asset first'}
+                    isMulti
+                    options={availableDefects.map((d) => ({
+                      label: `${d.defectNumber ? `${d.defectNumber} · ` : ''}${d.name}`,
+                      value: d.id,
+                    }))}
+                    value={selectedDefectIds}
+                    onValueChange={(ids) => { setSelectedDefectIds(ids); clearFieldError('serviceTaskIds'); }}
+                    placeholder={assetId ? 'Search and select defects...' : 'Select an asset first'}
                     searchPlaceholder="Search defects..."
                     emptyMessage={assetId ? 'No defects for this asset' : 'Select an asset first'}
                     disabled={!assetId}
-                    isClearable={false}
                   />
                 </div>
 
@@ -755,19 +812,17 @@ export function WorkOrderForm({
                 <Label>Faults</Label>
                 <div className="mt-1.5">
                   <SearchableSelect
-                    options={availableFaults
-                      .filter((f) => !selectedFaultIds.includes(f.id))
-                      .map((f) => ({
-                        label: `${f.faultNumber ? `${f.faultNumber} · ` : ''}${f.title}${f.status ? ` (${f.status.replace(/_/g, ' ')})` : ''}`,
-                        value: f.id,
-                      }))}
-                    value={null}
-                    onValueChange={(v) => { if (v) addFault(v); }}
-                    placeholder={assetId ? 'Select a fault' : 'Select an asset first'}
+                    isMulti
+                    options={availableFaults.map((f) => ({
+                      label: `${f.faultNumber ? `${f.faultNumber} · ` : ''}${f.title}`,
+                      value: f.id,
+                    }))}
+                    value={selectedFaultIds}
+                    onValueChange={(ids) => { setSelectedFaultIds(ids); clearFieldError('serviceTaskIds'); }}
+                    placeholder={assetId ? 'Search and select faults...' : 'Select an asset first'}
                     searchPlaceholder="Search faults..."
                     emptyMessage={assetId ? 'No faults for this asset' : 'Select an asset first'}
                     disabled={!assetId}
-                    isClearable={false}
                   />
                 </div>
 
@@ -871,7 +926,18 @@ export function WorkOrderForm({
                     </div>
                     <div>
                       <Label>Phone</Label>
-                      <Input value={assigneePhone} readOnly className="mt-1.5" />
+                      <PhoneInput
+                        className="mt-1.5"
+                        countryCode={assigneePhoneCountry}
+                        onCountryCodeChange={setAssigneePhoneCountry}
+                        value={assigneePhone}
+                        onValueChange={(v) => { setAssigneePhone(v); clearFieldError('assigneePhone'); }}
+                        disabled={isMechanic}
+                        error={!!fieldErrors.assigneePhone}
+                      />
+                      {fieldErrors.assigneePhone && (
+                        <p className="text-sm text-destructive mt-1">{fieldErrors.assigneePhone}</p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -929,7 +995,18 @@ export function WorkOrderForm({
                     </div>
                     <div>
                       <Label>Phone</Label>
-                      <Input value={assigneePhone} readOnly className="mt-1.5" />
+                      <PhoneInput
+                        className="mt-1.5"
+                        countryCode={assigneePhoneCountry}
+                        onCountryCodeChange={setAssigneePhoneCountry}
+                        value={assigneePhone}
+                        onValueChange={(v) => { setAssigneePhone(v); clearFieldError('assigneePhone'); }}
+                        disabled={isMechanic}
+                        error={!!fieldErrors.assigneePhone}
+                      />
+                      {fieldErrors.assigneePhone && (
+                        <p className="text-sm text-destructive mt-1">{fieldErrors.assigneePhone}</p>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1000,68 +1077,60 @@ export function WorkOrderForm({
           </FormSection>
 
           {/* ── Due Date ── */}
-          <FormSection icon={Calendar} title="Due Date">
-            <div>
-              <DateField label="Due Date" value={dueDate} onChange={setDueDate} placeholder="Select due date" disabled={isMechanic} />
-            </div>
-          </FormSection>
+          <DateField label="Due Date" value={dueDate} onChange={setDueDate} placeholder="Select due date" disabled={isMechanic} />
 
           {/* ── Status ── */}
-          <FormSection icon={Flag} title="Status">
-            <div>
-              <Label>Choose Status <span className="text-destructive">*</span></Label>
-              <Select value={statusId} onValueChange={(val) => { setStatusId(val); clearFieldError('statusId'); }}>
-                <SelectTrigger className={`mt-1.5 ${fieldErrors.statusId ? 'border-destructive' : ''}`}>
-                  <SelectValue placeholder="Select status" />
-                </SelectTrigger>
-                <SelectContent>
-                  {statuses.length === 0 ? (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">No statuses yet</div>
-                  ) : (
-                    statuses.map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="h-3 w-3 rounded-full shrink-0"
-                            style={{ backgroundColor: s.color }}
-                          />
-                          <span>{s.label}</span>
-                        </div>
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              {fieldErrors.statusId && <p className="text-sm text-destructive mt-1">{fieldErrors.statusId}</p>}
-              <p className="text-xs text-muted-foreground mt-1">
-                Manage statuses in{' '}
-                <button
-                  type="button"
-                  onClick={() => router.push('/settings?section=work-order-statuses')}
-                  className="text-primary hover:underline font-medium"
-                >
-                  the settings
-                </button>
-              </p>
-            </div>
-          </FormSection>
+          <div>
+            <Label>Choose Status <span className="text-destructive">*</span></Label>
+            <Select value={statusId} onValueChange={(val) => { setStatusId(val); clearFieldError('statusId'); }}>
+              <SelectTrigger className={`mt-1.5 ${fieldErrors.statusId ? 'border-destructive' : ''}`}>
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent>
+                {statuses.length === 0 ? (
+                  <div className="px-3 py-2 text-sm text-muted-foreground">No statuses yet</div>
+                ) : (
+                  statuses.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-3 w-3 rounded-full shrink-0"
+                          style={{ backgroundColor: s.color }}
+                        />
+                        <span>{s.label}</span>
+                      </div>
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+            {fieldErrors.statusId && <p className="text-sm text-destructive mt-1">{fieldErrors.statusId}</p>}
+            <p className="text-xs text-muted-foreground mt-1">
+              Manage statuses in{' '}
+              <button
+                type="button"
+                onClick={() => router.push('/settings?section=work-order-statuses')}
+                className="text-primary hover:underline font-medium"
+              >
+                the settings
+              </button>
+            </p>
+          </div>
 
           {/* ── Description ── */}
-          <FormSection icon={AlignLeft} title="Description">
-            <div>
-              <Label htmlFor="woDescription">Description</Label>
-              <Textarea
-                id="woDescription"
-                value={description}
-                disabled={isMechanic}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Describe this work order..."
-                rows={3}
-                maxLength={2000}
-                className="mt-1.5"
-              />
-            </div>
-          </FormSection>
+          <div>
+            <Label htmlFor="woDescription">Description</Label>
+            <Textarea
+              id="woDescription"
+              value={description}
+              disabled={isMechanic}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe this work order..."
+              rows={3}
+              maxLength={2000}
+              className="mt-1.5"
+            />
+          </div>
 
           {/* ── Stock ── */}
           <FormSection icon={Package} title="Stock">
@@ -1070,17 +1139,19 @@ export function WorkOrderForm({
                 <Label>Stock</Label>
                 <SearchableSelect
                   className="mt-1.5"
-                  options={availableParts.map((p) => ({
-                    label: `${p.name} (${p.stock} in stock)`,
-                    value: p.id,
-                  }))}
+                  options={availableParts.map((p) => {
+                    const remaining = remainingStockFor(p.id) ?? p.stock;
+                    return {
+                      label: `${p.name} (${Math.max(0, remaining)} in stock)`,
+                      value: p.id,
+                    };
+                  })}
                   value={partToAdd || null}
                   onValueChange={(v) => setPartToAdd(v || '')}
                   placeholder="Select stock"
                   searchPlaceholder="Search stock..."
                   emptyMessage="No stock in inventory"
                   loading={lookupsLoading}
-                  disabled={isMechanic}
                 />
               </div>
               <div className="w-20">
@@ -1089,12 +1160,11 @@ export function WorkOrderForm({
                   type="number"
                   min={1}
                   value={qtyToAdd}
-                  disabled={isMechanic}
                   onChange={(e) => setQtyToAdd(e.target.value)}
                   className="mt-1.5"
                 />
               </div>
-              <Button type="button" variant="outline" onClick={handleAddPart} disabled={!partToAdd || isMechanic}>
+              <Button type="button" variant="outline" onClick={handleAddPart} disabled={!partToAdd}>
                 <Plus className="h-4 w-4" /> Add
               </Button>
             </div>
@@ -1103,8 +1173,8 @@ export function WorkOrderForm({
               <div className="mt-4 rounded-lg border border-border bg-card shadow-sm divide-y divide-border overflow-hidden">
                 {parts.map((p) => {
                   const key = partLineKey(p);
-                  const stock = availableParts.find((a) => a.id === p.partId)?.stock ?? null;
-                  const low = stock != null && p.quantity > stock;
+                  const stock = remainingStockFor(p.partId);
+                  const low = stock != null && stock < 0;
                   const frozen = p.pushedToCommand === true;
                   return (
                     <div key={key} className="flex items-center gap-3 px-3 py-2.5">
@@ -1116,7 +1186,7 @@ export function WorkOrderForm({
                         <p className="text-xs text-muted-foreground">
                           {p.partNumber ? `${p.partNumber} · ` : ''}${p.unitCost.toFixed(2)} ea
                           {stock != null && (
-                            <span className={low ? 'text-destructive font-medium' : ''}> · {stock} in stock</span>
+                            <span className={low ? 'text-destructive font-medium' : ''}> · {Math.max(0, stock)} in stock</span>
                           )}
                           {frozen && <span> · consumed in Command</span>}
                         </p>
@@ -1125,7 +1195,7 @@ export function WorkOrderForm({
                         type="number"
                         min={1}
                         value={p.quantity}
-                        disabled={frozen || isMechanic}
+                        disabled={frozen}
                         onChange={(e) => updatePartQty(key, parseInt(e.target.value, 10))}
                         className="w-16 h-8 text-center"
                       />
@@ -1137,7 +1207,6 @@ export function WorkOrderForm({
                           type="button"
                           variant="ghost"
                           size="icon-sm"
-                          disabled={isMechanic}
                           onClick={() => removePart(key)}
                           className="text-muted-foreground hover:text-destructive shrink-0"
                         >

@@ -304,14 +304,6 @@ export function InventoryPage() {
       ),
     },
     {
-      key: 'upc',
-      header: 'UPC',
-      label: 'UPC',
-      render: (part) => (
-        <span className="text-muted-foreground font-mono text-xs">{part.upc || '—'}</span>
-      ),
-    },
-    {
       key: 'description',
       header: 'Description',
       label: 'Description',

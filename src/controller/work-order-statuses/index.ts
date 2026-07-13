@@ -19,6 +19,7 @@ function serialize(doc: Record<string, unknown>): Record<string, unknown> {
     description: doc.description || undefined,
     type: doc.type ?? 'open',
     sequence: doc.sequence ?? 0,
+    isSystem: doc.isSystem === true,
     createdBy: doc.createdBy?.toString() || null,
     createdAt: doc.createdAt ? (doc.createdAt as Date).toISOString() : null,
     updatedAt: doc.updatedAt ? (doc.updatedAt as Date).toISOString() : null,
@@ -186,13 +187,24 @@ export async function updateWorkOrderStatus(
 // Delete
 // ---------------------------------------------------------------------------
 
-export async function deleteWorkOrderStatus(tenantId: string, id: string) {
+export async function deleteWorkOrderStatus(
+  tenantId: string,
+  id: string,
+): Promise<{ ok: boolean; error?: string }> {
   const col = await getWorkOrderStatusesCollection();
-  const result = await col.deleteOne({
-    _id: ObjectId.createFromHexString(id),
-    tenantId: ObjectId.createFromHexString(tenantId),
-  });
-  return result.deletedCount > 0;
+  const statusOid = ObjectId.createFromHexString(id);
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+
+  const existing = await col.findOne({ _id: statusOid, tenantId: tenantOid });
+  if (!existing) return { ok: false, error: 'Not found' };
+
+  // System-generated (default) statuses can never be deleted.
+  if (existing.isSystem === true) {
+    return { ok: false, error: 'System-generated statuses can’t be deleted.' };
+  }
+
+  const result = await col.deleteOne({ _id: statusOid, tenantId: tenantOid });
+  return result.deletedCount > 0 ? { ok: true } : { ok: false, error: 'Not found' };
 }
 
 // ---------------------------------------------------------------------------
@@ -205,8 +217,8 @@ export async function deleteWorkOrderStatus(tenantId: string, id: string) {
  */
 const DEFAULT_WORK_ORDER_STATUSES: Array<{ label: string; color: string; type: WorkOrderStatusType }> = [
   { label: 'Open', color: '#3B82F6', type: 'open' },
+  { label: 'Pending', color: '#EAB308', type: 'on_hold' },
   { label: 'In Progress', color: '#F59E0B', type: 'in_progress' },
-  { label: 'On Hold', color: '#6B7280', type: 'on_hold' },
   { label: 'Completed', color: '#22C55E', type: 'completed' },
   { label: 'Cancelled', color: '#EF4444', type: 'cancelled' },
 ];
@@ -263,6 +275,8 @@ export async function seedWorkOrderStatuses(tenantId: string, userId: string): P
       description: undefined,
       type: s.type,
       sequence: ++seq,
+      // Seeded defaults are core lifecycle statuses — protected from archive/delete.
+      isSystem: true,
       createdBy: userOid,
       updatedBy: userOid,
       createdAt: now,
@@ -277,13 +291,27 @@ export async function seedWorkOrderStatuses(tenantId: string, userId: string): P
   await tenantsCol.updateOne({ _id: tenantOid }, { $set: { workOrderStatusesSeeded: true } });
 }
 
-export async function archiveWorkOrderStatus(tenantId: string, userId: string, id: string, archived: boolean) {
+export async function archiveWorkOrderStatus(
+  tenantId: string,
+  userId: string,
+  id: string,
+  archived: boolean,
+): Promise<{ ok: boolean; error?: string }> {
   const col = await getWorkOrderStatusesCollection();
+  const statusOid = ObjectId.createFromHexString(id);
+  const tenantOid = ObjectId.createFromHexString(tenantId);
+
+  const existing = await col.findOne({ _id: statusOid, tenantId: tenantOid });
+  if (!existing) return { ok: false, error: 'Not found' };
+
+  // System-generated (default) statuses are part of the core lifecycle — never
+  // archivable. (Unarchiving a legacy-archived one is still allowed.)
+  if (archived && existing.isSystem === true) {
+    return { ok: false, error: 'System-generated statuses can’t be archived.' };
+  }
+
   const result = await col.updateOne(
-    {
-      _id: ObjectId.createFromHexString(id),
-      tenantId: ObjectId.createFromHexString(tenantId),
-    },
+    { _id: statusOid, tenantId: tenantOid },
     {
       $set: {
         isArchived: archived,
@@ -294,5 +322,5 @@ export async function archiveWorkOrderStatus(tenantId: string, userId: string, i
       },
     },
   );
-  return result.modifiedCount > 0;
+  return result.modifiedCount > 0 ? { ok: true } : { ok: false, error: 'Not found' };
 }

@@ -132,9 +132,12 @@ export async function DELETE(request: NextRequest) {
     }
   }
 
-  const deleted = await deleteWorkOrderStatus(user.currentTenantId, id);
-  if (!deleted) {
-    return NextResponse.json({ data: null, error: 'Not found' }, { status: 404 });
+  const result = await deleteWorkOrderStatus(user.currentTenantId, id);
+  if (!result.ok) {
+    return NextResponse.json(
+      { data: null, error: result.error || 'Not found' },
+      { status: result.error && result.error !== 'Not found' ? 400 : 404 },
+    );
   }
   return NextResponse.json({ data: { success: true }, error: null });
 }
@@ -160,8 +163,13 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    const success = await archiveWorkOrderStatus(user.currentTenantId, user.id, id, archived);
-    if (!success) return NextResponse.json({ data: null, error: 'Not found' }, { status: 404 });
+    const result = await archiveWorkOrderStatus(user.currentTenantId, user.id, id, archived);
+    if (!result.ok) {
+      return NextResponse.json(
+        { data: null, error: result.error || 'Not found' },
+        { status: result.error && result.error !== 'Not found' ? 400 : 404 },
+      );
+    }
     return NextResponse.json({ data: { success: true }, error: null });
   } catch {
     return NextResponse.json({ data: null, error: 'Invalid request body' }, { status: 400 });

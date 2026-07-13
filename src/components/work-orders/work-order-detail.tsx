@@ -22,14 +22,6 @@ import {
   DetailPageHeader,
   DetailPageHeaderSkeleton,
 } from '@/components/ui/detail-page-header';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
 import { ArchiveConfirmDialog } from '@/components/ui/archive-confirm-dialog';
 import { cn, formatDate } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -62,9 +54,6 @@ export function WorkOrderDetail() {
   // Archive dialog
   const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
   const [archiving, setArchiving] = useState(false);
-
-  // Complete dialog placeholder
-  const [completeDialogOpen, setCompleteDialogOpen] = useState(false);
 
   const fetchOrder = useCallback(async () => {
     try {
@@ -183,13 +172,8 @@ export function WorkOrderDetail() {
         subtitle={order.assetName}
         actions={
           <>
-            {!order.isCompleted && (
-              <Button onClick={() => setCompleteDialogOpen(true)}>
-                <CheckCircle2 className="h-4 w-4" />
-                Complete &amp; Sign Off
-              </Button>
-            )}
-            {checkRecordOwnership(editLevel, createdBy, user?.id) && (
+            {/* Completed work orders are locked — no editing once signed off. */}
+            {!order.isCompleted && checkRecordOwnership(editLevel, createdBy, user?.id) && (
               <PermissionGuard permission={Permissions.maintenance.workOrders.form.edit}>
                 <Button variant="outline" onClick={() => setEditPanelOpen(true)}>
                   <Edit className="h-4 w-4" />
@@ -377,22 +361,6 @@ export function WorkOrderDetail() {
         loading={archiving}
       />
 
-      {/* Complete & Sign Off Placeholder Dialog */}
-      <Dialog open={completeDialogOpen} onOpenChange={setCompleteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Complete &amp; Sign Off</DialogTitle>
-            <DialogDescription>
-              Coming soon - use the list page for now.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCompleteDialogOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

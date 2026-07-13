@@ -68,12 +68,12 @@ function buildCopy(
     case 'archive':
       return {
         title: `Archive ${name}`,
-        description: `Are you sure you want to archive "${name}"? This item will be moved to the archive.`,
+        description: `Are you sure you want to archive "${name}"? It will be hidden from the active list.`,
       };
     case 'unarchive':
       return {
         title: `Unarchive ${name}`,
-        description: `Are you sure you want to unarchive "${name}"? This item will be restored to the active list.`,
+        description: `Are you sure you want to unarchive "${name}"? It will be restored to the active list.`,
       };
     case 'delete':
       return {
@@ -83,6 +83,13 @@ function buildCopy(
   }
 }
 
+/**
+ * Shared confirmation dialog for archive / unarchive / permanent-delete flows.
+ * Visual language mirrors the construction portal's archive dialog:
+ * - archive → neutral gray (reversible, subtle)
+ * - unarchive → restorative blue (distinct from gray archive & red delete)
+ * - delete → destructive red
+ */
 export function ArchiveConfirmDialog({
   open,
   onOpenChange,
@@ -93,10 +100,36 @@ export function ArchiveConfirmDialog({
   onConfirm,
   loading = false,
 }: ArchiveConfirmDialogProps) {
-  const isArchive = action === 'archive';
-  const isDelete = action === 'delete';
-
   const { title, description } = buildCopy(action, itemName, entityLabel, count);
+
+  // Action-specific confirm button styling.
+  const confirmClassName =
+    action === 'delete'
+      ? 'bg-red-600 text-white hover:bg-red-700 disabled:opacity-50'
+      : action === 'unarchive'
+        ? 'bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50'
+        : 'bg-gray-500 text-white hover:bg-gray-600 disabled:opacity-50';
+
+  const confirmLabel =
+    action === 'delete' ? 'Delete Permanently' : action === 'unarchive' ? 'Unarchive' : 'Archive';
+
+  // Header icon: archive/unarchive use the neutral gray / blue archive glyphs
+  // (matching the row action icons); permanent-delete keeps the red trash.
+  const { icon, iconWrapperClassName } =
+    action === 'archive'
+      ? {
+          icon: <Archive className="h-5 w-5 text-gray-600" />,
+          iconWrapperClassName: 'bg-gray-100',
+        }
+      : action === 'unarchive'
+        ? {
+            icon: <ArchiveRestore className="h-5 w-5 text-blue-800" />,
+            iconWrapperClassName: 'bg-blue-100',
+          }
+        : {
+            icon: <Trash2 className="h-5 w-5 text-red-600" />,
+            iconWrapperClassName: 'bg-red-100',
+          };
 
   const handleCancel = () => {
     if (!loading) onOpenChange(false);
@@ -108,50 +141,42 @@ export function ArchiveConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleCancel}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] shadow-md gap-2">
         <DialogHeader className="space-y-3">
           <div className="flex items-start gap-4">
             <div
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-                isDelete ? 'bg-destructive/10' : isArchive ? 'bg-muted' : 'bg-primary/10'
-              }`}
+              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${iconWrapperClassName}`}
             >
-              {isDelete ? (
-                <Trash2 className="h-5 w-5 text-destructive" />
-              ) : isArchive ? (
-                <Archive className="h-5 w-5 text-muted-foreground" />
-              ) : (
-                <ArchiveRestore className="h-5 w-5 text-primary" />
-              )}
+              {icon}
             </div>
             <div className="flex-1">
-              <DialogTitle className="text-lg font-semibold">
+              <DialogTitle className="text-lg font-semibold text-gray-700">
                 {title}
               </DialogTitle>
-              <DialogDescription className="text-sm leading-relaxed mt-1">
+              <DialogDescription className="text-sm text-gray-500 leading-relaxed mt-1 wrap-break-word">
                 {description}
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
-        <DialogFooter className="gap-2 sm:gap-2 pt-2">
+        <DialogFooter className="gap-3 sm:gap-2 pt-2">
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             onClick={handleCancel}
             disabled={loading}
+            className="text-gray-600 hover:text-gray-700 hover:bg-gray-100"
           >
             Cancel
           </Button>
           <Button
             type="button"
-            variant={isDelete ? 'destructive' : isArchive ? 'secondary' : 'default'}
-            className={isArchive ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : undefined}
             onClick={handleConfirm}
             disabled={loading}
+            className={confirmClassName}
           >
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isDelete ? 'Delete' : isArchive ? 'Archive' : 'Unarchive'}
+            {confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

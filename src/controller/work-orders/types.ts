@@ -105,6 +105,9 @@ export interface CreateWorkOrderInput {
   faultIds?: string[];
   assigneeType: string;
   assigneeId?: string;
+  /** Editable contact phone snapshot (E.164). Overrides the vendor/mechanic's
+   * on-file phone for this work order; '' explicitly clears it. */
+  assigneePhone?: string;
   thirdPartyName?: string;
   thirdPartyEmail?: string;
   statusId: string;

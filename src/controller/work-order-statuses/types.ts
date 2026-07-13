@@ -22,6 +22,9 @@ export interface WorkOrderStatus {
   description?: string;
   type: WorkOrderStatusType;
   sequence: number;
+  /** True for the default statuses seeded for every tenant — these are part of
+   * the core work-order lifecycle and can't be archived or deleted. */
+  isSystem?: boolean;
   createdBy: ObjectId;
   updatedBy: ObjectId;
   createdAt: Date;

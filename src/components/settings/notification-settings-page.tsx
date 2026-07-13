@@ -10,7 +10,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Save, Info, Users, Bell, Check } from 'lucide-react';
+import { Save, Info, Users, Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -19,8 +19,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 import { Spinner } from '@/components/ui/spinner';
-import { cn } from '@/lib/utils';
 
 // ── local types (mirror the server config; kept local so no server code bundles) ──
 type Scope = 'team' | 'company' | 'off';
@@ -119,10 +119,8 @@ export function NotificationSettingsPage() {
     patchRule(type, { scope });
   }
 
-  function toggleRole(type: string, role: NotifyRole) {
-    const current = rules[type]?.roles ?? [];
-    const next = current.includes(role) ? current.filter((r) => r !== role) : [...current, role];
-    patchRule(type, { roles: next });
+  function setRoles(type: string, roles: NotifyRole[]) {
+    patchRule(type, { roles });
   }
 
   async function handleSave() {
@@ -181,29 +179,16 @@ export function NotificationSettingsPage() {
           </Select>
 
           {showRoles && (
-            <div className="flex max-w-md flex-wrap items-center gap-1.5 lg:justify-end">
-              {ROLE_OPTIONS.map((ro) => {
-                const on = rule.roles.includes(ro.value);
-                return (
-                  <button
-                    key={ro.value}
-                    type="button"
-                    role="checkbox"
-                    aria-checked={on}
-                    onClick={() => toggleRole(event.type, ro.value)}
-                    className={cn(
-                      'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                      on
-                        ? 'border-primary/30 bg-primary/10 text-primary hover:bg-primary/15'
-                        : 'border-border bg-background text-foreground/70 hover:border-foreground/30 hover:text-foreground',
-                    )}
-                  >
-                    {on && <Check className="h-3 w-3" strokeWidth={3} />}
-                    {ro.label}
-                  </button>
-                );
-              })}
-            </div>
+            <SearchableSelect
+              isMulti
+              className="w-64"
+              options={ROLE_OPTIONS.map((ro) => ({ label: ro.label, value: ro.value }))}
+              value={rule.roles}
+              onValueChange={(vals) => setRoles(event.type, vals as NotifyRole[])}
+              placeholder="Everyone in scope"
+              searchPlaceholder="Search roles..."
+              emptyMessage="No roles found"
+            />
           )}
         </div>
       </div>
@@ -242,25 +227,13 @@ export function NotificationSettingsPage() {
       )}
 
       {/* How it works — plain language */}
-      <div className="flex gap-3 rounded-sm border border-blue-200 bg-blue-50/70 px-4 py-3 text-sm dark:border-blue-900 dark:bg-blue-950/40">
-        <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-500" />
-        <div className="space-y-1 text-blue-800/90 dark:text-blue-300/90">
-          <p className="font-medium text-blue-900 dark:text-blue-200">How each alert is routed</p>
-          <p className="leading-relaxed">
-            First pick <span className="font-medium">how wide</span> — the asset&apos;s{' '}
-            <span className="font-medium">Responsible team</span>, the{' '}
-            <span className="font-medium">Whole company</span>, or <span className="font-medium">No one</span>.
-            Then tick <span className="font-medium">which roles</span> should get it. Only people who match{' '}
-            <span className="font-medium">both</span> are notified — so &quot;Responsible team + Mechanics&quot;
-            reaches just the mechanic on that asset&apos;s team. Tick no roles to notify everyone in the scope.
-          </p>
-          <p className="leading-relaxed">
-            <span className="font-medium">If an asset has no team yet</span>, the alert automatically goes to the
-            same roles <span className="font-medium">across the whole company</span> (and to your managers/owner if
-            no one matches) so nothing is ever missed. Assign assets to teams on the{' '}
-            <span className="font-medium">Teams</span> page, and set each member&apos;s role under People.
-          </p>
-        </div>
+      <div className="flex items-start gap-2.5 rounded-md border border-amber-300 bg-linear-to-r from-amber-50 to-orange-50 px-4 py-3 text-sm shadow-sm dark:border-amber-800 dark:from-amber-950/30 dark:to-orange-950/20">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        <p className="leading-relaxed text-amber-700 dark:text-amber-300">
+          <span className="font-semibold">How routing works:</span> pick a scope (team, company, or no one), then
+          pick roles — only people matching both get notified. Leave roles empty to notify everyone in scope.
+          Assets with no team fall back to the whole company automatically.
+        </p>
       </div>
 
       {/* Asset & team events */}
