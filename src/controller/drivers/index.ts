@@ -15,6 +15,7 @@ import { validateCreateDriverInput, serializeDriver } from './utils';
 import { isValidPhone } from '@/lib/validation/commonValidators';
 import { createInvitation } from '@/controller/invitations';
 import { sendInvitationEmail } from '@/lib/email';
+import { create3PMUser } from '@/lib/3pm-data-api';
 import {
   isCommandConnectionEnabled,
   stripCommandOwnedFields,
@@ -339,6 +340,24 @@ export async function createDriver(tenantId: string, userId: string, input: Crea
     //    active member (an existing user needs no invitation).
     if (normalizedEmail && !alreadyActive) {
       try {
+        // Pre-register in 3pm-auth so the driver gets a direct login when
+        // they accept — otherwise they land in the full registration/OTP
+        // flow instead of the smooth "click link, log in" experience regular
+        // invited users get via inviteUser(). Safe to call every time (3PM
+        // returns status:"skipped" if the email already exists). Non-fatal —
+        // the invitation still goes out even if pre-registration fails; the
+        // driver just falls back to the registration flow on first login.
+        try {
+          await create3PMUser({
+            email: normalizedEmail,
+            firstName: input.firstName.trim(),
+            lastName: input.lastName.trim(),
+            mobile: input.mobileNumber?.trim(),
+          });
+        } catch (userCreateError) {
+          console.warn('[driver] Failed to pre-register user in 3pm-auth:', userCreateError);
+        }
+
         const { rawToken } = await createInvitation(tenantId, {
           email: normalizedEmail,
           firstName: input.firstName.trim(),

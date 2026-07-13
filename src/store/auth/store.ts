@@ -9,6 +9,7 @@
 import { create } from 'zustand';
 import axios from 'axios';
 import type { UserProfile } from '@/types/auth';
+import { showErrorToast } from '@/lib/toastUtils';
 
 interface Tenant {
   id: string;
@@ -31,6 +32,10 @@ interface AuthState {
   initialized: boolean;
   /** Last error message from auth operations. */
   error: string | null;
+  /** True while a tenant switch is in flight — drives the switcher's loading UI. */
+  switchingTenant: boolean;
+  /** The tenant being switched to, while switchingTenant is true. */
+  targetTenant: Tenant | null;
 
   /** Fetch the current session from /api/auth/me. */
   checkAuth: () => Promise<void>;
@@ -49,6 +54,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loading: true,
   initialized: false,
   error: null,
+  switchingTenant: false,
+  targetTenant: null,
 
   checkAuth: async () => {
     try {
@@ -80,21 +87,29 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   switchTenant: async (tenantId: string) => {
+    const { switchingTenant, activeTenantId, tenants } = get();
+    // Guard against double-clicks and no-op switches to the already-active tenant.
+    if (switchingTenant || tenantId === activeTenantId) return;
+
+    const targetTenant = tenants.find((t) => t.id === tenantId) ?? null;
+    set({ error: null, switchingTenant: true, targetTenant });
+
     try {
-      set({ error: null });
       await axios.post(
         '/api/tenant/switch',
         { tenantId },
         { withCredentials: true },
       );
-      // Reload to pick up new tenant context everywhere
+      // Reload to pick up new tenant context everywhere (RBAC, cached data, etc).
+      // switchingTenant stays true so the switcher keeps its loading state until unload.
       window.location.reload();
     } catch (err: unknown) {
       const message =
         axios.isAxiosError(err) && err.response?.data?.error
           ? err.response.data.error
           : 'Tenant switch failed';
-      set({ error: message });
+      showErrorToast(`${message}. Please try again.`);
+      set({ error: message, switchingTenant: false, targetTenant: null });
     }
   },
 
@@ -106,6 +121,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       loading: false,
       initialized: true,
       error: null,
+      switchingTenant: false,
+      targetTenant: null,
     });
   },
 }));

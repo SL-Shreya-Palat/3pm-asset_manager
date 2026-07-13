@@ -35,6 +35,9 @@ interface DirectoryItem {
 
 interface ImportSummary {
   invited: number;
+  /** Granted access directly (no invite email) — already a 3pm-auth tenant
+   *  member; they get in on their next Asset Manager login instead. */
+  grantedDirectly?: number;
   driversCreated?: number;
   skippedNoEmail: number;
   skippedAlreadyMember: number;
@@ -184,6 +187,12 @@ export function ImportCommandStaffDialog({
             <p className="font-medium">Import complete</p>
             <ul className="mt-1 space-y-0.5">
               {summary.invited > 0 && <li>{summary.invited} invited</li>}
+              {(summary.grantedDirectly ?? 0) > 0 && (
+                <li>
+                  {summary.grantedDirectly} invited via a direct email link (already had a 3pm-auth
+                  account, so they'll get our own invite email instead of 3pm-auth's)
+                </li>
+              )}
               {(summary.driversCreated ?? 0) > 0 && (
                 <li>{summary.driversCreated} driver profile{summary.driversCreated === 1 ? '' : 's'} created</li>
               )}

@@ -222,9 +222,23 @@ export async function inviteUser(tenantId: string, invitedByUserId: string, inpu
     teamMemberships = validTeams.map((t) => ({ teamId: t._id as ObjectId, role: 'managing' as const }));
   }
   // A team-scoped role with no team has no scope at all (empty teamIds → sees
-  // nothing) — block the invite so team-scoped users always start usable.
+  // nothing). Rather than hard-blocking the invite (which made "Import staff
+  // from Command" — which has no per-person team picker — reject EVERY
+  // team-scoped role assignment), default to ALL of the tenant's existing
+  // teams. Sensible for a small org with one or a handful of teams; a tenant
+  // with genuinely zero teams still can't default to anything meaningful.
   if (invitedRole.teamScoped === true && teamMemberships.length === 0) {
-    return { data: null, error: { teamIds: 'Select at least one team for a team-scoped role' } };
+    const teamsCol = await getTeamsCollection();
+    const allTeams = await teamsCol
+      .find({ tenantId: tenantOid, isArchived: { $ne: true } }, { projection: { _id: 1 } })
+      .toArray();
+    if (allTeams.length === 0) {
+      return {
+        data: null,
+        error: { teamIds: 'This tenant has no teams yet — create a team first, or choose a non-team-scoped role' },
+      };
+    }
+    teamMemberships = allTeams.map((t) => ({ teamId: t._id as ObjectId, role: 'managing' as const }));
   }
 
   // Check if this user already exists (e.g. registered via SSO before).
@@ -279,7 +293,16 @@ export async function inviteUser(tenantId: string, invitedByUserId: string, inpu
   // the tenantMember unconditionally and only console.error'd a 3PM failure —
   // leaving a "pending" member the invited person could never actually accept
   // into, with the admin UI reporting success regardless.
-  let threePMInvite;
+  let threePMInvite: { id: string; expiresAt: string } | null = null;
+  // Every staff member must explicitly ACCEPT an invite before they can use
+  // Asset Manager — nobody gets in silently. 3pm-auth refuses to create a
+  // NEW invitation for someone who is ALREADY a tenant member there
+  // (extremely common for "Import staff from Command": Command staff already
+  // have 3pm-auth accounts under this same org), so this flag routes them to
+  // the local (legacy) invite mechanism below instead — same accept-required
+  // flow drivers already use, just via AM's own token/email since 3pm-auth's
+  // invitation endpoint won't issue one for an existing member.
+  let alreadyThreePMMember = false;
   try {
     threePMInvite = await create3PMInvitation({
       tenantId: authTenantId,
@@ -290,9 +313,13 @@ export async function inviteUser(tenantId: string, invitedByUserId: string, inpu
       roleLabel: roleName || 'Member',
     });
   } catch (inviteError) {
-    console.error('[inviteUser] Failed to create 3PM invitation:', inviteError);
     const message = inviteError instanceof Error ? inviteError.message : 'Failed to send invitation';
-    return { data: null, error: { email: message } };
+    if (/already a member of this tenant/i.test(message)) {
+      alreadyThreePMMember = true;
+    } else {
+      console.error('[inviteUser] Failed to create 3PM invitation:', inviteError);
+      return { data: null, error: { email: message } };
+    }
   }
 
   // Insert tenantMember. Always start as 'pending' ("Invited") — the status only
@@ -319,32 +346,66 @@ export async function inviteUser(tenantId: string, invitedByUserId: string, inpu
 
   const tmResult = await tenantMembersCol.insertOne(tmDoc);
 
-  // Store local mirror so the auth callback can complete it. Non-fatal: the
-  // REAL invitation already exists on 3pm-auth and its email was already
-  // sent — losing the local mirror only means the callback can't
-  // auto-complete it (a resend would recreate the mirror). Failing the whole
-  // request here would falsely report an error for an invite that DID go out.
-  try {
-    await createInvitation3PM(
-      tenantOid,
-      normalizedEmail,
-      threePMInvite.id,
-      {
+  if (threePMInvite) {
+    // Store local mirror so the auth callback can complete it. Non-fatal: the
+    // invitation already exists on 3pm-auth and its email was already sent —
+    // losing the local mirror only means the callback can't auto-complete it
+    // (a resend would recreate the mirror). Failing the whole request here
+    // would falsely report an error for an invite that DID go out.
+    try {
+      await createInvitation3PM(
+        tenantOid,
+        normalizedEmail,
+        threePMInvite.id,
+        {
+          firstName: input.firstName.trim(),
+          lastName: input.lastName.trim(),
+          roleId: input.roleId,
+          mobileNumber: input.mobileNumber?.trim(),
+        },
+        invitedByOid,
+        threePMInvite.expiresAt,
+      );
+    } catch (mirrorError) {
+      console.error('[inviteUser] Failed to store local 3PM invitation mirror:', mirrorError);
+    }
+  } else if (alreadyThreePMMember) {
+    // Already a 3pm-auth tenant member — 3pm-auth won't issue a new
+    // invitation, but they still must explicitly ACCEPT before they can use
+    // Asset Manager (matches every other invite path — nobody gets in
+    // silently). Send AM's own local/legacy invite instead: same
+    // hashed-token + email + accept-link mechanism drivers already use.
+    // Non-fatal: the tenantMember row already exists either way; a failed
+    // email just means the admin needs to hit Resend.
+    try {
+      const { rawToken } = await createInvitation(tenantId, {
+        email: normalizedEmail,
         firstName: input.firstName.trim(),
         lastName: input.lastName.trim(),
         roleId: input.roleId,
-        mobileNumber: input.mobileNumber?.trim(),
-      },
-      invitedByOid,
-      threePMInvite.expiresAt,
-    );
-  } catch (mirrorError) {
-    console.error('[inviteUser] Failed to store local 3PM invitation mirror:', mirrorError);
+        invitedByUserId: invitedByUserId,
+      });
+      const acceptUrl = `${getAppUrl()}/invite/accept?token=${rawToken}`;
+      await sendInvitationEmail({
+        recipientEmail: normalizedEmail,
+        recipientName: input.firstName.trim(),
+        inviterName: inviterName || 'A team member',
+        tenantName: (tenantDoc?.name as string) || 'your organization',
+        roleName: roleName || 'Member',
+        acceptUrl,
+      });
+    } catch (localInviteError) {
+      console.error('[inviteUser] Failed to send local invite for existing 3pm-auth member:', localInviteError);
+    }
   }
 
   return {
     data: serializeTenantMember({ ...tmDoc, _id: tmResult.insertedId }, roleName),
     error: null,
+    // Signals to callers (e.g. importCommandStaff) that this person needed
+    // AM's own accept-link email instead of a 3pm-auth invitation — they
+    // still must accept it the same as anyone else before they get access.
+    alreadyThreePMMember,
   };
 }
 
@@ -579,34 +640,67 @@ export async function resendInvitation(
       console.warn('[resendInvitation] Failed to pre-register user in 3pm-auth:', userCreateError);
     }
 
-    const threePMInvite = await create3PMInvitation({
-      tenantId: authTenantId,
-      email,
-      role: 'member',
-      recipientName: `${firstName} ${lastName}`.trim(),
-      inviterName,
-      roleLabel: roleName,
-    });
+    let threePMInvite: { id: string; expiresAt: string } | null = null;
+    try {
+      threePMInvite = await create3PMInvitation({
+        tenantId: authTenantId,
+        email,
+        role: 'member',
+        recipientName: `${firstName} ${lastName}`.trim(),
+        inviterName,
+        roleLabel: roleName,
+      });
+    } catch (inviteError) {
+      const message = inviteError instanceof Error ? inviteError.message : 'Failed to resend invitation';
+      if (!/already a member of this tenant/i.test(message)) {
+        throw inviteError;
+      }
+      // Already a confirmed 3pm-auth tenant member — 3pm-auth won't issue a
+      // new invitation. They STILL must explicitly accept before using Asset
+      // Manager (same requirement as everyone else), so fall through to the
+      // local/legacy invite flow below instead of the 3PM one.
+    }
 
-    await createInvitation3PM(
-      tenantOid,
-      email,
-      threePMInvite.id,
-      {
-        firstName,
-        lastName,
-        roleId: member.roleId ? member.roleId.toString() : undefined,
-        mobileNumber: (member.mobileNumber as string | undefined)?.trim(),
-      },
-      invitedByOid,
-      threePMInvite.expiresAt,
-    );
-
-    return { data: { sent: true }, error: null };
+    if (threePMInvite) {
+      await createInvitation3PM(
+        tenantOid,
+        email,
+        threePMInvite.id,
+        {
+          firstName,
+          lastName,
+          roleId: member.roleId ? member.roleId.toString() : undefined,
+          mobileNumber: (member.mobileNumber as string | undefined)?.trim(),
+        },
+        invitedByOid,
+        threePMInvite.expiresAt,
+      );
+      return { data: { sent: true }, error: null };
+    }
+    // alreadyThreePMMember → falls through to the local/legacy flow below.
   }
 
-  // ── Drivers / non-portal members → local token flow ────────────────────
+  // ── Drivers, non-portal members, and already-a-3pm-auth-member portal
+  //    members (see above) → local accept-link token flow ─────────────────
   if (!member.roleId) return { data: null, error: 'This user has no role assigned' };
+
+  // Pre-register in 3pm-auth so they get a direct login on accept instead of
+  // the full registration/OTP flow — mirrors createDriver(). For the
+  // already-a-3pm-auth-member fallthrough this is a safe no-op (returns
+  // "skipped"); for a driver with no account yet, it's what makes their
+  // accept smooth.
+  if (authTenantId) {
+    try {
+      await create3PMUser({
+        email,
+        firstName,
+        lastName,
+        mobile: (member.mobileNumber as string | undefined)?.trim(),
+      });
+    } catch (userCreateError) {
+      console.warn('[resendInvitation] Failed to pre-register user in 3pm-auth:', userCreateError);
+    }
+  }
 
   const { rawToken } = await createInvitation(tenantId, {
     email,

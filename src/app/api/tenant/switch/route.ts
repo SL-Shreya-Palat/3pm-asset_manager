@@ -12,6 +12,7 @@ import { getAuthenticatedUser, CURRENT_TENANT_ID_COOKIE, ACTIVE_MEMBER_FILTER } 
 import { getSessionToken, call3PMTenantSwitch } from '@/lib/auth-3pm';
 import { getTenantMembersCollection, getTenantsCollection } from '@/lib/mongodb';
 import { updateSessionActivity } from '@/lib/session';
+import { hasActiveAmSubscription } from '@/lib/subscription-gate';
 import { ObjectId } from 'mongodb';
 
 export async function POST(request: NextRequest) {
@@ -63,6 +64,16 @@ export async function POST(request: NextRequest) {
     if (!tenant) {
       return NextResponse.json(
         { data: null, error: 'Tenant is not active' },
+        { status: 403 },
+      );
+    }
+
+    // Block switching into an org whose Asset Manager subscription was
+    // cancelled — its tenantMember/tenant.isActive flags stay untouched
+    // locally, so this is the only thing standing between it and full access.
+    if (!(await hasActiveAmSubscription(tenant))) {
+      return NextResponse.json(
+        { data: null, error: 'This organization no longer has an active Asset Manager subscription' },
         { status: 403 },
       );
     }

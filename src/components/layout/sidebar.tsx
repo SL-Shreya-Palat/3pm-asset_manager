@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronsUpDown,
+  Loader2,
   LogOut,
   Truck,
 } from 'lucide-react';
@@ -115,6 +116,8 @@ export function Sidebar() {
   const activeTenantId = useAuthStore((s) => s.activeTenantId);
   const fetchTenants = useAuthStore((s) => s.fetchTenants);
   const switchTenant = useAuthStore((s) => s.switchTenant);
+  const switchingTenant = useAuthStore((s) => s.switchingTenant);
+  const targetTenant = useAuthStore((s) => s.targetTenant);
 
   useEffect(() => {
     fetchTenants();
@@ -171,10 +174,11 @@ export function Sidebar() {
       <div className="max-h-[280px] overflow-y-auto py-1.5">
         {displayTenants.map((t) => {
           const isActive = t.id === activeTenantId || (!activeTenantId && t.id === currentTenant?.id);
+          const isSwitchingToThis = switchingTenant && t.id === targetTenant?.id;
           return (
             <DropdownMenuItem
               key={t.id}
-              disabled={isActive}
+              disabled={isActive || switchingTenant}
               onClick={() => { if (!isActive) switchTenant(t.id); }}
               className={cn(
                 'mx-1.5 cursor-pointer gap-2.5 rounded px-3 py-2.5',
@@ -183,14 +187,20 @@ export function Sidebar() {
                   : 'border border-transparent',
               )}
             >
-              {tenantAvatar(t.name, t.logoUrl)}
+              {isSwitchingToThis ? (
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                </div>
+              ) : (
+                tenantAvatar(t.name, t.logoUrl)
+              )}
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-sm font-medium leading-tight text-foreground">
                   {t.name}
                 </span>
                 {t.role && (
                   <span className="mt-0.5 truncate text-xs uppercase text-muted-foreground">
-                    {t.role}
+                    {isSwitchingToThis ? 'Switching…' : t.role}
                   </span>
                 )}
               </div>
@@ -395,25 +405,44 @@ export function Sidebar() {
               <Tooltip>
                 <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
-                    <button className="flex w-full items-center justify-center rounded p-1 transition-colors hover:bg-primary/5">
-                      {tenantAvatar(currentTenant.name, currentTenant.logoUrl)}
+                    <button
+                      disabled={switchingTenant}
+                      className="flex w-full items-center justify-center rounded p-1 transition-colors hover:bg-primary/5 disabled:cursor-not-allowed"
+                    >
+                      {switchingTenant ? (
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+                          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        </div>
+                      ) : (
+                        tenantAvatar(currentTenant.name, currentTenant.logoUrl)
+                      )}
                     </button>
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
                 <TooltipContent side="right" sideOffset={8}>
-                  {currentTenant.name}
-                  {currentTenant.role ? ` · ${currentTenant.role}` : ''}
+                  {switchingTenant
+                    ? `Switching to ${targetTenant?.name ?? '…'}`
+                    : `${currentTenant.name}${currentTenant.role ? ` · ${currentTenant.role}` : ''}`}
                 </TooltipContent>
               </Tooltip>
             ) : (
               <DropdownMenuTrigger asChild>
-                <button className="flex w-full items-center gap-2.5 rounded border border-transparent bg-primary/5 px-3 py-2.5 text-left transition-colors hover:border-primary/10 hover:bg-primary/10">
-                  {tenantAvatar(currentTenant.name, currentTenant.logoUrl)}
+                <button
+                  disabled={switchingTenant}
+                  className="flex w-full items-center gap-2.5 rounded border border-transparent bg-primary/5 px-3 py-2.5 text-left transition-colors hover:border-primary/10 hover:bg-primary/10 disabled:cursor-not-allowed"
+                >
+                  {switchingTenant ? (
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    </div>
+                  ) : (
+                    tenantAvatar(currentTenant.name, currentTenant.logoUrl)
+                  )}
                   <div className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-sm font-medium leading-tight text-sidebar-foreground">
-                      {currentTenant.name}
+                      {switchingTenant ? `Switching to ${targetTenant?.name ?? '…'}` : currentTenant.name}
                     </span>
-                    {currentTenant.role && (
+                    {currentTenant.role && !switchingTenant && (
                       <span className="truncate text-xs uppercase leading-tight text-muted-foreground">
                         {currentTenant.role}
                       </span>

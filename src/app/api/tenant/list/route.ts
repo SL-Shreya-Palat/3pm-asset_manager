@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ObjectId } from 'mongodb';
 import { getAuthenticatedUser, ACTIVE_MEMBER_FILTER } from '@/lib/auth-helper';
 import { getTenantMembersCollection, getTenantsCollection } from '@/lib/mongodb';
+import { hasActiveAmSubscription } from '@/lib/subscription-gate';
 
 export async function GET(request: NextRequest) {
   const authUser = await getAuthenticatedUser(request);
@@ -34,14 +35,21 @@ export async function GET(request: NextRequest) {
     const tenants = tenantIds.length
       ? await tenantsCollection
           .find({ _id: { $in: tenantIds }, isActive: { $ne: false } })
-          .project({ name: 1, slug: 1, ownerId: 1, isActive: 1 })
+          .project({ name: 1, slug: 1, ownerId: 1, isActive: 1, authTenantId: 1 })
           .sort({ name: 1 })
           .toArray()
       : [];
 
+    // A tenant whose Asset Manager subscription was cancelled in the Admin
+    // Center must disappear from the switcher, even though its local
+    // `tenants.isActive` flag (a separate, AM-local concept) is untouched.
+    const subscribedTenants = (
+      await Promise.all(tenants.map(async (t) => ((await hasActiveAmSubscription(t)) ? t : null)))
+    ).filter((t): t is NonNullable<typeof t> => t !== null);
+
     return NextResponse.json({
       data: {
-        tenants: tenants.map((t) => ({
+        tenants: subscribedTenants.map((t) => ({
           id: t._id.toString(),
           name: (t.name as string) || '',
           slug: (t.slug as string) || '',

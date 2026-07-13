@@ -105,6 +105,38 @@ async function upsertTenantRoleAndMember(
   // Seed canonical system roles (Admin / Manager / Driver). Idempotent.
   await seedSystemRoles(localTenantId, localUserId);
 
+  // A tenantMember may already exist for this (tenant, email) with no userId
+  // yet — an admin pre-created it (a pending invite, OR directly granting
+  // access to someone already a 3pm-auth tenant member — see inviteUser's
+  // "already a member" handling for the Command-import case). LINK and
+  // activate that EXISTING row, preserving its admin-chosen role/teams,
+  // instead of falling through to the fresh-upsert below keyed by
+  // {userId, tenantId} — which would miss it entirely (no userId to match
+  // yet) and create a DUPLICATE membership with a generic mapped role,
+  // orphaning the one the admin actually assigned.
+  const tenantMembersCol = await getTenantMembersCollection();
+  const existingByEmail = await tenantMembersCol.findOne({
+    tenantId: localTenantId,
+    email: normalizedEmail,
+  });
+  if (existingByEmail) {
+    await tenantMembersCol.updateOne(
+      { _id: existingByEmail._id },
+      {
+        $set: {
+          userId: localUserId,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          isActive: true,
+          portalUser: true,
+          status: 'active',
+          updatedAt: now,
+        },
+      },
+    );
+    return localTenantId;
+  }
+
   // Upsert the role matching the 3pm-auth role string.
   let roleId: ObjectId | null = null;
   if (tenantInfo.role) {
@@ -141,8 +173,7 @@ async function upsertTenantRoleAndMember(
     }
   }
 
-  // Upsert the tenantMember.
-  const tenantMembersCol = await getTenantMembersCollection();
+  // Upsert the tenantMember (no pre-existing row was found above — fresh membership).
   await tenantMembersCol.findOneAndUpdate(
     { userId: localUserId, tenantId: localTenantId },
     {

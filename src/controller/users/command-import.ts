@@ -34,9 +34,15 @@ export interface CommandStaffDirectoryItem extends CommandStaff {
 
 export interface CommandStaffImportSummary {
   invited: number;
-  /** Of the invited: how many also got a driver profile (Driver role). */
+  /** Invited via Asset Manager's own accept-link email instead of 3pm-auth's —
+   *  they were already a 3pm-auth tenant member (typical for Command staff),
+   *  so 3pm-auth won't issue a new invitation. They still must explicitly
+   *  accept before they get access, same as everyone else. */
+  grantedDirectly: number;
+  /** Of invited + grantedDirectly: how many also got a driver profile (Driver role). */
   driversCreated: number;
   skippedNoEmail: number;
+  /** Already an Asset Manager member (not just a 3pm-auth member) — nothing done. */
   skippedAlreadyMember: number;
   failed: number;
   errors: string[];
@@ -177,6 +183,7 @@ export async function importCommandStaff(
   const staffById = new Map(res.data.map((s) => [s.id, s]));
   const summary: CommandStaffImportSummary = {
     invited: 0,
+    grantedDirectly: 0,
     driversCreated: 0,
     skippedNoEmail: 0,
     skippedAlreadyMember: 0,
@@ -230,7 +237,11 @@ export async function importCommandStaff(
       continue;
     }
 
-    summary.invited += 1;
+    if ((r as { alreadyThreePMMember?: boolean }).alreadyThreePMMember) {
+      summary.grantedDirectly += 1;
+    } else {
+      summary.invited += 1;
+    }
 
     // Driver role → also materialize the driver profile from Command data.
     if (role?.isDriver) {

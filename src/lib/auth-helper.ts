@@ -16,6 +16,7 @@ import {
   getWorkspacesCollection,
   getRolesCollection,
 } from '@/lib/mongodb';
+import { hasActiveAmSubscription } from '@/lib/subscription-gate';
 import { ObjectId } from 'mongodb';
 
 /** Cookie for persisting switched tenant (local _id). */
@@ -63,7 +64,10 @@ export async function resolveCurrentTenantFor3PM(
     });
     if (member) {
       const tenant = await tenantsCollection.findOne({ _id: tenantObjectId, isActive: { $ne: false } });
-      if (tenant) {
+      // A tenant with a cancelled Asset Manager subscription must not resolve
+      // as the active tenant even if the cookie still points at it — fall
+      // through to the other resolution steps below.
+      if (tenant && (await hasActiveAmSubscription(tenant))) {
         const authTenantId = (tenant as { authTenantId?: ObjectId }).authTenantId;
         return {
           currentTenantId: tenantObjectId.toString(),
@@ -86,7 +90,7 @@ export async function resolveCurrentTenantFor3PM(
         })
       : await tenantsCollection.findOne({ authTenantId: sessionTenantId, isActive: { $ne: false } });
 
-    if (tenant) {
+    if (tenant && (await hasActiveAmSubscription(tenant))) {
       const member = await tenantMembersCollection.findOne({
         userId: userObjectId,
         tenantId: tenant._id,
@@ -103,7 +107,9 @@ export async function resolveCurrentTenantFor3PM(
     }
   }
 
-  // 3. Fallback: first active tenant membership
+  // 3. Fallback: first active tenant membership whose tenant is still
+  // subscribed to Asset Manager (an unsubscribed org must not be reachable
+  // via this fallback either, even though its local isActive flag is untouched).
   const activeMemberships = await tenantMembersCollection
     .find({ userId: userObjectId, ...ACTIVE_MEMBER_FILTER }, { sort: { createdAt: 1 } })
     .toArray();
@@ -114,10 +120,14 @@ export async function resolveCurrentTenantFor3PM(
       .find({ _id: { $in: memberTenantIds }, isActive: { $ne: false } })
       .toArray();
 
-    if (activeTenants.length > 0) {
-      const activeTenantById = new Map(activeTenants.map((t) => [t._id.toString(), t]));
-      const firstActiveMember = activeMemberships.find((m) => activeTenantById.has(m.tenantId.toString()));
-      const tenant = (firstActiveMember && activeTenantById.get(firstActiveMember.tenantId.toString())) || activeTenants[0];
+    const subscribedTenants = (
+      await Promise.all(activeTenants.map(async (t) => ((await hasActiveAmSubscription(t)) ? t : null)))
+    ).filter((t): t is NonNullable<typeof t> => t !== null);
+
+    if (subscribedTenants.length > 0) {
+      const subscribedTenantById = new Map(subscribedTenants.map((t) => [t._id.toString(), t]));
+      const firstActiveMember = activeMemberships.find((m) => subscribedTenantById.has(m.tenantId.toString()));
+      const tenant = (firstActiveMember && subscribedTenantById.get(firstActiveMember.tenantId.toString())) || subscribedTenants[0];
 
       const authTenantId = (tenant as { authTenantId?: ObjectId | string }).authTenantId;
       const authTenantIdStr = authTenantId != null
