@@ -423,9 +423,15 @@ export async function createWorkOrder(
 
   // Created directly with a 'completed'-type status → complete it now (full
   // sign-off: corrects linked defects/faults, returns the asset to service,
-  // logs service history, locks the WO from edits). Idempotent.
+  // logs service history, locks the WO from edits). Idempotent. An optional
+  // meter reading (same fields the Complete & Sign Off dialog captures) lets
+  // mileage/engine-hours-based service due dates reset here too — otherwise
+  // only the calendar-based baseline resets.
   if (statusType === 'completed') {
-    return await completeWorkOrder(tenantId, userId, result.insertedId.toString());
+    return await completeWorkOrder(tenantId, userId, result.insertedId.toString(), {
+      meterType: input.meterType,
+      meterAtService: input.meterAtService,
+    });
   }
 
   return {
@@ -672,9 +678,14 @@ export async function updateWorkOrder(
   // Moving to a status whose type is 'completed' completes the work order:
   // run the full sign-off (corrects linked defects/faults, returns the asset to
   // service, logs service history, pushes any Command stock) and set the
-  // isCompleted flag that locks the WO from further edits. Idempotent.
+  // isCompleted flag that locks the WO from further edits. Idempotent. An
+  // optional meter reading resets mileage/engine-hours-based service due dates
+  // too — otherwise only the calendar-based baseline resets.
   if (newStatusType === 'completed') {
-    return await completeWorkOrder(tenantId, userId, woId);
+    return await completeWorkOrder(tenantId, userId, woId, {
+      meterType: input.meterType,
+      meterAtService: input.meterAtService,
+    });
   }
 
   const updated = await col.findOne({ _id: woOid });
@@ -1043,40 +1054,70 @@ export async function completeWorkOrder(
     },
   );
 
-  // 2) Resolve linked defects → corrected.
+  // 2) Resolve linked defects → corrected. Skipped for defects already closed
+  // as "No Correction Needed" — completing the WO shouldn't relabel a defect
+  // that was explicitly reviewed and dismissed as if a fix had happened.
   const defectOids = Array.isArray(wo.defectIds) ? (wo.defectIds as ObjectId[]) : [];
   if (defectOids.length > 0) {
     const defectsCol = await getDefectsCollection();
     await defectsCol.updateMany(
-      { _id: { $in: defectOids }, tenantId: tenantOid, isArchived: { $ne: true } },
+      {
+        _id: { $in: defectOids },
+        tenantId: tenantOid,
+        isArchived: { $ne: true },
+        status: { $ne: 'no_correction_needed' },
+      },
       { $set: { status: 'corrected', updatedBy: userOid, updatedAt: now } },
     );
   }
 
   // 2b) Resolve linked faults (stored in defects collection) → corrected.
+  // Same guard as defects — a fault already dismissed as "Won't Fix" (stored as
+  // 'no_correction_needed') is left alone.
   const faultOids = Array.isArray(wo.faultIds) ? (wo.faultIds as ObjectId[]) : [];
   if (faultOids.length > 0) {
     const defectsCol2 = await getDefectsCollection();
     await defectsCol2.updateMany(
-      { _id: { $in: faultOids }, tenantId: tenantOid, isArchived: { $ne: true }, source: 'fault' },
+      {
+        _id: { $in: faultOids },
+        tenantId: tenantOid,
+        isArchived: { $ne: true },
+        source: 'fault',
+        status: { $ne: 'no_correction_needed' },
+      },
       { $set: { status: 'corrected', updatedBy: userOid, updatedAt: now } },
     );
   }
 
   // 3) Return the asset to service + record the completion on Command's timeline.
+  // The in-service flip (and the "available" push to Command) is skipped when
+  // another open work order still exists for this asset — otherwise completing
+  // one of several concurrent jobs would falsely mark the asset available while
+  // the other job still needs it out of service. The completion activity itself
+  // is still recorded either way.
   if (wo.assetId) {
+    const otherOpenWO = await col.findOne({
+      assetId: wo.assetId as ObjectId,
+      tenantId: tenantOid,
+      _id: { $ne: woOid },
+      isArchived: { $ne: true },
+      isCompleted: { $ne: true },
+    });
+
     const assetsCol = await getAssetsCollection();
-    await assetsCol.updateOne(
-      { _id: wo.assetId as ObjectId, tenantId: tenantOid },
-      { $set: { status: 'in_service', updatedAt: now } },
-    );
-    // Command-linked assets: mirror the return-to-service + completion activity.
-    await writebackAvailabilityIfLinked(
-      tenantId,
-      wo.assetId as ObjectId,
-      false,
-      `Work order ${wo.workOrderNumber} completed`,
-    );
+    if (!otherOpenWO) {
+      await assetsCol.updateOne(
+        { _id: wo.assetId as ObjectId, tenantId: tenantOid },
+        { $set: { status: 'in_service', updatedAt: now } },
+      );
+      // Command-linked assets: mirror the return-to-service.
+      await writebackAvailabilityIfLinked(
+        tenantId,
+        wo.assetId as ObjectId,
+        false,
+        `Work order ${wo.workOrderNumber} completed`,
+      );
+    }
     await writebackActivityIfLinked(tenantId, wo.assetId as ObjectId, {
       type: 'work_order_completed',
       summary: `Work order ${wo.workOrderNumber} completed`,

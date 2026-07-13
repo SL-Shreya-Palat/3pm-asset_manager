@@ -161,7 +161,10 @@ export function DashboardOverview() {
       <div className="grid gap-4 lg:grid-cols-3">
         <ChartCard title="Fleet Status" subtitle="Availability across the fleet">
           <div className="flex items-center gap-4">
-            <DonutChart data={fleetStatus} centerLabel="assets" />
+            {/* Sized down from the 168px default — this legend carries longer,
+                more numerous labels ("Out of Service"), so it needs more of the
+                card's width than the donut does. */}
+            <DonutChart data={fleetStatus} centerLabel="assets" size={132} />
             <ChartLegend
               className="flex-1"
               items={fleetStatus.map((s) => ({ label: s.label, color: s.color, value: s.value }))}
@@ -171,7 +174,7 @@ export function DashboardOverview() {
 
         <ChartCard title="Compliance" subtitle="Rego / WOF / CoF / RUC status">
           <div className="flex items-center gap-4">
-            <DonutChart data={compliance} centerLabel="assets" />
+            <DonutChart data={compliance} centerLabel="assets" size={132} />
             <ChartLegend
               className="flex-1"
               items={compliance.map((s) => ({ label: s.label, color: s.color, value: s.value }))}

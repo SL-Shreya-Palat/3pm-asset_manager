@@ -113,6 +113,11 @@ export interface CreateWorkOrderInput {
   statusId: string;
   dueDate?: string;
   description?: string;
+  /** Optional meter reading captured alongside a status change to a
+   * 'completed'-type status — mirrors the Complete & Sign Off dialog's meter
+   * fields so mileage/engine-hours-based service due dates reset here too. */
+  meterType?: string;
+  meterAtService?: number;
   /** Parts to record on the WO. Local parts (`partId`) are deducted from AM
    * inventory; Command stock lines (`commandStockId`) are pushed to Command as
    * RECEIPTED_OUT transactions when the WO is completed. */
